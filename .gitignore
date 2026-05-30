@@ -427,3 +427,14 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+# React
+node_modules/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# VS Code
+.vscode/
