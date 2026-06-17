@@ -938,7 +938,49 @@ function NotificationCard({ item }) {
   );
 }
 
+const extraNotificationItems = [
+  {
+    type: "NEW PUBLICATION",
+    time: "4 days ago",
+    title: "NEW RESEARCH:",
+    text: "Dr. Elena Rostova published \"Topological Regularization in Deep Autoencoders\" in Nature Computational Science.",
+    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    tone: "purple-soft",
+    unread: false,
+  },
+  {
+    type: "SYSTEM ALERT",
+    time: "5 days ago",
+    title: "SYNC COMPLETE:",
+    text: "14,200 new publications were successfully synchronized from Semantic Scholar API.",
+    icon: "M7 7.5a6 6 0 0 1 10.2-2.8L19 6.5M17 16.5a6 6 0 0 1-10.2 2.8L5 17.5",
+    tone: "gray",
+    unread: false,
+  },
+  {
+    type: "TREND ALERT",
+    time: "1 week ago",
+    title: "TREND SPIKE:",
+    text: "Keyword \"Single-cell RNA\" citation velocity increased by 28% in computational biology journals.",
+    icon: "M5 15.5 9.2 11l3.2 2.6L19 7M16 7h3v3",
+    tone: "green",
+    unread: false,
+  }
+];
+
 function StudentNotificationsPage() {
+  const [notifications, setNotifications] = React.useState(notificationItems);
+  const [hasMore, setHasMore] = React.useState(true);
+
+  const handleLoadMore = () => {
+    setNotifications((prev) => [...prev, ...extraNotificationItems]);
+    setHasMore(false);
+  };
+
+  const handleMarkAllRead = () => {
+    setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
+  };
+
   return (
     <main className="student-app notifications-page">
       <StudentSidebar activeRoute="/student-notifications" />
@@ -951,7 +993,7 @@ function StudentNotificationsPage() {
               <h1>Notifications</h1>
               <p>Stay updated on publications, trends, and system alerts.</p>
             </div>
-            <button type="button" className="mark-read-button">
+            <button type="button" className="mark-read-button" onClick={handleMarkAllRead}>
               <MiniIcon path="M5 12.5 9 16.5 19 6.5" />
               Mark all as read
             </button>
@@ -960,10 +1002,14 @@ function StudentNotificationsPage() {
           <div className="notifications-layout">
             <NotificationFilterPanel />
             <section className="notification-list" aria-label="Notifications list">
-              {notificationItems.map((item) => (
-                <NotificationCard item={item} key={`${item.type}-${item.time}`} />
+              {notifications.map((item, index) => (
+                <NotificationCard item={item} key={`${item.type}-${item.time}-${index}`} />
               ))}
-              <button type="button" className="load-more-button">Load More</button>
+              {hasMore ? (
+                <button type="button" className="load-more-button" onClick={handleLoadMore}>Load More</button>
+              ) : (
+                <div className="no-more-notifications" style={{ textAlign: "center", color: "#6b7280", fontSize: "13px", padding: "12px", background: "#fff", border: "1px dashed #cbd2df", borderRadius: "8px" }}>No more notifications</div>
+              )}
             </section>
           </div>
         </div>
@@ -1183,6 +1229,8 @@ function ExtractedTopicsCard() {
 }
 
 function StudentPublicationDetailPage() {
+  const [activeTab, setActiveTab] = React.useState("Abstract");
+
   return (
     <main className="student-app">
       <StudentSidebar activeRoute="/student-search" />
@@ -1218,31 +1266,130 @@ function StudentPublicationDetailPage() {
 
               <article className="publication-tabs-card">
                 <nav className="detail-tabs" aria-label="Publication metadata tabs">
-                  <button className="active" type="button">Abstract</button>
-                  <button type="button">Keywords</button>
-                  <button type="button">Authors</button>
-                  <button type="button">Raw Metadata</button>
+                  {["Abstract", "Keywords", "Authors", "Raw Metadata"].map((tab) => (
+                    <button
+                      className={activeTab === tab ? "active" : ""}
+                      type="button"
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                    >
+                      {tab}
+                    </button>
+                  ))}
                 </nav>
 
-                <div className="abstract-body">
-                  <h2>Abstract</h2>
-                  <p>
-                    The integration of deep neural networks into the analysis of multi-omic biological
-                    data presents significant challenges due to the high dimensionality and inherent
-                    noise of the datasets. In this paper, we introduce a novel manifold learning
-                    architecture designed specifically for extracting stable structural features from
-                    single-cell RNA sequencing data. By employing a sparse autoencoder with a custom
-                    topological regularization term, our model achieves state-of-the-art performance
-                    in identifying rare cell populations.
-                  </p>
+                {activeTab === "Abstract" && (
+                  <div className="abstract-body">
+                    <h2>Abstract</h2>
+                    <p>
+                      The integration of deep neural networks into the analysis of multi-omic biological
+                      data presents significant challenges due to the high dimensionality and inherent
+                      noise of the datasets. In this paper, we introduce a novel manifold learning
+                      architecture designed specifically for extracting stable structural features from
+                      single-cell RNA sequencing data. By employing a sparse autoencoder with a custom
+                      topological regularization term, our model achieves state-of-the-art performance
+                      in identifying rare cell populations.
+                    </p>
 
-                  <h3>Key Findings</h3>
-                  <ul>
-                    <li>Novel architecture improves rare cell detection by 24% over baseline models.</li>
-                    <li>Topological regularization prevents manifold fragmentation during training.</li>
-                    <li>The proposed method scales to datasets exceeding 10 million cells.</li>
-                  </ul>
-                </div>
+                    <h3>Key Findings</h3>
+                    <ul>
+                      <li>Novel architecture improves rare cell detection by 24% over baseline models.</li>
+                      <li>Topological regularization prevents manifold fragmentation during training.</li>
+                      <li>The proposed method scales to datasets exceeding 10 million cells.</li>
+                    </ul>
+                  </div>
+                )}
+
+                {activeTab === "Keywords" && (
+                  <div className="abstract-body keywords-tab-body">
+                    <h2>Keywords</h2>
+                    <p style={{ marginBottom: "24px" }}>The following semantic concepts were extracted from this publication and cross-referenced with your tracked items.</p>
+                    <div className="keyword-chips-list" style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
+                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                        <strong>Deep Learning</strong>
+                        <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: "12px" }}>(Tracked)</span>
+                      </span>
+                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
+                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                        <strong>Single-cell RNA</strong>
+                        <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: "12px" }}>(Tracked)</span>
+                      </span>
+                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
+                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                        <strong>Manifold Learning</strong>
+                      </span>
+                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
+                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                        <strong>Autoencoders</strong>
+                      </span>
+                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
+                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                        <strong>Biological Trajectories</strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "Authors" && (
+                  <div className="abstract-body authors-tab-body">
+                    <h2>Authors</h2>
+                    <div style={{ display: "grid", gap: "20px", marginTop: "24px" }}>
+                      <div style={{ display: "flex", gap: "16px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", padding: "20px", borderRadius: "12px", alignItems: "center" }}>
+                        <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--brand)", display: "grid", placeItems: "center", fontSize: "18px", fontWeight: "bold", color: "#ffffff" }}>ER</div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>Dr. Elena Rostova</h3>
+                          <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#94a3b8" }}>Institute of Advanced Analytics  ·  Computational Biology</p>
+                          <span style={{ fontSize: "12px", color: "#6366f1", display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "6px" }}>ORCID: 0000-0002-1825-0097</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "16px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", padding: "20px", borderRadius: "12px", alignItems: "center" }}>
+                        <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#4f46e5", display: "grid", placeItems: "center", fontSize: "18px", fontWeight: "bold", color: "#ffffff" }}>MT</div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>Marcus Thorne</h3>
+                          <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#94a3b8" }}>University of Applied Sciences  ·  Deep Learning Lab</p>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "16px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", padding: "20px", borderRadius: "12px", alignItems: "center" }}>
+                        <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#06b6d4", display: "grid", placeItems: "center", fontSize: "18px", fontWeight: "bold", color: "#ffffff" }}>JP</div>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>Jin-Soo Park</h3>
+                          <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#94a3b8" }}>Seoul Institute of Technology  ·  Bioinformatics Research Division</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "Raw Metadata" && (
+                  <div className="abstract-body metadata-tab-body">
+                    <h2>Raw Metadata</h2>
+                    <p style={{ marginBottom: "20px" }}>API metadata payload returned from the indexing data source.</p>
+                    <pre style={{ background: "#0b0f19", border: "1px solid #1e293b", padding: "20px", borderRadius: "8px", overflowX: "auto", fontSize: "13px", color: "#a5b4fc", fontFamily: "monospace", lineHeight: "1.5" }}>
+{`{
+  "paperId": "10.1038/s43588-023-00123-x",
+  "title": "Deep Learning for Advanced Pattern Recognition in Complex Biological Systems",
+  "authors": [
+    { "name": "Elena Rostova", "orcid": "0000-0002-1825-0097" },
+    { "name": "Marcus Thorne" },
+    { "name": "Jin-Soo Park" }
+  ],
+  "journal": {
+    "name": "Nature Computational Science",
+    "volume": "3",
+    "pages": "412-421"
+  },
+  "citations": 1428,
+  "fieldsOfStudy": [
+    "Computer Science",
+    "Biology",
+    "Computational Biology"
+  ],
+  "indexedDate": "2023-10-15T08:32:00Z"
+}`}
+                    </pre>
+                  </div>
+                )}
               </article>
 
               <section className="related-section">
