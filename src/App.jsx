@@ -310,12 +310,8 @@ function LoginPage() {
 const sidebarItems = [
   { label: "Dashboard", route: "/student-dashboard", icon: "M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z" },
   { label: "Search", route: "/student-search", icon: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" },
-  { label: "Bookmarks", route: "/student-dashboard", icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z" },
-  { label: "Notifications", route: "/student-dashboard", icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" },
-  { label: "Trend Tracking", route: "/student-dashboard", icon: "M4 16.5 9 12l3.5 3L20 7.5M17 7.5h3v3" },
-  { label: "Reports", route: "/student-dashboard", icon: "M5 4.5h14v15H5zM8 15h8M8 11h8M8 7h4" },
-  { label: "Year Comparison", route: "/student-dashboard", icon: "M5 19V5M5 19h14M9 15v-4M13 15V8M17 15v-7" },
-  { label: "Sync Management", route: "/student-dashboard", icon: "M7 7.5a6 6 0 0 1 10.2-2.8L19 6.5M17 16.5a6 6 0 0 1-10.2 2.8L5 17.5" },
+  { label: "Bookmarks", route: "/student-bookmarks", icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z" },
+  { label: "Notifications", route: "/student-notifications", icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" },
 ];
 
 const statCards = [
@@ -372,6 +368,117 @@ const searchResults = [
   },
 ];
 
+const bookmarkTabs = ["Publications", "Keywords", "Journals", "Topics"];
+
+const bookmarkedPapers = [
+  {
+    title: "Attention Is All You Need: A Retrospective Analysis of Transformer Architectures",
+    excerpt:
+      "This paper reviews the impact of the original Transformer architecture introduced in 2017, analyzing its adaptations across various domains including natural language processing, computer vision, and computational biology over the last five years.",
+    date: "Oct 2023",
+    citations: "14,203",
+    impact: "High",
+  },
+  {
+    title: "Quantum Supremacy using a Programmable Superconducting Processor",
+    excerpt:
+      "We report the demonstration of quantum supremacy. We developed a new 54-qubit processor, named \"Sycamore\", that is comprised of fast, high-fidelity quantum logic gates, in order to perform the benchmark testing.",
+    date: "Oct 2019",
+    citations: "451",
+    impact: "High",
+  },
+];
+
+const bookmarkedKeywords = [
+  { name: "Deep Learning", count: "128 papers", trend: "+12% this week" },
+  { name: "Quantum Computing", count: "45 papers", trend: "+5% this week" },
+  { name: "Computational Biology", count: "89 papers", trend: "Stable" },
+];
+
+const bookmarkedJournals = [
+  { name: "Nature Computational Science", impactFactor: "12.3", status: "Active alerts" },
+  { name: "Journal of Machine Learning Research", impactFactor: "8.5", status: "Weekly digest" },
+  { name: "Bioinformatics", impactFactor: "6.9", status: "Monthly digest" },
+];
+
+const bookmarkedTopics = [
+  { name: "Manifold Learning", tracked: "32 papers", activity: "High activity" },
+  { name: "Predictive Data Synthesis", tracked: "14 papers", activity: "Medium activity" },
+  { name: "Neural Network Architectures", tracked: "55 papers", activity: "Low activity" },
+];
+
+const notificationFilters = [
+  {
+    title: "Filters",
+    options: [
+      { label: "All Notifications", active: true },
+      { label: "Unread" },
+    ],
+  },
+  {
+    title: "",
+    options: [
+      { label: "Any Time", active: true },
+      { label: "Today" },
+      { label: "This Week" },
+    ],
+  },
+];
+
+const notificationItems = [
+  {
+    type: "TOPIC ALERT",
+    time: "Just now",
+    title: "NEW TOPIC MATCH:",
+    text: "A new publication titled \"Advancements in Neural Architecture Search\" matches your interest in Deep Learning. Similarity: 92%.",
+    icon: "M12 18v-2M8 10a4 4 0 1 1 8 0c0 2.4-1.4 3.4-2.5 4.3-.8.7-1.5 1.3-1.5 1.7M9.5 19.5h5",
+    tone: "purple",
+    unread: true,
+    bookmarked: true,
+  },
+  {
+    type: "TREND ALERT",
+    time: "10 mins ago",
+    title: "",
+    text: "Keyword \"Transformer Models\" is showing a 34% spike in citations this month across top-tier ML journals.",
+    icon: "M5 15.5 9.2 11l3.2 2.6L19 7M16 7h3v3",
+    tone: "green",
+    unread: true,
+  },
+  {
+    type: "NEW PUBLICATION",
+    time: "2 hours ago",
+    title: "",
+    text: "5 new publications match your followed keyword \"Quantum Computing Scaling\" in Nature Physics.",
+    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    tone: "purple-soft",
+    unread: true,
+  },
+  {
+    type: "SYSTEM",
+    time: "yesterday",
+    title: "",
+    text: "Sync management encountered a delay integrating the latest ArXiv dataset. The issue has been resolved.",
+    icon: "M7 7.5a6 6 0 0 1 10.2-2.8L19 6.5M17 16.5a6 6 0 0 1-10.2 2.8L5 17.5",
+    tone: "gray",
+  },
+  {
+    type: "NEW PUBLICATION",
+    time: "3 days ago",
+    title: "",
+    text: "Dr. E. Thorne, whom you follow, published a new paper: \"Neuroplasticity in Adult Avian Models.\"",
+    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    tone: "purple-soft",
+  },
+];
+
+const profileTabs = [
+  { label: "Personal Info", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0", active: true },
+  { label: "Change Password", icon: "M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" },
+  { label: "Research Interests", icon: "M12 4l7 16H5l7-16ZM9.8 14h4.4" },
+  { label: "Preferences", icon: "M5 7h14M8 12h8M10 17h4" },
+];
+
 const relatedPublications = [
   {
     title: "Topological Data Analysis in Genomics",
@@ -413,30 +520,41 @@ function StudentSidebar({ activeRoute }) {
       </nav>
 
       <div className="student-sidebar-footer">
-        <a href="/student-dashboard" onClick={navTo("/student-dashboard")}><MiniIcon path="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0" />Profile</a>
-        <a href="/student-dashboard" onClick={navTo("/student-dashboard")}><MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2M17 5l-1.4 1.4M8.4 17.6 7 19M7 5l1.4 1.4M15.6 17.6 17 19" />Settings</a>
-        <button type="button">Upgrade to Pro</button>
+        <a className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`} href="/student-profile" onClick={navTo("/student-profile")}>
+          <div className="sidebar-avatar">
+            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="Avatar" />
+          </div>
+          <div className="sidebar-profile-info">
+            <strong>Dr. A. Scientist</strong>
+            <span>Lead Researcher</span>
+          </div>
+        </a>
       </div>
     </aside>
   );
 }
 
-function StudentTopbar({ crumb = "Dashboard", searchValue = "", wideSearch = false }) {
+function StudentTopbar({ crumb = "Dashboard", searchValue = "", wideSearch = false, variant = "default", searchPlaceholder = "Search keyword, author, or DOI..." }) {
+  const isProfileUtility = variant === "profile";
+  const isUtility = variant === "utility" || isProfileUtility;
+
   return (
-    <header className="student-topbar">
-      <span>{crumb}</span>
+    <header className={`student-topbar ${isUtility ? "utility" : ""} ${isProfileUtility ? "profile-utility" : ""}`}>
+      {crumb ? <span>{crumb}</span> : null}
       <div className="student-top-actions">
         <form className={`student-global-search ${wideSearch ? "wide" : ""}`} onSubmit={navTo("/student-search")}>
           <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
-          <input type="search" placeholder="Search keyword, author, or DOI..." defaultValue={searchValue} />
+          <input type="search" placeholder={searchPlaceholder} defaultValue={searchValue} />
         </form>
-        <button type="button" aria-label="Notifications" className="top-icon alert-dot">
-          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
-        </button>
-        <button type="button" aria-label="Settings" className="top-icon">
-          <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
-        </button>
-        <button type="button" aria-label="User profile" className="student-avatar">A</button>
+        <div className="topbar-icon-group">
+          <button type="button" aria-label={isUtility ? "Help" : "Notifications"} className={`top-icon ${isUtility ? "" : "alert-dot"}`}>
+            <MiniIcon path={isUtility ? "M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" : "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4"} />
+          </button>
+          <button type="button" aria-label="Settings" className="top-icon">
+            <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
+          </button>
+          <button type="button" aria-label="User profile" className="student-avatar">{isProfileUtility ? "A" : isUtility ? "" : "A"}</button>
+        </div>
       </div>
     </header>
   );
@@ -512,13 +630,13 @@ function StudentDashboard() {
               <h2>Recent Activity</h2>
               <div className="activity-list">
                 {activities.map(([title, meta, icon], index) => (
-                  <article className="activity-item" key={title}>
+                  <a className="activity-item" href="/student-publication" onClick={navTo("/student-publication")} key={title}>
                     <MiniIcon path={icon} />
                     <div>
                       <strong>{title}</strong>
                       <span>{meta}</span>
                     </div>
-                  </article>
+                  </a>
                 ))}
               </div>
             </section>
@@ -633,6 +751,395 @@ function StudentSearchPage() {
                 </nav>
               </div>
             </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function BookmarkPaperCard({ paper }) {
+  return (
+    <article className="bookmark-paper-card">
+      <a href="/student-publication" onClick={navTo("/student-publication")}>
+        <h2>{paper.title}</h2>
+      </a>
+      <p>{paper.excerpt}</p>
+      <div className="bookmark-paper-meta">
+        <span><MiniIcon path="M7 4v3M17 4v3M5 8h14M6 6h12v13H6z" />{paper.date}</span>
+        <span><MiniIcon path="M4 14.5 9 10l3.2 2.7L20 5.5M17 5.5h3v3" />{paper.citations} Citations</span>
+        <span><MiniIcon path="M4 15.5 9.2 10l3.4 3L20 6.5" />Impact: {paper.impact}</span>
+      </div>
+    </article>
+  );
+}
+
+function StudentBookmarksPage() {
+  const [activeTab, setActiveTab] = React.useState("Publications");
+
+  return (
+    <main className="student-app bookmarks-page">
+      <StudentSidebar activeRoute="/student-bookmarks" />
+      <section className="student-main">
+        <StudentTopbar crumb="" variant="utility" searchPlaceholder="Search..." />
+
+        <div className="student-content bookmarks-content">
+          <div className="breadcrumb bookmarks-breadcrumb">Dashboard <span>&gt;</span> <strong>Bookmarks</strong></div>
+          <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
+
+          <nav className="bookmark-tabs" aria-label="Bookmark categories">
+            {bookmarkTabs.map((tab) => (
+              <button
+                className={activeTab === tab ? "active" : ""}
+                type="button"
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab}
+              </button>
+            ))}
+          </nav>
+
+          {activeTab === "Publications" && (
+            <section className="bookmark-paper-list" aria-label="Bookmarked publications">
+              {bookmarkedPapers.map((paper) => (
+                <BookmarkPaperCard paper={paper} key={paper.title} />
+              ))}
+            </section>
+          )}
+
+          {activeTab === "Keywords" && (
+            <section className="bookmark-keyword-list" aria-label="Bookmarked keywords">
+              {bookmarkedKeywords.map((keyword) => (
+                <article className="bookmark-keyword-card" key={keyword.name}>
+                  <div className="card-header">
+                    <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                    <h2>{keyword.name}</h2>
+                  </div>
+                  <div className="card-body">
+                    <span>{keyword.count}</span>
+                    <span className="trend-badge positive">{keyword.trend}</span>
+                  </div>
+                  <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>View Analytics -&gt;</a>
+                </article>
+              ))}
+            </section>
+          )}
+
+          {activeTab === "Journals" && (
+            <section className="bookmark-journal-list" aria-label="Bookmarked journals">
+              {bookmarkedJournals.map((journal) => (
+                <article className="bookmark-journal-card" key={journal.name}>
+                  <div className="card-header">
+                    <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
+                    <h2>{journal.name}</h2>
+                  </div>
+                  <div className="card-body">
+                    <span>Impact Factor: <strong>{journal.impactFactor}</strong></span>
+                    <span className="status-badge">{journal.status}</span>
+                  </div>
+                  <a href="/student-publication" onClick={navTo("/student-publication")}>View Journal -&gt;</a>
+                </article>
+              ))}
+            </section>
+          )}
+
+          {activeTab === "Topics" && (
+            <section className="bookmark-topic-list" aria-label="Bookmarked topics">
+              {bookmarkedTopics.map((topic) => (
+                <article className="bookmark-topic-card" key={topic.name}>
+                  <div className="card-header">
+                    <MiniIcon path="M12 4.5a5 5 0 0 0-2.5 9.35v2.15h5v-2.15A5 5 0 0 0 12 4.5Z" />
+                    <h2>{topic.name}</h2>
+                  </div>
+                  <div className="card-body">
+                    <span>Tracked: <strong>{topic.tracked}</strong></span>
+                    <span className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}>{topic.activity}</span>
+                  </div>
+                  <a href="/student-publication" onClick={navTo("/student-publication")}>View Topic -&gt;</a>
+                </article>
+              ))}
+            </section>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function NotificationFilterPanel() {
+  return (
+    <aside className="notification-filters" aria-label="Notification filters">
+      {notificationFilters.map((group, groupIndex) => (
+        <section className={groupIndex > 0 ? "separated" : ""} key={`${group.title}-${groupIndex}`}>
+          {group.title ? <h2>{group.title}</h2> : null}
+          <div className="notification-filter-options">
+            {group.options.map((option) => (
+              <label className={option.active ? "active" : ""} key={option.label}>
+                <input type="radio" name={`notification-filter-${groupIndex}`} defaultChecked={option.active} />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+      ))}
+    </aside>
+  );
+}
+
+function renderFormattedText(text) {
+  if (!text) return "";
+  const parts = text.split(/("[^"]*")/g);
+  return parts.map((part, index) => {
+    if (part.startsWith('"') && part.endsWith('"')) {
+      return <i key={index}>{part}</i>;
+    }
+    const subParts = part.split(/(Deep Learning|Nature Physics|ArXiv|Semantic Scholar|OpenAlex)/g);
+    return subParts.map((subPart, subIndex) => {
+      if (
+        subPart === "Deep Learning" ||
+        subPart === "Nature Physics" ||
+        subPart === "ArXiv" ||
+        subPart === "Semantic Scholar" ||
+        subPart === "OpenAlex"
+      ) {
+        return (
+          <a href="#" className="text-link" key={`${index}-${subIndex}`}>
+            {subPart}
+          </a>
+        );
+      }
+      return subPart;
+    });
+  });
+}
+
+function NotificationCard({ item }) {
+  return (
+    <article className={`notification-card ${item.tone} ${item.unread ? "unread" : ""}`}>
+      <div className={`notification-icon ${item.tone}`}>
+        <MiniIcon path={item.icon} />
+      </div>
+      <div className="notification-body">
+        <div className="notification-meta">
+          <span>{item.type}</span>
+          <i aria-hidden="true"></i>
+          <span>{item.time}</span>
+        </div>
+        <p>{item.title ? <strong>{item.title} </strong> : null}{renderFormattedText(item.text)}</p>
+      </div>
+      {item.unread ? <span className="notification-unread-dot" aria-label="Unread notification"></span> : null}
+      {item.bookmarked ? (
+        <button type="button" className="notification-bookmark" aria-label="Save notification">
+          <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
+        </button>
+      ) : null}
+    </article>
+  );
+}
+
+function StudentNotificationsPage() {
+  return (
+    <main className="student-app notifications-page">
+      <StudentSidebar activeRoute="/student-notifications" />
+      <section className="student-main">
+        <StudentTopbar crumb="" variant="utility" searchPlaceholder="Search ScholarTrend..." />
+
+        <div className="student-content notifications-content">
+          <div className="notifications-header">
+            <div>
+              <div className="breadcrumb notifications-breadcrumb">Dashboard <span>&gt;</span> <strong>Notifications</strong></div>
+              <h1>Notifications</h1>
+              <p>Stay updated on publications, trends, and system alerts.</p>
+            </div>
+            <button type="button" className="mark-read-button">
+              <MiniIcon path="M5 12.5 9 16.5 19 6.5" />
+              Mark all as read
+            </button>
+          </div>
+
+          <div className="notifications-layout">
+            <NotificationFilterPanel />
+            <section className="notification-list" aria-label="Notifications list">
+              {notificationItems.map((item) => (
+                <NotificationCard item={item} key={`${item.type}-${item.time}`} />
+              ))}
+              <button type="button" className="load-more-button">Load More</button>
+            </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function ProfileTabs({ activeTab, setActiveTab }) {
+  return (
+    <nav className="profile-tabs" aria-label="Profile settings">
+      {profileTabs.map((tab) => (
+        <button
+          className={activeTab === tab.label ? "active" : ""}
+          type="button"
+          key={tab.label}
+          onClick={() => setActiveTab(tab.label)}
+        >
+          <MiniIcon path={tab.icon} />
+          <span>{tab.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function ProfileField({ label, value, readOnly = false, locked = false }) {
+  return (
+    <label className="profile-field">
+      <span>{label}</span>
+      <span className={`profile-input ${locked ? "locked" : ""}`}>
+        <input type="text" defaultValue={value} readOnly={readOnly} />
+        {locked ? <MiniIcon path="M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" /> : null}
+      </span>
+    </label>
+  );
+}
+
+function StudentProfilePage() {
+  const [activeTab, setActiveTab] = React.useState("Personal Info");
+
+  return (
+    <main className="student-app profile-page">
+      <StudentSidebar activeRoute="/student-profile" />
+      <section className="student-main">
+        <StudentTopbar crumb="" variant="profile" searchPlaceholder="Search ScholarTrend..." />
+
+        <div className="student-content profile-content">
+          <div className="breadcrumb profile-breadcrumb">Dashboard <span>&gt;</span> <strong>Profile</strong></div>
+          <h1>User Profile</h1>
+          <p className="profile-subtitle">Manage your personal information, security, and academic preferences.</p>
+
+          <div className="profile-layout">
+            <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+
+            {activeTab === "Personal Info" && (
+              <section className="profile-card" aria-label="Personal information">
+                <div className="profile-card-header">
+                  <h2>Personal Information</h2>
+                  <span>Lead Researcher</span>
+                </div>
+
+                <div className="profile-photo-row">
+                  <div className="profile-photo" aria-label="Profile photo">
+                    <span>A</span>
+                  </div>
+                  <div className="profile-upload-actions">
+                    <div>
+                      <button type="button" className="upload-button">Upload New</button>
+                      <button type="button" className="remove-button">Remove</button>
+                    </div>
+                    <p>JPG, GIF or PNG. Max size of 800K</p>
+                  </div>
+                </div>
+
+                <div className="profile-form-grid">
+                  <ProfileField label="Full Name" value="Dr. Alexander Scientist" />
+                  <ProfileField label="Email Address (Read-only)" value="alexander.s@scholartrend.edu" readOnly locked />
+                  <ProfileField label="Institution" value="Institute of Advanced Analytics" />
+                  <ProfileField label="Department" value="Computational Biology" />
+                </div>
+              </section>
+            )}
+
+            {activeTab === "Change Password" && (
+              <section className="profile-card" aria-label="Change password">
+                <div className="profile-card-header">
+                  <h2>Change Password</h2>
+                  <span>Security</span>
+                </div>
+                <div className="profile-form-grid">
+                  <label className="profile-field" style={{ gridColumn: "span 2" }}>
+                    <span>Current Password</span>
+                    <span className="profile-input">
+                      <input type="password" placeholder="••••••••" style={{ maxWidth: "45%" }} />
+                    </span>
+                  </label>
+                  <label className="profile-field">
+                    <span>New Password</span>
+                    <span className="profile-input">
+                      <input type="password" placeholder="••••••••" />
+                    </span>
+                  </label>
+                  <label className="profile-field">
+                    <span>Confirm New Password</span>
+                    <span className="profile-input">
+                      <input type="password" placeholder="••••••••" />
+                    </span>
+                  </label>
+                </div>
+              </section>
+            )}
+
+            {activeTab === "Research Interests" && (
+              <section className="profile-card" aria-label="Research interests">
+                <div className="profile-card-header">
+                  <h2>Research Interests</h2>
+                  <span>Academic Interests</span>
+                </div>
+                <p style={{ fontSize: "13px", color: "#4b5563", marginBottom: "20px" }}>
+                  Manage the research keywords and topics you follow to customize your dashboard feeds and alert notifications.
+                </p>
+                <div className="keyword-chips" style={{ marginBottom: "20px" }}>
+                  <span>Deep Learning <button type="button" aria-label="Remove Deep Learning" style={{ cursor: "pointer" }}>x</button></span>
+                  <span>Computational Biology <button type="button" aria-label="Remove Computational Biology" style={{ cursor: "pointer" }}>x</button></span>
+                  <span>Quantum Computing <button type="button" aria-label="Remove Quantum Computing" style={{ cursor: "pointer" }}>x</button></span>
+                  <span>Single-cell RNA <button type="button" aria-label="Remove Single-cell RNA" style={{ cursor: "pointer" }}>x</button></span>
+                  <button type="button" style={{ borderStyle: "dashed", cursor: "pointer" }}>+ Add Keyword</button>
+                </div>
+              </section>
+            )}
+
+            {activeTab === "Preferences" && (
+              <section className="profile-card" aria-label="Preferences">
+                <div className="profile-card-header">
+                  <h2>System Preferences</h2>
+                  <span>Preferences</span>
+                </div>
+                <div style={{ display: "grid", gap: "20px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "14px", fontWeight: "800", marginBottom: "10px", color: "#111827" }}>Notification Frequency</h3>
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
+                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> Real-time alerts for new publication matches
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
+                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> Weekly summary email digest
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
+                        <input type="checkbox" style={{ width: "16px", height: "16px", margin: 0 }} /> System health & sync status alerts
+                      </label>
+                    </div>
+                  </div>
+                  <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "15px" }}>
+                    <h3 style={{ fontSize: "14px", fontWeight: "800", marginBottom: "10px", color: "#111827" }}>Default Search Sources</h3>
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
+                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> Semantic Scholar API
+                      </label>
+                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
+                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> OpenAlex Database
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
+          </div>
+
+          <div className="profile-action-bar">
+            <button type="button" className="profile-cancel">Cancel</button>
+            <button type="button" className="profile-save">
+              <MiniIcon path="M5 5h14v14H5zM8 5v5h8V5M8 19v-5h8v5" />
+              Save Changes
+            </button>
           </div>
         </div>
       </section>
@@ -785,6 +1292,9 @@ export default function App() {
   if (path === "/login") return <LoginPage />;
   if (path === "/student-dashboard") return <StudentDashboard />;
   if (path === "/student-search") return <StudentSearchPage />;
+  if (path === "/student-bookmarks") return <StudentBookmarksPage />;
+  if (path === "/student-notifications") return <StudentNotificationsPage />;
+  if (path === "/student-profile") return <StudentProfilePage />;
   if (path === "/student-publication") return <StudentPublicationDetailPage />;
   return <LandingPage />;
 }
