@@ -1,0 +1,22 @@
+using System;
+using System.Collections.Generic;
+using ScientificJournal.Common.Enums;
+
+namespace ScientificJournal.DataAccess.Entities;
+
+public class User
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Email { get; set; } = string.Empty;
+    public string PasswordHash { get; set; } = string.Empty;
+    public string FullName { get; set; } = string.Empty;
+    public UserRole Role { get; set; }
+    public bool IsActive { get; set; } = true;
+    public bool IsDeleted { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Navigation collections
+    public ICollection<Bookmark> Bookmarks { get; set; } = new List<Bookmark>();
+    public ICollection<Follow> Follows { get; set; } = new List<Follow>();
+    public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
+}
