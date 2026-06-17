@@ -540,7 +540,7 @@ function StudentTopbar({ crumb = "Dashboard", searchValue = "", wideSearch = fal
 
   return (
     <header className={`student-topbar ${isUtility ? "utility" : ""} ${isProfileUtility ? "profile-utility" : ""}`}>
-      {crumb ? <span>{crumb}</span> : null}
+      {crumb ? (typeof crumb === "string" ? <span>{crumb}</span> : crumb) : null}
       <div className="student-top-actions">
         <form className={`student-global-search ${wideSearch ? "wide" : ""}`} onSubmit={navTo("/student-search")}>
           <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
@@ -553,7 +553,9 @@ function StudentTopbar({ crumb = "Dashboard", searchValue = "", wideSearch = fal
           <button type="button" aria-label="Settings" className="top-icon">
             <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
           </button>
-          <button type="button" aria-label="User profile" className="student-avatar">{isProfileUtility ? "A" : isUtility ? "" : "A"}</button>
+          <button type="button" aria-label="User profile" className="student-avatar image-avatar">
+            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="User profile" />
+          </button>
         </div>
       </div>
     </header>
@@ -710,10 +712,9 @@ function StudentSearchPage() {
     <main className="student-app">
       <StudentSidebar activeRoute="/student-search" />
       <section className="student-main">
-        <StudentTopbar crumb="Dashboard" searchValue="" wideSearch />
+        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Search Results</strong></div>} searchValue="" wideSearch />
 
         <div className="student-content search-content">
-          <div className="breadcrumb">Dashboard <span>&gt;</span> <strong>Search Results</strong></div>
           <h1 className="search-page-title">Publication Search</h1>
 
           <div className="search-layout">
@@ -781,10 +782,9 @@ function StudentBookmarksPage() {
     <main className="student-app bookmarks-page">
       <StudentSidebar activeRoute="/student-bookmarks" />
       <section className="student-main">
-        <StudentTopbar crumb="" variant="utility" searchPlaceholder="Search..." />
+        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Bookmarks</strong></div>} variant="utility" searchPlaceholder="Search..." />
 
         <div className="student-content bookmarks-content">
-          <div className="breadcrumb bookmarks-breadcrumb">Dashboard <span>&gt;</span> <strong>Bookmarks</strong></div>
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
@@ -943,12 +943,11 @@ function StudentNotificationsPage() {
     <main className="student-app notifications-page">
       <StudentSidebar activeRoute="/student-notifications" />
       <section className="student-main">
-        <StudentTopbar crumb="" variant="utility" searchPlaceholder="Search ScholarTrend..." />
+        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Notifications</strong></div>} variant="utility" searchPlaceholder="Search ScholarTrend..." />
 
         <div className="student-content notifications-content">
           <div className="notifications-header">
             <div>
-              <div className="breadcrumb notifications-breadcrumb">Dashboard <span>&gt;</span> <strong>Notifications</strong></div>
               <h1>Notifications</h1>
               <p>Stay updated on publications, trends, and system alerts.</p>
             </div>
@@ -1010,10 +1009,9 @@ function StudentProfilePage() {
     <main className="student-app profile-page">
       <StudentSidebar activeRoute="/student-profile" />
       <section className="student-main">
-        <StudentTopbar crumb="" variant="profile" searchPlaceholder="Search ScholarTrend..." />
+        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Profile</strong></div>} variant="profile" searchPlaceholder="Search ScholarTrend..." />
 
         <div className="student-content profile-content">
-          <div className="breadcrumb profile-breadcrumb">Dashboard <span>&gt;</span> <strong>Profile</strong></div>
           <h1>User Profile</h1>
           <p className="profile-subtitle">Manage your personal information, security, and academic preferences.</p>
 
