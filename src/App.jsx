@@ -100,7 +100,7 @@ function LandingPage() {
               </svg>
             </div>
             <h3>Search Publications</h3>
-            <p>Query articles by keyword, author, journal, or topic with filters for year, relevance, and citations.</p>
+            <p>Instantly query millions of peer-reviewed articles. Our advanced semantic engine understands context, not just keywords, returning the most relevant academic literature instantly.</p>
             <div className="search-preview" aria-hidden="true">
               <div className="preview-search-line"></div>
               <div className="preview-line strong"></div>
@@ -117,7 +117,7 @@ function LandingPage() {
               </svg>
             </div>
             <h3>AI-Powered Insights</h3>
-            <p>Surface related publications, similarity scores, duplicate risk, and recommendations.</p>
+            <p>Automate literature reviews with our synthesis engine. Instantly extract methodologies, results, and limitations from complex papers.</p>
             <a className="card-link" href="/register" onClick={navTo("/register")}>Explore capabilities <span aria-hidden="true">-&gt;</span></a>
           </article>
 
@@ -129,7 +129,7 @@ function LandingPage() {
               </svg>
             </div>
             <h3>Track Global Trends</h3>
-            <p>Monitor publication growth, top keywords, and topic emergence with Raw Count or Growth Rate scoring.</p>
+            <p>Monitor citation velocity and topic emergence in real-time. Stay ahead of the curve in your specific domain.</p>
             <div className="wave-lines" aria-hidden="true"><span></span><span></span></div>
           </article>
 
@@ -142,7 +142,7 @@ function LandingPage() {
                 </svg>
               </div>
               <h3>Uncompromising Data Quality</h3>
-              <p>Cross-reference scholarly metadata, normalize records, and keep sync status visible.</p>
+              <p>We cross-reference every data point against institutional repositories. No hallucinations, just pristine academic facts.</p>
             </div>
             <div className="quality-table" aria-label="Data quality metrics">
               <div><span>Data Point</span><strong>Verified</strong></div>
