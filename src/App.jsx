@@ -1438,7 +1438,7 @@ function TrendKeywordsOverview() {
               <button
                 type="button"
                 aria-label={keyword.selected ? `Selected ${keyword.keyword}` : `Add ${keyword.keyword}`}
-                onClick={navTo("/researcher-trend-dashboard")}
+                onClick={navTo("/researcher-trend-tracking")}
               >
                 {keyword.selected ? <MiniIcon path="M5 12.5 9.2 16.5 19 7" /> : "+"}
               </button>
@@ -1642,7 +1642,7 @@ function TrendTrackingDashboardPage() {
             <h1>Trend Tracking</h1>
             <p>Analyze keyword velocity and raw publication volume across disciplines.</p>
           </div>
-          <form className="trend-filter-panel" onSubmit={navTo("/researcher-trend-dashboard")}>
+          <form className="trend-filter-panel" onSubmit={navTo("/researcher-trend-tracking")}>
             <label className="trend-keyword-field">
               <MiniIcon path="M6 5h12M8 12h8M10 19h4" />
               <input type="search" defaultValue="Machine Learning" aria-label="Trend keyword" />
@@ -3456,7 +3456,7 @@ export default function App() {
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/researcher-dashboard") return <ResearcherDashboard />;
-  if (path === "/researcher-trend-tracking") return <TrendKeywordsPage />;
+  if (path === "/researcher-trend-tracking") return <TrendTrackingDashboardPage />;
   if (path === "/researcher-trend-dashboard") return <TrendTrackingDashboardPage />;
   if (path === "/researcher-reports") return <ReportsPage />;
   if (path === "/researcher-year-comparison") return <YearComparisonPage />;
