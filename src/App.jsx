@@ -213,6 +213,16 @@ function RegisterPage() {
               <span>I agree to the <a href="/">Terms &amp; Conditions</a> and <a href="/">Privacy Policy</a>.</span>
             </label>
             <button className="auth-submit" type="submit">Register Account</button>
+            <div className="auth-divider"><span>OR</span></div>
+            <button className="google-auth-button" type="button">
+              <svg className="google-mark" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21.6 12.23c0-.75-.07-1.47-.19-2.16H12v4.09h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.46Z" />
+                <path d="M12 22c2.7 0 4.96-.89 6.62-2.41l-3.24-2.51c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.75-5.59-4.11H3.07v2.59A9.99 9.99 0 0 0 12 22Z" />
+                <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
+                <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
+              </svg>
+              Continue with Google
+            </button>
           </form>
 
           <p className="auth-switch">Already have an account? <a href="/login" onClick={navTo("/login")}>Login</a></p>
@@ -287,18 +297,14 @@ function LoginPage() {
           <div className="divider"><span>OR</span></div>
 
           <div className="login-providers">
-            <button type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 20h16M6 20V9l6-4 6 4v11M9 20v-6h6v6" />
+            <button className="google-login-button" type="button">
+              <svg className="google-mark" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21.6 12.23c0-.75-.07-1.47-.19-2.16H12v4.09h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.46Z" />
+                <path d="M12 22c2.7 0 4.96-.89 6.62-2.41l-3.24-2.51c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.75-5.59-4.11H3.07v2.59A9.99 9.99 0 0 0 12 22Z" />
+                <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
+                <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
               </svg>
-              Institutional ID
-            </button>
-            <button type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="6" />
-                <path d="M12 8v8M9 12h6" />
-              </svg>
-              ORCID
+              Continue with Google
             </button>
           </div>
         </form>
