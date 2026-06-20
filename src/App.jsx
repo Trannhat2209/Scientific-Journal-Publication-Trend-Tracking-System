@@ -1019,7 +1019,7 @@ function StudentDashboard() {
   );
 }
 
-function ResearcherSidebar({ activeRoute = "/researcher-dashboard", collapsed = false, mobileOpen = false, onClose, onToggleCollapse }) {
+function ResearcherSidebar({ activeRoute = "/researcher-dashboard", collapsed = false, mobileOpen = false, onClose, onToggleCollapse, onUpgrade }) {
   return (
     <aside className={`researcher-sidebar ${collapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
       <div className="researcher-logo">
@@ -1053,17 +1053,103 @@ function ResearcherSidebar({ activeRoute = "/researcher-dashboard", collapsed = 
       </nav>
 
       <div className="researcher-sidebar-footer">
-        <button type="button" className="researcher-upgrade">Upgrade to Pro</button>
+        <button type="button" className="researcher-upgrade" onClick={onUpgrade}>
+          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
+          <span>Upgrade to Pro</span>
+        </button>
         <div className="researcher-footer-actions">
           <a href="/researcher-profile" onClick={navTo("/researcher-profile")} aria-label="Profile">
-            <MiniIcon path="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0" />
+            <MiniIcon path="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM7 18.2a5.7 5.7 0 0 1 10 0" />
+            <span>Profile</span>
           </a>
           <button type="button" aria-label="Settings">
-            <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
+            <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
+            <span>Settings</span>
           </button>
         </div>
       </div>
     </aside>
+  );
+}
+
+const proPlanFeatures = [
+  "Unlimited tracked keywords",
+  "Priority trend alerts",
+  "Advanced citation intelligence",
+  "Full report export suite",
+];
+
+function UpgradeProModal({ open, onClose }) {
+  const [billingCycle, setBillingCycle] = React.useState("yearly");
+  const [upgraded, setUpgraded] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const isYearly = billingCycle === "yearly";
+
+  return (
+    <div className="upgrade-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
+        <button type="button" className="upgrade-modal-close" aria-label="Close upgrade dialog" onClick={onClose}>
+          <MiniIcon path="M6 6l12 12M18 6 6 18" />
+        </button>
+
+        <div className="upgrade-modal-mark" aria-hidden="true">
+          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
+        </div>
+
+        <div className="upgrade-modal-heading">
+          <span>ScholarTrend Pro</span>
+          <h2 id="upgrade-modal-title">Upgrade to Pro</h2>
+          <p>Unlock deeper analytical intelligence for your tracked disciplines.</p>
+        </div>
+
+        <div className="upgrade-billing-toggle" aria-label="Billing cycle">
+          <button type="button" className={!isYearly ? "active" : ""} onClick={() => setBillingCycle("monthly")}>Monthly</button>
+          <button type="button" className={isYearly ? "active" : ""} onClick={() => setBillingCycle("yearly")}>Yearly <span>Save 20%</span></button>
+        </div>
+
+        <div className="upgrade-price-row">
+          <strong>{isYearly ? "$19" : "$24"}</strong>
+          <span>/ month</span>
+        </div>
+
+        <div className="upgrade-feature-list">
+          {proPlanFeatures.map((feature) => (
+            <div key={feature}>
+              <MiniIcon path="M5 12.5 9.5 17 19 7" />
+              <span>{feature}</span>
+            </div>
+          ))}
+        </div>
+
+        <button type="button" className="upgrade-primary-action" onClick={() => setUpgraded(true)}>
+          {upgraded ? "Pro Activated" : "Upgrade Now"}
+        </button>
+
+        {upgraded ? (
+          <p className="upgrade-status" role="status">Your Pro workspace is ready in this prototype.</p>
+        ) : (
+          <p className="upgrade-note">Cancel anytime from profile settings.</p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -1131,6 +1217,7 @@ function ResearcherShell({
   children,
 }) {
   const sidebar = useResearcherSidebarControls();
+  const [upgradeOpen, setUpgradeOpen] = React.useState(false);
   const TopbarComponent = topbar === "graph" ? (
     <ResearcherSearchTopbar onMenuClick={sidebar.handleMenu} />
   ) : topbar === "publication" ? (
@@ -1154,7 +1241,9 @@ function ResearcherShell({
         mobileOpen={sidebar.mobileOpen}
         onClose={sidebar.closeMobile}
         onToggleCollapse={sidebar.toggleCollapse}
+        onUpgrade={() => setUpgradeOpen(true)}
       />
+      <UpgradeProModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
       <section className={`researcher-main ${mainClassName}`}>
         {TopbarComponent}
         {children}
