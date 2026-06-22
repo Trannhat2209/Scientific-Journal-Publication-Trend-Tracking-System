@@ -10,8 +10,15 @@ const navTo = (path) => (event) => {
 
 function Brand({ boxed = false, small = false }) {
   return (
-    <a className={small ? "footer-brand" : "brand"} href="/" onClick={navTo("/")}>
-      <span className={`brand-mark ${boxed ? "boxed" : ""} ${small ? "small" : ""}`} aria-hidden="true">
+    <a
+      className={small ? "footer-brand" : "brand"}
+      href="/"
+      onClick={navTo("/")}
+    >
+      <span
+        className={`brand-mark ${boxed ? "boxed" : ""} ${small ? "small" : ""}`}
+        aria-hidden="true"
+      >
         {boxed ? (
           <svg viewBox="0 0 24 24" role="img">
             <path d="M5 19V9" />
@@ -26,7 +33,10 @@ function Brand({ boxed = false, small = false }) {
           </svg>
         )}
       </span>
-      <span>ScholarTrend{small ? " © 2024" : ""}</span>
+      <span>
+        Scholar<span className="brand-gradient-text">Trend</span>
+        {small ? " © 2024" : ""}
+      </span>
     </a>
   );
 }
@@ -37,8 +47,21 @@ function LandingPage() {
       <header className="site-header" aria-label="Primary navigation">
         <Brand />
         <nav className="nav-actions" aria-label="Account">
-          <a className="login-link" href="/login" onClick={navTo("/login")}>Login</a>
-          <a className="primary-button compact" href="/register" onClick={navTo("/register")}>Get Started</a>
+          <a className="login-link" href="/login" onClick={navTo("/login")}>
+            <svg viewBox="0 0 24 24" className="login-icon" aria-hidden="true">
+              <path d="M15 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
+              <path d="M19 12H9" />
+              <path d="m15 8 4 4-4 4" />
+            </svg>
+            <span>Login</span>
+          </a>
+          <a
+            className="primary-button compact"
+            href="/register"
+            onClick={navTo("/register")}
+          >
+            Get Started
+          </a>
         </nav>
       </header>
 
@@ -52,17 +75,36 @@ function LandingPage() {
           </div>
           <h1>Track the Pulse of Research</h1>
           <p>
-            ScholarTrend aggregates, analyzes, and visualizes academic publications from trusted
-            scholarly databases to reveal emerging research trends with clarity.
+            ScholarTrend aggregates, analyzes, and visualizes academic
+            publications from trusted scholarly databases to reveal emerging
+            research trends with clarity.
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href="/register" onClick={navTo("/register")}>Get Started <span aria-hidden="true">-&gt;</span></a>
-            <a className="secondary-button" href="/login" onClick={navTo("/login")}>View Demo</a>
+            <a
+              className="primary-button"
+              href="/register"
+              onClick={navTo("/register")}
+            >
+              Get Started <span aria-hidden="true">-&gt;</span>
+            </a>
+            <a
+              className="secondary-button"
+              href="/login"
+              onClick={navTo("/login")}
+            >
+              View Demo
+            </a>
           </div>
         </div>
 
-        <div className="hero-visual" aria-label="Research trend analytics dashboard preview">
-          <img src="/assets/hero-dashboard.png" alt="Laptop showing publication trend analytics charts" />
+        <div
+          className="hero-visual"
+          aria-label="Research trend analytics dashboard preview"
+        >
+          <img
+            src="/assets/hero-dashboard.png"
+            alt="Laptop showing publication trend analytics charts"
+          />
         </div>
       </section>
 
@@ -88,8 +130,8 @@ function LandingPage() {
         <div className="section-heading">
           <h2 id="tools-title">Precision Tools for Modern Research</h2>
           <p>
-            Navigate the complex landscape of global academia with focused, high-density analytics
-            for researchers, lecturers, and students.
+            Navigate the complex landscape of global academia with focused,
+            high-density analytics for researchers, lecturers, and students.
           </p>
         </div>
 
@@ -97,12 +139,56 @@ function LandingPage() {
           <article className="feature-card search-card">
             <div className="icon-tile">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="10.5" cy="10.5" r="4.5" />
-                <path d="m14 14 4.5 4.5" />
+                <defs>
+                  <linearGradient
+                    id="searchGrad"
+                    x1="0%"
+                    y1="0%"
+                    x2="100%"
+                    y2="100%"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor="currentColor"
+                      stopOpacity="1"
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor="currentColor"
+                      stopOpacity="0.6"
+                    />
+                  </linearGradient>
+                </defs>
+                <circle
+                  cx="9"
+                  cy="9"
+                  r="5.5"
+                  stroke="url(#searchGrad)"
+                  strokeWidth="1.8"
+                  fill="none"
+                />
+                <path
+                  d="m13.5 13.5 4.5 4.5"
+                  stroke="url(#searchGrad)"
+                  strokeWidth="1.8"
+                />
+                <circle
+                  cx="9"
+                  cy="9"
+                  r="3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="0.8"
+                  opacity="0.4"
+                />
               </svg>
             </div>
             <h3>Search Publications</h3>
-            <p>Instantly query millions of peer-reviewed articles. Our advanced semantic engine understands context, not just keywords, returning the most relevant academic literature instantly.</p>
+            <p>
+              Instantly query millions of peer-reviewed articles. Our advanced
+              semantic engine understands context, not just keywords, returning
+              the most relevant academic literature instantly.
+            </p>
             <div className="search-preview" aria-hidden="true">
               <div className="preview-search-line"></div>
               <div className="preview-line strong"></div>
@@ -114,42 +200,193 @@ function LandingPage() {
           <article className="feature-card insight-card">
             <div className="icon-tile">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 4.5a5 5 0 0 0-2.5 9.35v2.15h5v-2.15A5 5 0 0 0 12 4.5Z" />
-                <path d="M10 20h4M8.7 10.2h2.2l1.2-2.2 1.1 4 1-1.8h1.1" />
+                <defs>
+                  <linearGradient
+                    id="insightGrad"
+                    x1="0%"
+                    y1="100%"
+                    x2="100%"
+                    y2="0%"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor="currentColor"
+                      stopOpacity="0.5"
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor="currentColor"
+                      stopOpacity="1"
+                    />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M12 2C12 2 8 5 8 10c0 2.2 1.8 4 4 4s4-1.8 4-4c0-5-4-8-4-8Z"
+                  fill="none"
+                  stroke="url(#insightGrad)"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M7.5 15h9M6 18h12"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  opacity="0.6"
+                />
+                <circle
+                  cx="9"
+                  cy="10"
+                  r="1.5"
+                  fill="currentColor"
+                  opacity="0.5"
+                />
+                <circle
+                  cx="12"
+                  cy="8"
+                  r="1.5"
+                  fill="currentColor"
+                  opacity="0.7"
+                />
               </svg>
             </div>
             <h3>AI-Powered Insights</h3>
-            <p>Automate literature reviews with our synthesis engine. Instantly extract methodologies, results, and limitations from complex papers.</p>
-            <a className="card-link" href="/register" onClick={navTo("/register")}>Explore capabilities <span aria-hidden="true">-&gt;</span></a>
+            <p>
+              Automate literature reviews with our synthesis engine. Instantly
+              extract methodologies, results, and limitations from complex
+              papers.
+            </p>
+            <a
+              className="card-link"
+              href="/register"
+              onClick={navTo("/register")}
+            >
+              Explore capabilities <span aria-hidden="true">-&gt;</span>
+            </a>
           </article>
 
           <article className="feature-card trend-card">
             <div className="icon-tile dark">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M5 15.5 9.2 11l3.2 2.7L19 7.5" />
-                <path d="M16 7.5h3v3" />
+                <defs>
+                  <linearGradient
+                    id="trendGrad"
+                    x1="0%"
+                    y1="100%"
+                    x2="100%"
+                    y2="0%"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor="currentColor"
+                      stopOpacity="1"
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor="currentColor"
+                      stopOpacity="0.4"
+                    />
+                  </linearGradient>
+                </defs>
+                <polyline
+                  points="3 17 7 12 10 14.5 15 8 21 3"
+                  fill="none"
+                  stroke="url(#trendGrad)"
+                  strokeWidth="1.8"
+                />
+                <path
+                  d="M18 3h3v3"
+                  fill="none"
+                  stroke="url(#trendGrad)"
+                  strokeWidth="1.8"
+                />
+                <circle
+                  cx="7"
+                  cy="12"
+                  r="2"
+                  fill="currentColor"
+                  opacity="0.5"
+                />
+                <circle
+                  cx="10"
+                  cy="14.5"
+                  r="1.5"
+                  fill="currentColor"
+                  opacity="0.5"
+                />
               </svg>
             </div>
             <h3>Track Global Trends</h3>
-            <p>Monitor citation velocity and topic emergence in real-time. Stay ahead of the curve in your specific domain.</p>
-            <div className="wave-lines" aria-hidden="true"><span></span><span></span></div>
+            <p>
+              Monitor citation velocity and topic emergence in real-time. Stay
+              ahead of the curve in your specific domain.
+            </p>
+            <div className="wave-lines" aria-hidden="true">
+              <span></span>
+              <span></span>
+            </div>
           </article>
 
           <article className="feature-card quality-card">
             <div>
               <div className="icon-tile">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 3.5 14.4 7l4.1.8-2.8 3.1.5 4.2-4.2-1.8-4.2 1.8.5-4.2-2.8-3.1L9.6 7 12 3.5Z" />
-                  <path d="m9.4 18.2 2.6 2.3 2.6-2.3" />
+                  <defs>
+                    <linearGradient
+                      id="qualityGrad"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="currentColor"
+                        stopOpacity="1"
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="currentColor"
+                        stopOpacity="0.6"
+                      />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M12 2l2.8 6.2h6.7l-5.4 4.1 1.8 6.2-5.9-4.1-5.9 4.1 1.8-6.2-5.4-4.1h6.7Z"
+                    fill="url(#qualityGrad)"
+                    stroke="currentColor"
+                    strokeWidth="0.8"
+                  />
+                  <path
+                    d="M12 16.5l2.5 2"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M14.5 18.5l2-2.5"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    opacity="0.6"
+                  />
                 </svg>
               </div>
               <h3>Uncompromising Data Quality</h3>
-              <p>We cross-reference every data point against institutional repositories. No hallucinations, just pristine academic facts.</p>
+              <p>
+                We cross-reference every data point against institutional
+                repositories. No hallucinations, just pristine academic facts.
+              </p>
             </div>
             <div className="quality-table" aria-label="Data quality metrics">
-              <div><span>Data Point</span><strong>Verified</strong></div>
-              <div><span>Citation Accuracy</span><strong>99.9%</strong></div>
-              <div><span>Source Transparency</span><strong>100%</strong></div>
+              <div>
+                <span>Data Point</span>
+                <strong>Verified</strong>
+              </div>
+              <div>
+                <span>Citation Accuracy</span>
+                <strong>99.9%</strong>
+              </div>
+              <div>
+                <span>Source Transparency</span>
+                <strong>100%</strong>
+              </div>
             </div>
           </article>
         </div>
@@ -168,82 +405,263 @@ function LandingPage() {
 }
 
 function RegisterPage() {
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
+  const [registerRole, setRegisterRole] = React.useState("");
+  const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
+  const registerRoles = ["Researcher", "Lecturer", "Student", "Administrator"];
+
   return (
     <main className="auth-shell" aria-label="Register account">
       <section className="auth-card">
         <div className="auth-form-panel">
-          <Brand boxed />
+          <Brand />
           <div className="auth-heading">
             <h1>Create an Account</h1>
             <p>Join the academic intelligence network.</p>
           </div>
 
           <form className="register-form">
-            <label className="field"><span>Full Name</span><input type="text" placeholder="Dr. Jane Doe" autoComplete="name" /></label>
-            <label className="field"><span>Email Address</span><input type="email" placeholder="jane.doe@university.edu" autoComplete="email" /></label>
             <label className="field">
-              <span>Primary Role</span>
-              <select defaultValue="">
-                <option value="" disabled>Select your role</option>
-                <option>Researcher</option>
-                <option>Lecturer</option>
-                <option>Student</option>
-                <option>Administrator</option>
-              </select>
+              <span>Full Name</span>
+              <span className="input-with-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 11.2a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4Z" />
+                  <path d="M5 20c.6-3.7 3.1-5.8 7-5.8s6.4 2.1 7 5.8" />
+                  <path d="M17.7 5.5h2.8M19.1 4.1v2.8" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Dr. Jane Doe"
+                  autoComplete="name"
+                />
+              </span>
             </label>
             <label className="field">
+              <span>Email Address</span>
+              <span className="input-with-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 6.5h16v11H4z" />
+                  <path d="m5.2 7.8 6.8 5 6.8-5" />
+                  <path d="M16.8 4.1v2.3M15.7 5.2h2.3" />
+                </svg>
+                <input
+                  type="email"
+                  placeholder="jane.doe@university.edu"
+                  autoComplete="email"
+                />
+              </span>
+            </label>
+            <div
+              className="field register-role-field"
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setRoleMenuOpen(false);
+                }
+              }}
+            >
+              <span>Primary Role</span>
+              <span className="input-with-icon">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
+                  <path d="M7 12v3.4c0 1.8 2 3.1 5 3.1s5-1.3 5-3.1V12" />
+                  <path d="M20 10.5V16" />
+                </svg>
+                <button
+                  className="register-role-trigger"
+                  type="button"
+                  aria-expanded={roleMenuOpen}
+                  aria-haspopup="listbox"
+                  onClick={() => setRoleMenuOpen((open) => !open)}
+                >
+                  {registerRole || "Select your role"}
+                </button>
+                {roleMenuOpen && (
+                  <div className="register-role-menu" role="listbox">
+                    {registerRoles.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        role="option"
+                        aria-selected={registerRole === role}
+                        onClick={() => {
+                          setRegisterRole(role);
+                          setRoleMenuOpen(false);
+                        }}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </span>
+            </div>
+            <label className="field">
               <span>Password</span>
-              <span className="password-input">
-                <input type="password" defaultValue="Scholar2024" autoComplete="new-password" />
-                <button type="button" aria-label="Show password">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z" />
-                    <circle cx="12" cy="12" r="2.5" />
-                  </svg>
+              <span className="input-with-icon password-input">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3.7 18.2 7v4.4c0 3.5-2.4 6.2-6.2 7.7-3.8-1.5-6.2-4.2-6.2-7.7V7L12 3.7Z" />
+                  <path d="M9.2 11.3V10a2.8 2.8 0 0 1 5.6 0v1.3" />
+                  <rect x="8.6" y="11.3" width="6.8" height="5" rx="1.2" />
+                </svg>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  defaultValue="Scholar2024"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M17.6 17.6L20 20M9.8 9.8a3 3 0 114.2 4.2M2 12s3-5.5 10-5.5a9.8 9.8 0 014.2.9M6.8 17.2A10.4 10.4 0 012 12M12 17.5c2.8 0 5.4-1.2 7-3.3M3 3l18 18" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  )}
                 </button>
               </span>
             </label>
             <div className="password-meter" aria-label="Weak password">
               <strong>Weak password</strong>
-              <span className="meter-bars" aria-hidden="true"><i className="active"></i><i></i><i></i><i></i></span>
+              <span className="meter-bars" aria-hidden="true">
+                <i className="active"></i>
+                <i></i>
+                <i></i>
+                <i></i>
+              </span>
             </div>
-            <label className="field"><span>Confirm Password</span><input type="password" defaultValue="Scholar2024" autoComplete="new-password" /></label>
+            <label className="field">
+              <span>Confirm Password</span>
+              <span className="input-with-icon password-input">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3.7 18.2 7v4.4c0 3.5-2.4 6.2-6.2 7.7-3.8-1.5-6.2-4.2-6.2-7.7V7L12 3.7Z" />
+                  <path d="M9.4 13.1 11.2 15l3.8-4.2" />
+                </svg>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  defaultValue="Scholar2024"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  aria-label={
+                    showConfirmPassword ? "Hide password" : "Show password"
+                  }
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M17.6 17.6L20 20M9.8 9.8a3 3 0 114.2 4.2M2 12s3-5.5 10-5.5a9.8 9.8 0 014.2.9M6.8 17.2A10.4 10.4 0 012 12M12 17.5c2.8 0 5.4-1.2 7-3.3M3 3l18 18" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z" />
+                      <circle cx="12" cy="12" r="2.5" />
+                    </svg>
+                  )}
+                </button>
+              </span>
+            </label>
             <label className="terms-check">
               <input type="checkbox" />
-              <span>I agree to the <a href="/">Terms &amp; Conditions</a> and <a href="/">Privacy Policy</a>.</span>
+              <span>
+                I agree to the <a href="/">Terms &amp; Conditions</a> and{" "}
+                <a href="/">Privacy Policy</a>.
+              </span>
             </label>
-            <button className="auth-submit" type="submit">Register Account</button>
-            <div className="auth-divider"><span>OR</span></div>
-            <button className="google-auth-button" type="button">
-              <svg className="google-mark" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M21.6 12.23c0-.75-.07-1.47-.19-2.16H12v4.09h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.46Z" />
-                <path d="M12 22c2.7 0 4.96-.89 6.62-2.41l-3.24-2.51c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.75-5.59-4.11H3.07v2.59A9.99 9.99 0 0 0 12 22Z" />
-                <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
-                <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
-              </svg>
-              Continue with Google
+            <button className="auth-submit" type="submit">
+              Register Account
             </button>
+            <div className="auth-divider">
+              <span>OR</span>
+            </div>
+            <div className="login-providers">
+              <button
+                className="google-login-button google-auth-button"
+                type="button"
+              >
+                <svg
+                  className="google-mark"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M21.6 12.23c0-.75-.07-1.47-.19-2.16H12v4.09h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.46Z" />
+                  <path d="M12 22c2.7 0 4.96-.89 6.62-2.41l-3.24-2.51c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.75-5.59-4.11H3.07v2.59A9.99 9.99 0 0 0 12 22Z" />
+                  <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
+                  <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
+                </svg>
+                Continue with Google
+              </button>
+              <button className="institution-login-button" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3.5 9.2 12 4.5l8.5 4.7" />
+                  <path d="M5.5 10.6h13" />
+                  <path d="M7.2 10.6v6.8M12 10.6v6.8M16.8 10.6v6.8" />
+                  <path d="M4.6 19.5h14.8" />
+                  <path d="M9.5 7.8h5" />
+                </svg>
+                Institutional ID
+              </button>
+              <button className="orcid-login-button" type="button">
+                <span className="orcid-mark" aria-hidden="true">
+                  iD
+                </span>
+                ORCID
+              </button>
+            </div>
           </form>
 
-          <p className="auth-switch">Already have an account? <a href="/login" onClick={navTo("/login")}>Login</a></p>
+          <p className="auth-switch">
+            Already have an account?{" "}
+            <a href="/login" onClick={navTo("/login")}>
+              Login
+            </a>
+          </p>
         </div>
 
-        <aside className="auth-visual-panel" aria-label="ScholarTrend discovery preview">
+        <aside
+          className="auth-visual-panel"
+          aria-label="ScholarTrend discovery preview"
+        >
           <div className="orbit-visual" aria-hidden="true">
-            <div className="orbit orbit-one"></div><div className="orbit orbit-two"></div><div className="orbit orbit-three"></div>
+            <div className="orbit orbit-one"></div>
+            <div className="orbit orbit-two"></div>
+            <div className="orbit orbit-three"></div>
             <div className="research-plane"></div>
-            <div className="spark-field"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+            <div className="spark-field">
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
           </div>
           <div className="visual-copy">
             <div className="accent-line" aria-hidden="true"></div>
             <div>
               <h2>Accelerate Discovery</h2>
-              <p>Join researchers and institutions using analytical intelligence to uncover publication trends and drive scientific progress.</p>
+              <p>
+                Join researchers and institutions using analytical intelligence
+                to uncover publication trends and drive scientific progress.
+              </p>
             </div>
           </div>
           <div className="auth-stats">
-            <div><span>Publications Tracked</span><strong>14.2M+</strong></div>
-            <div><span>Global Institutions</span><strong>8,450</strong></div>
+            <div>
+              <span>Publications Tracked</span>
+              <strong>14.2M+</strong>
+            </div>
+            <div>
+              <span>Global Institutions</span>
+              <strong>8,450</strong>
+            </div>
           </div>
         </aside>
       </section>
@@ -252,15 +670,191 @@ function RegisterPage() {
 }
 
 function LoginPage() {
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [email, setEmail] = React.useState(() => {
+    return (
+      window.localStorage.getItem("scholartrend.login.email") ||
+      "researcher@university.edu"
+    );
+  });
+  const [password, setPassword] = React.useState("Scholar2024");
+  const [selectedRole, setSelectedRole] = React.useState("Researcher");
+  const [rememberMe, setRememberMe] = React.useState(() => {
+    return window.localStorage.getItem("scholartrend.login.remember") === "true";
+  });
+  const [feedback, setFeedback] = React.useState(null);
+
+  const roleRoutes = {
+    Researcher: "/researcher-dashboard",
+    Lecturer: "/researcher-dashboard",
+    Student: "/student-dashboard",
+    Administrator: "/researcher-dashboard",
+  };
+
+  const roleEmails = {
+    Researcher: "researcher@university.edu",
+    Lecturer: "lecturer@university.edu",
+    Student: "student@university.edu",
+    Administrator: "admin@university.edu",
+  };
+
+  const academicAccounts = {
+    "researcher@university.edu": {
+      password: "Scholar2024",
+      role: "Researcher",
+      route: "/researcher-dashboard",
+    },
+    "lecturer@university.edu": {
+      password: "Scholar2024",
+      role: "Lecturer",
+      route: "/researcher-dashboard",
+    },
+    "student@university.edu": {
+      password: "Scholar2024",
+      role: "Student",
+      route: "/student-dashboard",
+    },
+    "admin@university.edu": {
+      password: "Scholar2024",
+      role: "Administrator",
+      route: "/researcher-dashboard",
+    },
+  };
+
+  const goToWorkspace = (route) => {
+    window.history.pushState({}, "", route);
+    window.dispatchEvent(new Event("scholartrend:navigate"));
+  };
+
+  const handleRoleSelect = (nextRole) => {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    setSelectedRole(nextRole);
+
+    if (!normalizedEmail || Object.values(roleEmails).includes(normalizedEmail)) {
+      setEmail(roleEmails[nextRole]);
+    }
+  };
+
+  const handleLogin = (event) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
+    const account = academicAccounts[normalizedEmail];
+
+    if (!normalizedEmail || !password) {
+      setFeedback({
+        type: "error",
+        text: "Please enter both your academic email and password.",
+      });
+      return;
+    }
+
+    if (!account || account.password !== password || account.role !== selectedRole) {
+      setFeedback({
+        type: "error",
+        text: "We could not verify this ScholarTrend role. Try researcher, lecturer, student, or admin @university.edu with Scholar2024 and the matching role.",
+      });
+      return;
+    }
+
+    if (rememberMe) {
+      window.localStorage.setItem("scholartrend.login.email", normalizedEmail);
+      window.localStorage.setItem("scholartrend.login.remember", "true");
+    } else {
+      window.localStorage.removeItem("scholartrend.login.email");
+      window.localStorage.removeItem("scholartrend.login.remember");
+    }
+
+    window.localStorage.setItem(
+      "scholartrend.session",
+      JSON.stringify({
+        email: normalizedEmail,
+        role: account.role,
+        signedInAt: new Date().toISOString(),
+      }),
+    );
+
+    setFeedback({
+      type: "success",
+      text: `${account.role} profile verified. Loading your research trend workspace...`,
+    });
+
+    window.setTimeout(() => goToWorkspace(account.route), 550);
+  };
+
+  const handleForgotPassword = (event) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setFeedback({
+        type: "error",
+        text: "Enter your academic email first so ScholarTrend can prepare a reset link.",
+      });
+      return;
+    }
+
+    setFeedback({
+      type: "success",
+      text: `Password reset instructions were prepared for ${normalizedEmail}.`,
+    });
+  };
+
+  const handleGoogleLogin = () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const route = roleRoutes[selectedRole];
+
+    window.localStorage.setItem(
+      "scholartrend.session",
+      JSON.stringify({
+        email: normalizedEmail || "google.researcher@university.edu",
+        role: selectedRole,
+        provider: "Google",
+        signedInAt: new Date().toISOString(),
+      }),
+    );
+
+    setFeedback({
+      type: "success",
+      text: `Google academic profile connected as ${selectedRole}. Loading your research trend workspace...`,
+    });
+
+    window.setTimeout(() => goToWorkspace(route), 550);
+  };
+
+  const handleAcademicProviderLogin = (provider) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const route = roleRoutes[selectedRole];
+
+    window.localStorage.setItem(
+      "scholartrend.session",
+      JSON.stringify({
+        email:
+          normalizedEmail ||
+          `${selectedRole.toLowerCase()}.${provider.toLowerCase()}@university.edu`,
+        role: selectedRole,
+        provider,
+        signedInAt: new Date().toISOString(),
+      }),
+    );
+
+    setFeedback({
+      type: "success",
+      text: `${provider} verified your ${selectedRole} profile. Loading your research trend workspace...`,
+    });
+
+    window.setTimeout(() => goToWorkspace(route), 550);
+  };
+
   return (
     <main className="login-shell" aria-label="Login">
       <section className="login-wrap">
         <div className="login-logo">
-          <a href="/" onClick={navTo("/")}>ScholarTrend</a>
+          <Brand />
           <span>Analytical Intelligence</span>
         </div>
 
-        <form className="login-card" onSubmit={navTo("/researcher-dashboard")}>
+        <form className="login-card" onSubmit={handleLogin}>
           <div className="login-card-bar"></div>
           <h1>Welcome back</h1>
           <p>Please enter your credentials to access your dashboard.</p>
@@ -268,37 +862,305 @@ function LoginPage() {
           <label className="field login-field">
             <span>Email Address</span>
             <span className="input-with-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M4 6.5h16v11H4z" />
-                <path d="m4.8 7.4 7.2 5.1 7.2-5.1" />
-              </svg>
-              <input type="email" defaultValue="researcher@university.edu" autoComplete="email" />
+              <span className="icon-container">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <defs>
+                    <linearGradient
+                      id="emailGrad"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="currentColor"
+                        stopOpacity="1"
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="currentColor"
+                        stopOpacity="0.7"
+                      />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M4 6.5h16v11H4z"
+                    fill="none"
+                    stroke="url(#emailGrad)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="m5.2 7.7 6.8 5 6.8-5"
+                    fill="none"
+                    stroke="url(#emailGrad)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M17.5 4.2v2.2M16.4 5.3h2.2"
+                    fill="none"
+                    stroke="url(#emailGrad)"
+                    strokeWidth="1.4"
+                  />
+                </svg>
+              </span>
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete="email"
+              />
             </span>
           </label>
 
+          <div className="field login-field role-field">
+            <span>Academic Role</span>
+            <div className="role-picker" role="radiogroup" aria-label="Academic Role">
+              {["Researcher", "Lecturer", "Student", "Administrator"].map(
+                (role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    className={`role-choice ${
+                      selectedRole === role ? "active" : ""
+                    }`}
+                    role="radio"
+                    aria-checked={selectedRole === role}
+                    onClick={() => handleRoleSelect(role)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      {role === "Student" ? (
+                        <>
+                          <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
+                          <path d="M7 12v3.2c0 1.8 2 3 5 3s5-1.2 5-3V12" />
+                        </>
+                      ) : role === "Lecturer" ? (
+                        <>
+                          <path d="M4 5.5h16v11H4z" />
+                          <path d="M8 20h8" />
+                          <path d="M9 10h6M9 13h4" />
+                        </>
+                      ) : role === "Administrator" ? (
+                        <>
+                          <path d="M12 3.5 19 7v5c0 4-2.8 7-7 8.5C7.8 19 5 16 5 12V7l7-3.5Z" />
+                          <path d="M9.4 12.2 11.2 14l3.6-4" />
+                        </>
+                      ) : (
+                        <>
+                          <path d="M5 19V5l7 3 7-3v14l-7-3-7 3Z" />
+                          <path d="M12 8v8" />
+                        </>
+                      )}
+                    </svg>
+                    <span>{role}</span>
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+
           <label className="field login-field">
             <span>Password</span>
-            <span className="input-with-icon">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="6" y="10" width="12" height="9" rx="1.5" />
-                <path d="M8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" />
-              </svg>
-              <input type="password" defaultValue="Scholar2024" autoComplete="current-password" />
+            <span className="input-with-icon password-input">
+              <span className="icon-container">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <defs>
+                    <linearGradient
+                      id="lockGrad"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="currentColor"
+                        stopOpacity="1"
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="currentColor"
+                        stopOpacity="0.7"
+                      />
+                    </linearGradient>
+                  </defs>
+                  <path
+                    d="M12 3.6 18.5 7v4.6c0 3.6-2.5 6.4-6.5 8-4-1.6-6.5-4.4-6.5-8V7L12 3.6Z"
+                    fill="none"
+                    stroke="url(#lockGrad)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M9.2 11.2V10a2.8 2.8 0 0 1 5.6 0v1.2"
+                    fill="none"
+                    stroke="url(#lockGrad)"
+                    strokeWidth="1.5"
+                  />
+                  <rect
+                    x="8.6"
+                    y="11.2"
+                    width="6.8"
+                    height="5"
+                    rx="1.2"
+                    fill="none"
+                    stroke="url(#lockGrad)"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx="12"
+                    cy="13.8"
+                    r="1"
+                    fill="currentColor"
+                    opacity="0.8"
+                  />
+                </svg>
+              </span>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <defs>
+                      <linearGradient
+                        id="eyeHideGrad"
+                        x1="0%"
+                        y1="0%"
+                        x2="100%"
+                        y2="100%"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="currentColor"
+                          stopOpacity="1"
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="currentColor"
+                          stopOpacity="0.6"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M3 3l18 18M5 5c-1.5 1.5-3 3.5-3 7 0 6 4 9 10 9 2.5 0 4.5-1 6-2.5M19 5c1.5 1.5 3 3.5 3 7 0 6-4 9-10 9-2.5 0-4.5-1-6-2.5"
+                      fill="none"
+                      stroke="url(#eyeHideGrad)"
+                      strokeWidth="1.8"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="2.5"
+                      fill="none"
+                      stroke="url(#eyeHideGrad)"
+                      strokeWidth="1.5"
+                    />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <defs>
+                      <linearGradient
+                        id="eyeShowGrad"
+                        x1="0%"
+                        y1="0%"
+                        x2="100%"
+                        y2="100%"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="currentColor"
+                          stopOpacity="1"
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="currentColor"
+                          stopOpacity="0.6"
+                        />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M12 5C6.5 5 2.5 8.5 2.5 12c0 3.5 4 7 9.5 7s9.5-3.5 9.5-7-4-7-9.5-7Z"
+                      fill="none"
+                      stroke="url(#eyeShowGrad)"
+                      strokeWidth="1.8"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="3"
+                      fill="none"
+                      stroke="url(#eyeShowGrad)"
+                      strokeWidth="1.5"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="1.5"
+                      fill="currentColor"
+                      opacity="0.8"
+                    />
+                  </svg>
+                )}
+              </button>
             </span>
           </label>
 
           <div className="login-options">
-            <label><input type="checkbox" /> Remember me</label>
-            <a href="/">Forgot password?</a>
+            <label>
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />{" "}
+              Remember me
+            </label>
+            <a href="/" onClick={handleForgotPassword}>
+              Forgot password?
+            </a>
           </div>
 
-          <button className="login-submit" type="submit">Sign In</button>
+          {feedback && (
+            <p
+              className={`login-feedback ${feedback.type}`}
+              role={feedback.type === "error" ? "alert" : "status"}
+            >
+              {feedback.text}
+            </p>
+          )}
 
-          <div className="divider"><span>OR</span></div>
+          <button className="login-submit" type="submit">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4.5 17.5 9 13l3.2 2.6 6.3-7.1" />
+              <path d="M15.5 8.5h3v3" />
+              <path d="M5 20h14" />
+              <path d="M7 15v3M12 12v6M17 10v8" />
+            </svg>
+            <span>Sign In</span>
+          </button>
+
+          <div className="divider">
+            <span>OR</span>
+          </div>
 
           <div className="login-providers">
-            <button className="google-login-button" type="button">
-              <svg className="google-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <button
+              className="google-login-button"
+              type="button"
+              onClick={handleGoogleLogin}
+            >
+              <svg
+                className="google-mark"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
                 <path d="M21.6 12.23c0-.75-.07-1.47-.19-2.16H12v4.09h5.38a4.6 4.6 0 0 1-2 3.02v2.51h3.24c1.89-1.74 2.98-4.31 2.98-7.46Z" />
                 <path d="M12 22c2.7 0 4.96-.89 6.62-2.41l-3.24-2.51c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.75-5.59-4.11H3.07v2.59A9.99 9.99 0 0 0 12 22Z" />
                 <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
@@ -306,40 +1168,112 @@ function LoginPage() {
               </svg>
               Continue with Google
             </button>
+            <button
+              className="orcid-login-button"
+              type="button"
+              onClick={() => handleAcademicProviderLogin("ORCID")}
+            >
+              <span className="orcid-mark" aria-hidden="true">
+                iD
+              </span>
+              Continue with ORCID
+            </button>
+            <button
+              className="institution-login-button"
+              type="button"
+              onClick={() => handleAcademicProviderLogin("Institution SSO")}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3.5 9.2 12 4.5l8.5 4.7" />
+                <path d="M5.5 10.6h13" />
+                <path d="M7.2 10.6v6.8M12 10.6v6.8M16.8 10.6v6.8" />
+                <path d="M4.6 19.5h14.8" />
+                <path d="M9.5 7.8h5" />
+              </svg>
+              Continue with Institution SSO
+            </button>
           </div>
         </form>
 
-        <p className="login-switch">Don't have an account? <a href="/register" onClick={navTo("/register")}>Sign up</a></p>
+        <p className="login-switch">
+          Don't have an account?{" "}
+          <a href="/register" onClick={navTo("/register")}>
+            Sign up
+          </a>
+        </p>
       </section>
     </main>
   );
 }
 
 const sidebarItems = [
-  { label: "Dashboard", route: "/student-dashboard", icon: "M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z" },
-  { label: "Search", route: "/student-search", icon: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" },
-  { label: "Bookmarks", route: "/student-bookmarks", icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z" },
-  { label: "Notifications", route: "/student-notifications", icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" },
+  {
+    label: "Dashboard",
+    route: "/student-dashboard",
+    icon: "M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z",
+  },
+  {
+    label: "Search",
+    route: "/student-search",
+    icon: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20",
+  },
+  {
+    label: "Bookmarks",
+    route: "/student-bookmarks",
+    icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+  },
+  {
+    label: "Notifications",
+    route: "/student-notifications",
+    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+  },
 ];
 
 const statCards = [
-  { label: "My Bookmarks", value: "42", note: "+3 this week", tone: "green", icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z" },
-  { label: "Followed Keywords", value: "12", note: "Active", tone: "gray", icon: "M5 7h14M5 12h14M5 17h14" },
-  { label: "Unread Alerts", value: "5", note: "Needs review", tone: "gray", icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4", red: true },
-  { label: "Recently Viewed", value: "18", note: "Last 7 days", tone: "gray", icon: "M12 7v5l3 2M20 12a8 8 0 1 1-2.35-5.65" },
+  {
+    label: "My Bookmarks",
+    value: "42",
+    note: "+3 this week",
+    tone: "green",
+    icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+  },
+  {
+    label: "Followed Keywords",
+    value: "12",
+    note: "Active",
+    tone: "gray",
+    icon: "M5 7h14M5 12h14M5 17h14",
+  },
+  {
+    label: "Unread Alerts",
+    value: "5",
+    note: "Needs review",
+    tone: "gray",
+    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+    red: true,
+  },
+  {
+    label: "Recently Viewed",
+    value: "18",
+    note: "Last 7 days",
+    tone: "gray",
+    icon: "M12 7v5l3 2M20 12a8 8 0 1 1-2.35-5.65",
+  },
 ];
 
 const publications = [
   {
     tags: ["Computer Science", "Peer Reviewed"],
-    title: "Neural Network Architectures for Predictive Data Synthesis in High-Noise Environments",
+    title:
+      "Neural Network Architectures for Predictive Data Synthesis in High-Noise Environments",
     excerpt:
       "This paper explores novel approaches to structural adjustments within deep learning models when exposed to datasets characterized by extreme signal noise.",
     meta: "Oct 2023  ·  128 Citations  ·  IF: 4.2",
   },
   {
     tags: ["Environmental Science"],
-    title: "Longitudinal Analysis of Urban Heat Island Mitigation Strategies in Coastal Metropolises",
+    title:
+      "Longitudinal Analysis of Urban Heat Island Mitigation Strategies in Coastal Metropolises",
     excerpt:
       "A comprehensive ten-year study evaluating the efficacy of green roof implementations and reflective surface treatments across five major coastal cities.",
     meta: "Sep 2023  ·  54 Citations  ·  IF: 3.8",
@@ -347,16 +1281,33 @@ const publications = [
 ];
 
 const activities = [
-  ["Quantum Cryptography Protocols", "Viewed 2 hours ago", "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z"],
-  ["Dataset: Global Emiss...", "Downloaded yesterday", "M12 4v10M8 10l4 4 4-4M5 19h14"],
-  ["Sociological Impact of AI", "Bookmarked 3 days ago", "M6 4.5h12v15L12 16l-6 3.5v-15Z"],
-  ["Advanced Polymer Synthesis", "Viewed 1 week ago", "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z"],
+  [
+    "Quantum Cryptography Protocols",
+    "Viewed 2 hours ago",
+    "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z",
+  ],
+  [
+    "Dataset: Global Emiss...",
+    "Downloaded yesterday",
+    "M12 4v10M8 10l4 4 4-4M5 19h14",
+  ],
+  [
+    "Sociological Impact of AI",
+    "Bookmarked 3 days ago",
+    "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+  ],
+  [
+    "Advanced Polymer Synthesis",
+    "Viewed 1 week ago",
+    "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z",
+  ],
 ];
 
 const searchResults = [
   {
     title: "Attention Is All You Need",
-    authors: "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin",
+    authors:
+      "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin",
     abstract:
       "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks that include an encoder and a decoder. The best performing models also connect the encoder and decoder through an attention mechanism.",
     year: "2017",
@@ -380,7 +1331,8 @@ const bookmarkTabs = ["Publications", "Keywords", "Journals", "Topics"];
 
 const bookmarkedPapers = [
   {
-    title: "Attention Is All You Need: A Retrospective Analysis of Transformer Architectures",
+    title:
+      "Attention Is All You Need: A Retrospective Analysis of Transformer Architectures",
     excerpt:
       "This paper reviews the impact of the original Transformer architecture introduced in 2017, analyzing its adaptations across various domains including natural language processing, computer vision, and computational biology over the last five years.",
     date: "Oct 2023",
@@ -390,7 +1342,7 @@ const bookmarkedPapers = [
   {
     title: "Quantum Supremacy using a Programmable Superconducting Processor",
     excerpt:
-      "We report the demonstration of quantum supremacy. We developed a new 54-qubit processor, named \"Sycamore\", that is comprised of fast, high-fidelity quantum logic gates, in order to perform the benchmark testing.",
+      'We report the demonstration of quantum supremacy. We developed a new 54-qubit processor, named "Sycamore", that is comprised of fast, high-fidelity quantum logic gates, in order to perform the benchmark testing.',
     date: "Oct 2019",
     citations: "451",
     impact: "High",
@@ -404,15 +1356,35 @@ const bookmarkedKeywords = [
 ];
 
 const bookmarkedJournals = [
-  { name: "Nature Computational Science", impactFactor: "12.3", status: "Active alerts" },
-  { name: "Journal of Machine Learning Research", impactFactor: "8.5", status: "Weekly digest" },
+  {
+    name: "Nature Computational Science",
+    impactFactor: "12.3",
+    status: "Active alerts",
+  },
+  {
+    name: "Journal of Machine Learning Research",
+    impactFactor: "8.5",
+    status: "Weekly digest",
+  },
   { name: "Bioinformatics", impactFactor: "6.9", status: "Monthly digest" },
 ];
 
 const bookmarkedTopics = [
-  { name: "Manifold Learning", tracked: "32 papers", activity: "High activity" },
-  { name: "Predictive Data Synthesis", tracked: "14 papers", activity: "Medium activity" },
-  { name: "Neural Network Architectures", tracked: "55 papers", activity: "Low activity" },
+  {
+    name: "Manifold Learning",
+    tracked: "32 papers",
+    activity: "High activity",
+  },
+  {
+    name: "Predictive Data Synthesis",
+    tracked: "14 papers",
+    activity: "Medium activity",
+  },
+  {
+    name: "Neural Network Architectures",
+    tracked: "55 papers",
+    activity: "Low activity",
+  },
 ];
 
 const notificationFilters = [
@@ -438,8 +1410,8 @@ const notificationItems = [
     type: "TOPIC ALERT",
     time: "Just now",
     title: "NEW TOPIC MATCH:",
-    text: "A new publication titled \"Advancements in Neural Architecture Search\" matches your interest in Deep Learning. Similarity: 92%.",
-    icon: "M12 18v-2M8 10a4 4 0 1 1 8 0c0 2.4-1.4 3.4-2.5 4.3-.8.7-1.5 1.3-1.5 1.7M9.5 19.5h5",
+    text: 'A new publication titled "Advancements in Neural Architecture Search" matches your interest in Deep Learning. Similarity: 92%.',
+    icon: "M12 4.5v15M6 8.5c2.4-.8 4.4-.4 6 1.2 1.6-1.6 3.6-2 6-1.2v8.5c-2.4-.8-4.4-.4-6 1.2-1.6-1.6-3.6-2-6-1.2V8.5ZM9 12h1.8M13.2 12H15",
     tone: "purple",
     unread: true,
     bookmarked: true,
@@ -448,8 +1420,8 @@ const notificationItems = [
     type: "TREND ALERT",
     time: "10 mins ago",
     title: "",
-    text: "Keyword \"Transformer Models\" is showing a 34% spike in citations this month across top-tier ML journals.",
-    icon: "M5 15.5 9.2 11l3.2 2.6L19 7M16 7h3v3",
+    text: 'Keyword "Transformer Models" is showing a 34% spike in citations this month across top-tier ML journals.',
+    icon: "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14",
     tone: "green",
     unread: true,
   },
@@ -457,8 +1429,8 @@ const notificationItems = [
     type: "NEW PUBLICATION",
     time: "2 hours ago",
     title: "",
-    text: "5 new publications match your followed keyword \"Quantum Computing Scaling\" in Nature Physics.",
-    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    text: '5 new publications match your followed keyword "Quantum Computing Scaling" in Nature Physics.',
+    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
     tone: "purple-soft",
     unread: true,
   },
@@ -467,22 +1439,33 @@ const notificationItems = [
     time: "yesterday",
     title: "",
     text: "Sync management encountered a delay integrating the latest ArXiv dataset. The issue has been resolved.",
-    icon: "M7 7.5a6 6 0 0 1 10.2-2.8L19 6.5M17 16.5a6 6 0 0 1-10.2 2.8L5 17.5",
+    icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
     tone: "gray",
   },
   {
     type: "NEW PUBLICATION",
     time: "3 days ago",
     title: "",
-    text: "Dr. E. Thorne, whom you follow, published a new paper: \"Neuroplasticity in Adult Avian Models.\"",
-    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    text: 'Dr. E. Thorne, whom you follow, published a new paper: "Neuroplasticity in Adult Avian Models."',
+    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
     tone: "purple-soft",
   },
 ];
 
 const profileTabs = [
-  { label: "Personal Info", icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0", active: true },
-  { label: "Change Password", icon: "M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" },
+  {
+    label: "Personal Info",
+    icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    active: true,
+  },
+  {
+    label: "Academic Identity",
+    icon: "M4 6.5h16v11H4zM8 10h8M8 13h5M17 4v4M15 6h4",
+  },
+  {
+    label: "Change Password",
+    icon: "M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10",
+  },
   { label: "Research Interests", icon: "M12 4l7 16H5l7-16ZM9.8 14h4.4" },
   { label: "Preferences", icon: "M5 7h14M8 12h8M10 17h4" },
 ];
@@ -505,24 +1488,56 @@ const relatedPublications = [
 const researcherNavGroups = [
   {
     items: [
-      { label: "Dashboard", route: "/researcher-dashboard", icon: "M4 5h7v7H4zM13 5h7v7h-7zM4 14h7v5H4zM13 14h7v5h-7z" },
-      { label: "Search", route: "/researcher-search", icon: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" },
-      { label: "Bookmarks", route: "/researcher-bookmarks", icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z" },
-      { label: "Notifications", route: "/researcher-notifications", icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" },
+      {
+        label: "Dashboard",
+        route: "/researcher-dashboard",
+        icon: "M4 5h6v6H4zM14 5h6v6h-6zM4 15h6v4H4zM14 15h6v4h-6zM7 8h.01M17 8h.01M7 17h.01M17 17h.01",
+      },
+      {
+        label: "Search",
+        route: "/researcher-search",
+        icon: "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6",
+      },
+      {
+        label: "Bookmarks",
+        route: "/researcher-bookmarks",
+        icon: "M6 4.5h12v15L12 16l-6 3.5v-15ZM9 8h6M9 11h5",
+      },
+      {
+        label: "Notifications",
+        route: "/researcher-notifications",
+        icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M17.5 5.5l2-2M6.5 5.5l-2-2",
+      },
     ],
   },
   {
     heading: "Analysis",
     items: [
-      { label: "Trend Tracking", route: "/researcher-trend-tracking", icon: "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" },
-      { label: "Reports", route: "/researcher-reports", icon: "M5 5h14v14H5zM8 15V9M12 15v-4M16 15v-7" },
-      { label: "Year Comparison", route: "/researcher-year-comparison", icon: "M5 7h4v12H5zM15 5h4v14h-4zM10.5 10h3" },
+      {
+        label: "Trend Tracking",
+        route: "/researcher-trend-tracking",
+        icon: "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14",
+      },
+      {
+        label: "Reports",
+        route: "/researcher-reports",
+        icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 15V9M12 15v-3M15 15v-5",
+      },
+      {
+        label: "Year Comparison",
+        route: "/researcher-year-comparison",
+        icon: "M5 6h4v13H5zM15 4h4v15h-4zM10.5 10h3M10.5 14h3M4 20h16",
+      },
     ],
   },
   {
     heading: "Lecturer",
     items: [
-      { label: "Sync Management", route: "/researcher-sync-management", icon: "M7 7.5a6 6 0 0 1 10.2-2.8L19 6.5M17 16.5a6 6 0 0 1-10.2 2.8L5 17.5" },
+      {
+        label: "Sync Management",
+        route: "/researcher-sync-management",
+        icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
+      },
     ],
   },
 ];
@@ -533,28 +1548,28 @@ const researcherStats = [
     value: "124,592",
     note: "+2.4% vs last month",
     tone: "positive",
-    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
   },
   {
     label: "New This Week",
     value: "1,843",
     note: "+12% vs last week",
     tone: "positive",
-    icon: "M5 7h14M5 12h14M5 17h14",
+    icon: "M5 18h14M7 15l4-4 3 2.5 5-6M16 7h3v3M7 7h4",
   },
   {
     label: "Your Bookmarks",
     value: "47",
     note: "3 recently updated",
     tone: "neutral",
-    icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+    icon: "M6 4.5h12v15L12 16l-6 3.5v-15ZM9 8h6M9 11h5",
   },
   {
     label: "Unread Alerts",
     value: "12",
     note: "5 high priority",
     tone: "danger",
-    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M17.5 5.5l2-2M6.5 5.5l-2-2",
   },
 ];
 
@@ -590,7 +1605,7 @@ const trendMetricCards = [
   {
     label: "Total Pubs",
     value: "142,890",
-    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
     bars: [28, 34, 46, 55, 76],
     tone: "volume",
   },
@@ -598,7 +1613,7 @@ const trendMetricCards = [
     label: "YoY Growth",
     value: "+18.4%",
     note: "vs last year",
-    icon: "M5 15l4-4 3 3 7-8M16 6h3v3",
+    icon: "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14",
     bars: [35, 43, 48, 57, 83],
     tone: "growth",
   },
@@ -607,7 +1622,7 @@ const trendMetricCards = [
     sublabel: "(Raw)",
     value: "94.2",
     note: "+1.2",
-    icon: "M5 19h14M8 15v-5M12 15V7M16 15v-8",
+    icon: "M5 19h14M8 15v-5M12 15V7M16 15v-8M7 5h2M11 4h2M15 3h2",
     score: 94,
     tone: "score-a",
   },
@@ -616,7 +1631,7 @@ const trendMetricCards = [
     sublabel: "(Rate)",
     value: "88.7",
     note: "+4.5",
-    icon: "M5 12a7 7 0 0 1 13.3-3M18 5v4h-4M19 12a7 7 0 0 1-13.3 3M6 19v-4h4",
+    icon: "M12 4v3M12 17v3M4 12h3M17 12h3M7.8 7.8l2.8 2.8M16.2 7.8 13 11M8 16l3-3M12 12l4.2 4.2",
     score: 89,
     tone: "score-b",
   },
@@ -635,7 +1650,11 @@ const trendTopRaw = [
   { keyword: "Neural Networks", count: "38,902", values: [30, 44, 58, 68, 84] },
   { keyword: "NLP", count: "29,450", values: [24, 36, 42, 63, 75] },
   { keyword: "Computer Vision", count: "25,100", values: [34, 39, 48, 54, 69] },
-  { keyword: "Reinforcement Learning", count: "18,320", values: [18, 28, 38, 50, 64] },
+  {
+    keyword: "Reinforcement Learning",
+    count: "18,320",
+    values: [18, 28, 38, 50, 64],
+  },
 ];
 
 const trendTopGrowth = [
@@ -647,10 +1666,27 @@ const trendTopGrowth = [
 ];
 
 const trendVolumeRows = [
-  { discipline: "Computer Science", values: ["8,400", "10,200", "14,500", "28,000", "42,100"], total: "103,200" },
-  { discipline: "Medicine & Health", values: ["1,200", "1,800", "3,100", "6,500", "11,200"], total: "23,800" },
-  { discipline: "Engineering", values: ["2,100", "2,500", "3,800", "8,100", "9,400"], total: "25,900" },
-  { discipline: "Aggregated Total", values: ["11,700", "14,500", "21,400", "42,600", "62,700"], total: "152,900", summary: true },
+  {
+    discipline: "Computer Science",
+    values: ["8,400", "10,200", "14,500", "28,000", "42,100"],
+    total: "103,200",
+  },
+  {
+    discipline: "Medicine & Health",
+    values: ["1,200", "1,800", "3,100", "6,500", "11,200"],
+    total: "23,800",
+  },
+  {
+    discipline: "Engineering",
+    values: ["2,100", "2,500", "3,800", "8,100", "9,400"],
+    total: "25,900",
+  },
+  {
+    discipline: "Aggregated Total",
+    values: ["11,700", "14,500", "21,400", "42,600", "62,700"],
+    total: "152,900",
+    summary: true,
+  },
 ];
 
 const trendTopicFilters = [
@@ -663,10 +1699,35 @@ const trendTopicFilters = [
 ];
 
 const trendKeywordOverview = [
-  { keyword: "Transformers", category: "Artificial Intelligence", mentions: "12,450", change: "+42%", tone: "up" },
-  { keyword: "CRISPR-Cas9", category: "Biotechnology", mentions: "8,920", change: "+28%", tone: "up", selected: true },
-  { keyword: "LLMs", category: "Artificial Intelligence", mentions: "15,300", change: "+156%", tone: "up" },
-  { keyword: "Graphene", category: "Materials Science", mentions: "5,102", change: "-4%", tone: "down" },
+  {
+    keyword: "Transformers",
+    category: "Artificial Intelligence",
+    mentions: "12,450",
+    change: "+42%",
+    tone: "up",
+  },
+  {
+    keyword: "CRISPR-Cas9",
+    category: "Biotechnology",
+    mentions: "8,920",
+    change: "+28%",
+    tone: "up",
+    selected: true,
+  },
+  {
+    keyword: "LLMs",
+    category: "Artificial Intelligence",
+    mentions: "15,300",
+    change: "+156%",
+    tone: "up",
+  },
+  {
+    keyword: "Graphene",
+    category: "Materials Science",
+    mentions: "5,102",
+    change: "-4%",
+    tone: "down",
+  },
 ];
 
 const reportMetrics = [
@@ -686,10 +1747,36 @@ const reportHistoryRows = [
 ];
 
 const yearMetricCards = [
-  { label: "Total Publications", value: "12,450", note: "+8.4%", icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3", bars: [28, 46, 38, 50, 66, 78] },
-  { label: "Total Citations", value: "84,201", note: "+12.1%", extra: "99", icon: "M5 19h14M8 16V9M12 16V7M16 16v-5", bars: [24, 36, 29, 43, 58, 70] },
-  { label: "Top Keyword Shift", value: "Machine Lear", subvalue: "Stable", icon: "M5 12h12M13 8l4 4-4 4M19 5v14", ranks: ["Rank #1 (2024)", "Rank #1 (2025)"] },
-  { label: "Top Journal Divergence", value: "Nature Comm.", subvalue: "2 Rank", icon: "M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3", ranks: ["Rank #2 (2024)", "Rank #4 (2025)"], danger: true },
+  {
+    label: "Total Publications",
+    value: "12,450",
+    note: "+8.4%",
+    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
+    bars: [28, 46, 38, 50, 66, 78],
+  },
+  {
+    label: "Total Citations",
+    value: "84,201",
+    note: "+12.1%",
+    extra: "99",
+    icon: "M5 19h14M8 16V9M12 16V7M16 16v-5M7 5h2M11 4h2M15 6h2",
+    bars: [24, 36, 29, 43, 58, 70],
+  },
+  {
+    label: "Top Keyword Shift",
+    value: "Machine Lear",
+    subvalue: "Stable",
+    icon: "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14",
+    ranks: ["Rank #1 (2024)", "Rank #1 (2025)"],
+  },
+  {
+    label: "Top Journal Divergence",
+    value: "Nature Comm.",
+    subvalue: "2 Rank",
+    icon: "M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3M8 10h2M14 10h2M8 13h2M14 13h2",
+    ranks: ["Rank #2 (2024)", "Rank #4 (2025)"],
+    danger: true,
+  },
 ];
 
 const yearKeywordDiff = [
@@ -731,28 +1818,81 @@ const syncSourceCards = [
 ];
 
 const syncPipelineSteps = [
-  { label: "Fetch Publication Metadata", detail: "DOI, title, authors, venue, abstract", state: "complete" },
-  { label: "Normalize Schema", detail: "Map API fields into ScholarTrend database", state: "active" },
-  { label: "Deduplicate Records", detail: "Merge by DOI, Semantic Scholar ID, OpenAlex ID", state: "queued" },
-  { label: "Persist to Database", detail: "Write publication, author, keyword relations", state: "queued" },
+  {
+    label: "Fetch Publication Metadata",
+    detail: "DOI, title, authors, venue, abstract",
+    state: "complete",
+  },
+  {
+    label: "Normalize Schema",
+    detail: "Map API fields into ScholarTrend database",
+    state: "active",
+  },
+  {
+    label: "Deduplicate Records",
+    detail: "Merge by DOI, Semantic Scholar ID, OpenAlex ID",
+    state: "queued",
+  },
+  {
+    label: "Persist to Database",
+    detail: "Write publication, author, keyword relations",
+    state: "queued",
+  },
 ];
 
 const syncJobs = [
-  { job: "Nightly Semantic Scholar Refresh", schedule: "02:00 daily", lastRun: "Today, 02:03", duration: "18m 42s", status: "Succeeded" },
-  { job: "OpenAlex RQ2 Sample Compare", schedule: "Saturday", lastRun: "Jun 15, 09:00", duration: "07m 11s", status: "Succeeded" },
-  { job: "Metadata Normalization Sweep", schedule: "Every 6 hours", lastRun: "Today, 12:00", duration: "04m 36s", status: "Running" },
+  {
+    job: "Nightly Semantic Scholar Refresh",
+    schedule: "02:00 daily",
+    lastRun: "Today, 02:03",
+    duration: "18m 42s",
+    status: "Succeeded",
+  },
+  {
+    job: "OpenAlex RQ2 Sample Compare",
+    schedule: "Saturday",
+    lastRun: "Jun 15, 09:00",
+    duration: "07m 11s",
+    status: "Succeeded",
+  },
+  {
+    job: "Metadata Normalization Sweep",
+    schedule: "Every 6 hours",
+    lastRun: "Today, 12:00",
+    duration: "04m 36s",
+    status: "Running",
+  },
 ];
 
 const syncLogs = [
-  { time: "14:21:09", level: "Info", message: "Normalized 1,284 publication records into canonical schema." },
-  { time: "14:19:44", level: "Warn", message: "OpenAlex sample returned 18 records without DOI; matched by title similarity." },
-  { time: "14:17:02", level: "Error", message: "Semantic Scholar rate limit hit for batch #42. Retry scheduled in 120 seconds." },
-  { time: "14:12:18", level: "Info", message: "Hangfire job Metadata Normalization Sweep started." },
+  {
+    time: "14:21:09",
+    level: "Info",
+    message: "Normalized 1,284 publication records into canonical schema.",
+  },
+  {
+    time: "14:19:44",
+    level: "Warn",
+    message:
+      "OpenAlex sample returned 18 records without DOI; matched by title similarity.",
+  },
+  {
+    time: "14:17:02",
+    level: "Error",
+    message:
+      "Semantic Scholar rate limit hit for batch #42. Retry scheduled in 120 seconds.",
+  },
+  {
+    time: "14:12:18",
+    level: "Info",
+    message: "Hangfire job Metadata Normalization Sweep started.",
+  },
 ];
 
 const graphPaper = {
   title: "DeepFruits: A Fruit Detection System Using Deep Neural Networks",
-  authors: "Inkyu Sa, ZongYuan Ge, Feras Dayoub, B. Upcroft, Tristan Perez, C. McCool",
+  authors:
+    "Inkyu Sa, ZongYuan Ge, Feras Dayoub, B. Upcroft, Tristan Perez, C. McCool",
   year: "2016",
   venue: "Sensors Journal",
   similarity: "98.2%",
@@ -763,7 +1903,14 @@ const graphPaper = {
 };
 
 const graphNodes = [
-  { id: "deepfruits", label: "DeepFruits, 2016", x: 360, y: 330, r: 30, selected: true },
+  {
+    id: "deepfruits",
+    label: "DeepFruits, 2016",
+    x: 360,
+    y: 330,
+    r: 30,
+    selected: true,
+  },
   { id: "sa", label: "Sa et al., 2014", x: 372, y: 210, r: 7 },
   { id: "inkyu", label: "Inkyu Sa, 2015", x: 250, y: 285, r: 8 },
   { id: "mccool", label: "McCool, 2016", x: 456, y: 384, r: 13 },
@@ -778,73 +1925,323 @@ const graphLinks = [
 ];
 
 const graph3DNodes = [
-  { id: "deepfruits", label: "DeepFruits, 2016", position: [130, 10, 24], size: 48, color: "#c3d8d7", selected: true },
-  { id: "tarjan1972", label: "Tarjan, 1972", position: [60, 72, 8], size: 70, color: "#b9cecc" },
-  { id: "aho1974", label: "Aho, 1974", position: [285, -74, -28], size: 62, color: "#c4d7d6" },
-  { id: "hopcroft1974", label: "Hopcroft, 1974", position: [-24, -76, 18], size: 46, color: "#b7cecd" },
-  { id: "lipton1977", label: "Lipton, 1977", position: [14, 106, -24], size: 42, color: "#c7d9d9" },
-  { id: "gabow2000", label: "Gabow, 2000", position: [-74, 92, 28], size: 36, color: "#608a89" },
-  { id: "gabow1976", label: "Gabow, 1976", position: [178, 154, -52], size: 38, color: "#c4d6d5" },
-  { id: "frederickson1987", label: "Frederickson, 1987", position: [184, 74, -18], size: 42, color: "#8aa8a8" },
-  { id: "williamson1984", label: "Williamson, 1984", position: [-185, 12, 30], size: 38, color: "#b2c9c8" },
-  { id: "boyer1976", label: "BoyerEven, 1976", position: [-175, -38, 8], size: 45, color: "#c8d6d4" },
-  { id: "fraysseix1985", label: "Fraysseix, 1985", position: [-276, 36, -10], size: 32, color: "#9db8b7" },
-  { id: "fraysseix2006a", label: "Fraysseix, 2006", position: [-188, 86, 12], size: 23, color: "#6b9493" },
-  { id: "fraysseix2012", label: "Fraysseix, 2012", position: [-230, 120, -42], size: 18, color: "#416f6e" },
-  { id: "boyer2003", label: "Boyer, 2003", position: [-236, -24, 48], size: 27, color: "#517b7a" },
-  { id: "shih2003", label: "Shih, 2003", position: [-298, -64, 16], size: 25, color: "#6d9998" },
-  { id: "shih1999", label: "Shih, 1999", position: [-250, -112, 30], size: 28, color: "#577f7e" },
-  { id: "tamassia1986", label: "Tamassia, 1986", position: [-340, -126, -8], size: 39, color: "#91b0af" },
-  { id: "tamassia1987", label: "Tamassia, 1987", position: [-346, -244, -34], size: 42, color: "#8fb0af" },
-  { id: "feng1995", label: "Feng, 1995", position: [-224, -158, 16], size: 35, color: "#6f9998" },
-  { id: "battista1989", label: "Battista, 1989", position: [-166, -220, -16], size: 37, color: "#7fa2a1" },
-  { id: "gutwenger2000", label: "Gutwenger, 2000", position: [-116, -148, 42], size: 40, color: "#5d8987" },
-  { id: "booth1976", label: "Booth, 1976", position: [-62, -196, -26], size: 52, color: "#bdd2d1" },
-  { id: "kuratowski", label: "Kuratowski", position: [-58, -326, -38], size: 50, color: "#9d9d9d" },
-  { id: "junger1998", label: "Junger, 1998", position: [-248, -266, -18], size: 36, color: "#5e8887" },
-  { id: "nishizeki1988", label: "Nishizeki, 1988", position: [-238, -354, 22], size: 38, color: "#7fa4a3" },
-  { id: "korach1988", label: "Korach, 1988", position: [-104, 186, 12], size: 30, color: "#87aaa9" },
-  { id: "korach1993", label: "Korach, 1993", position: [-24, 162, -10], size: 22, color: "#85a9a8" },
-  { id: "tarjan1986", label: "Tarjan, 1986", position: [-110, 96, 36], size: 32, color: "#b8cfce" },
-  { id: "tarjan2022", label: "Tarjan, 2022", position: [-14, 248, 32], size: 24, color: "#426f6f" },
-  { id: "hopcroft1972", label: "Hopcroft, 1972", position: [30, 142, -58], size: 31, color: "#cedfdf" },
-  { id: "asano1985", label: "Asano, 1985", position: [-18, 30, 62], size: 35, color: "#9db9b8" },
-  { id: "colbourn1981", label: "Colbourn, 1981", position: [-22, -38, 42], size: 32, color: "#bed5d4" },
-  { id: "grigoreva1991", label: "Grigor'eva, 1991", position: [38, -70, 20], size: 18, color: "#779d9c" },
-  { id: "lueker1979", label: "Lueker, 1979", position: [78, -236, -12], size: 36, color: "#b0c8c7" },
-  { id: "hopcroft1971", label: "Hopcroft, 1971", position: [164, -228, -50], size: 30, color: "#d5e3e3" },
-  { id: "luks1980", label: "Luks, 1980", position: [256, -326, -16], size: 44, color: "#b2cbca" },
-  { id: "hopcroft1974b", label: "Hopcroft, 1974", position: [222, -250, 12], size: 34, color: "#c5d8d7" },
+  {
+    id: "deepfruits",
+    label: "DeepFruits, 2016",
+    position: [130, 10, 24],
+    size: 48,
+    color: "#c3d8d7",
+    selected: true,
+  },
+  {
+    id: "tarjan1972",
+    label: "Tarjan, 1972",
+    position: [60, 72, 8],
+    size: 70,
+    color: "#b9cecc",
+  },
+  {
+    id: "aho1974",
+    label: "Aho, 1974",
+    position: [285, -74, -28],
+    size: 62,
+    color: "#c4d7d6",
+  },
+  {
+    id: "hopcroft1974",
+    label: "Hopcroft, 1974",
+    position: [-24, -76, 18],
+    size: 46,
+    color: "#b7cecd",
+  },
+  {
+    id: "lipton1977",
+    label: "Lipton, 1977",
+    position: [14, 106, -24],
+    size: 42,
+    color: "#c7d9d9",
+  },
+  {
+    id: "gabow2000",
+    label: "Gabow, 2000",
+    position: [-74, 92, 28],
+    size: 36,
+    color: "#608a89",
+  },
+  {
+    id: "gabow1976",
+    label: "Gabow, 1976",
+    position: [178, 154, -52],
+    size: 38,
+    color: "#c4d6d5",
+  },
+  {
+    id: "frederickson1987",
+    label: "Frederickson, 1987",
+    position: [184, 74, -18],
+    size: 42,
+    color: "#8aa8a8",
+  },
+  {
+    id: "williamson1984",
+    label: "Williamson, 1984",
+    position: [-185, 12, 30],
+    size: 38,
+    color: "#b2c9c8",
+  },
+  {
+    id: "boyer1976",
+    label: "BoyerEven, 1976",
+    position: [-175, -38, 8],
+    size: 45,
+    color: "#c8d6d4",
+  },
+  {
+    id: "fraysseix1985",
+    label: "Fraysseix, 1985",
+    position: [-276, 36, -10],
+    size: 32,
+    color: "#9db8b7",
+  },
+  {
+    id: "fraysseix2006a",
+    label: "Fraysseix, 2006",
+    position: [-188, 86, 12],
+    size: 23,
+    color: "#6b9493",
+  },
+  {
+    id: "fraysseix2012",
+    label: "Fraysseix, 2012",
+    position: [-230, 120, -42],
+    size: 18,
+    color: "#416f6e",
+  },
+  {
+    id: "boyer2003",
+    label: "Boyer, 2003",
+    position: [-236, -24, 48],
+    size: 27,
+    color: "#517b7a",
+  },
+  {
+    id: "shih2003",
+    label: "Shih, 2003",
+    position: [-298, -64, 16],
+    size: 25,
+    color: "#6d9998",
+  },
+  {
+    id: "shih1999",
+    label: "Shih, 1999",
+    position: [-250, -112, 30],
+    size: 28,
+    color: "#577f7e",
+  },
+  {
+    id: "tamassia1986",
+    label: "Tamassia, 1986",
+    position: [-340, -126, -8],
+    size: 39,
+    color: "#91b0af",
+  },
+  {
+    id: "tamassia1987",
+    label: "Tamassia, 1987",
+    position: [-346, -244, -34],
+    size: 42,
+    color: "#8fb0af",
+  },
+  {
+    id: "feng1995",
+    label: "Feng, 1995",
+    position: [-224, -158, 16],
+    size: 35,
+    color: "#6f9998",
+  },
+  {
+    id: "battista1989",
+    label: "Battista, 1989",
+    position: [-166, -220, -16],
+    size: 37,
+    color: "#7fa2a1",
+  },
+  {
+    id: "gutwenger2000",
+    label: "Gutwenger, 2000",
+    position: [-116, -148, 42],
+    size: 40,
+    color: "#5d8987",
+  },
+  {
+    id: "booth1976",
+    label: "Booth, 1976",
+    position: [-62, -196, -26],
+    size: 52,
+    color: "#bdd2d1",
+  },
+  {
+    id: "kuratowski",
+    label: "Kuratowski",
+    position: [-58, -326, -38],
+    size: 50,
+    color: "#9d9d9d",
+  },
+  {
+    id: "junger1998",
+    label: "Junger, 1998",
+    position: [-248, -266, -18],
+    size: 36,
+    color: "#5e8887",
+  },
+  {
+    id: "nishizeki1988",
+    label: "Nishizeki, 1988",
+    position: [-238, -354, 22],
+    size: 38,
+    color: "#7fa4a3",
+  },
+  {
+    id: "korach1988",
+    label: "Korach, 1988",
+    position: [-104, 186, 12],
+    size: 30,
+    color: "#87aaa9",
+  },
+  {
+    id: "korach1993",
+    label: "Korach, 1993",
+    position: [-24, 162, -10],
+    size: 22,
+    color: "#85a9a8",
+  },
+  {
+    id: "tarjan1986",
+    label: "Tarjan, 1986",
+    position: [-110, 96, 36],
+    size: 32,
+    color: "#b8cfce",
+  },
+  {
+    id: "tarjan2022",
+    label: "Tarjan, 2022",
+    position: [-14, 248, 32],
+    size: 24,
+    color: "#426f6f",
+  },
+  {
+    id: "hopcroft1972",
+    label: "Hopcroft, 1972",
+    position: [30, 142, -58],
+    size: 31,
+    color: "#cedfdf",
+  },
+  {
+    id: "asano1985",
+    label: "Asano, 1985",
+    position: [-18, 30, 62],
+    size: 35,
+    color: "#9db9b8",
+  },
+  {
+    id: "colbourn1981",
+    label: "Colbourn, 1981",
+    position: [-22, -38, 42],
+    size: 32,
+    color: "#bed5d4",
+  },
+  {
+    id: "grigoreva1991",
+    label: "Grigor'eva, 1991",
+    position: [38, -70, 20],
+    size: 18,
+    color: "#779d9c",
+  },
+  {
+    id: "lueker1979",
+    label: "Lueker, 1979",
+    position: [78, -236, -12],
+    size: 36,
+    color: "#b0c8c7",
+  },
+  {
+    id: "hopcroft1971",
+    label: "Hopcroft, 1971",
+    position: [164, -228, -50],
+    size: 30,
+    color: "#d5e3e3",
+  },
+  {
+    id: "luks1980",
+    label: "Luks, 1980",
+    position: [256, -326, -16],
+    size: 44,
+    color: "#b2cbca",
+  },
+  {
+    id: "hopcroft1974b",
+    label: "Hopcroft, 1974",
+    position: [222, -250, 12],
+    size: 34,
+    color: "#c5d8d7",
+  },
 ];
 
 const graph3DLinks = [
-  ["deepfruits", "tarjan1972", "strong"], ["deepfruits", "hopcroft1974", "strong"],
-  ["deepfruits", "lipton1977", "strong"], ["deepfruits", "grigoreva1991", "strong"],
-  ["deepfruits", "frederickson1987", "strong"], ["deepfruits", "aho1974", "faint"],
-  ["tarjan1972", "lipton1977", "strong"], ["tarjan1972", "gabow2000", "strong"],
-  ["tarjan1972", "korach1993", "faint"], ["tarjan1972", "tarjan1986", "faint"],
-  ["lipton1977", "hopcroft1974", "faint"], ["hopcroft1974", "colbourn1981", "strong"],
-  ["hopcroft1974", "booth1976", "faint"], ["hopcroft1974", "lueker1979", "strong"],
-  ["lueker1979", "luks1980", "strong"], ["lueker1979", "hopcroft1971", "faint"],
-  ["luks1980", "hopcroft1974b", "strong"], ["gabow2000", "gabow1976", "faint"],
-  ["gabow2000", "hopcroft1972", "faint"], ["frederickson1987", "gabow1976", "faint"],
-  ["williamson1984", "boyer1976", "strong"], ["williamson1984", "fraysseix1985", "strong"],
-  ["williamson1984", "fraysseix2006a", "faint"], ["boyer1976", "boyer2003", "strong"],
-  ["boyer1976", "feng1995", "faint"], ["boyer1976", "gutwenger2000", "faint"],
-  ["fraysseix1985", "fraysseix2012", "faint"], ["fraysseix1985", "shih2003", "strong"],
-  ["fraysseix1985", "boyer2003", "faint"], ["fraysseix2006a", "fraysseix2012", "strong"],
-  ["shih2003", "shih1999", "strong"], ["shih1999", "tamassia1986", "faint"],
-  ["tamassia1986", "tamassia1987", "strong"], ["tamassia1986", "feng1995", "faint"],
-  ["feng1995", "battista1989", "faint"], ["feng1995", "junger1998", "strong"],
-  ["battista1989", "gutwenger2000", "strong"], ["junger1998", "nishizeki1988", "faint"],
-  ["gutwenger2000", "booth1976", "strong"], ["booth1976", "kuratowski", "faint"],
-  ["korach1988", "korach1993", "strong"], ["korach1988", "tarjan1986", "strong"],
-  ["korach1993", "tarjan2022", "faint"], ["tarjan1986", "asano1985", "faint"],
-  ["asano1985", "colbourn1981", "strong"], ["colbourn1981", "booth1976", "faint"],
-  ["asano1985", "williamson1984", "faint"], ["tarjan1986", "boyer1976", "faint"],
-  ["gabow2000", "williamson1984", "faint"], ["colbourn1981", "lueker1979", "faint"],
-  ["fraysseix1985", "korach1988", "faint"], ["boyer1976", "tarjan1986", "faint"],
-  ["williamson1984", "asano1985", "faint"], ["gutwenger2000", "hopcroft1974", "faint"],
+  ["deepfruits", "tarjan1972", "strong"],
+  ["deepfruits", "hopcroft1974", "strong"],
+  ["deepfruits", "lipton1977", "strong"],
+  ["deepfruits", "grigoreva1991", "strong"],
+  ["deepfruits", "frederickson1987", "strong"],
+  ["deepfruits", "aho1974", "faint"],
+  ["tarjan1972", "lipton1977", "strong"],
+  ["tarjan1972", "gabow2000", "strong"],
+  ["tarjan1972", "korach1993", "faint"],
+  ["tarjan1972", "tarjan1986", "faint"],
+  ["lipton1977", "hopcroft1974", "faint"],
+  ["hopcroft1974", "colbourn1981", "strong"],
+  ["hopcroft1974", "booth1976", "faint"],
+  ["hopcroft1974", "lueker1979", "strong"],
+  ["lueker1979", "luks1980", "strong"],
+  ["lueker1979", "hopcroft1971", "faint"],
+  ["luks1980", "hopcroft1974b", "strong"],
+  ["gabow2000", "gabow1976", "faint"],
+  ["gabow2000", "hopcroft1972", "faint"],
+  ["frederickson1987", "gabow1976", "faint"],
+  ["williamson1984", "boyer1976", "strong"],
+  ["williamson1984", "fraysseix1985", "strong"],
+  ["williamson1984", "fraysseix2006a", "faint"],
+  ["boyer1976", "boyer2003", "strong"],
+  ["boyer1976", "feng1995", "faint"],
+  ["boyer1976", "gutwenger2000", "faint"],
+  ["fraysseix1985", "fraysseix2012", "faint"],
+  ["fraysseix1985", "shih2003", "strong"],
+  ["fraysseix1985", "boyer2003", "faint"],
+  ["fraysseix2006a", "fraysseix2012", "strong"],
+  ["shih2003", "shih1999", "strong"],
+  ["shih1999", "tamassia1986", "faint"],
+  ["tamassia1986", "tamassia1987", "strong"],
+  ["tamassia1986", "feng1995", "faint"],
+  ["feng1995", "battista1989", "faint"],
+  ["feng1995", "junger1998", "strong"],
+  ["battista1989", "gutwenger2000", "strong"],
+  ["junger1998", "nishizeki1988", "faint"],
+  ["gutwenger2000", "booth1976", "strong"],
+  ["booth1976", "kuratowski", "faint"],
+  ["korach1988", "korach1993", "strong"],
+  ["korach1988", "tarjan1986", "strong"],
+  ["korach1993", "tarjan2022", "faint"],
+  ["tarjan1986", "asano1985", "faint"],
+  ["asano1985", "colbourn1981", "strong"],
+  ["colbourn1981", "booth1976", "faint"],
+  ["asano1985", "williamson1984", "faint"],
+  ["tarjan1986", "boyer1976", "faint"],
+  ["gabow2000", "williamson1984", "faint"],
+  ["colbourn1981", "lueker1979", "faint"],
+  ["fraysseix1985", "korach1988", "faint"],
+  ["boyer1976", "tarjan1986", "faint"],
+  ["williamson1984", "asano1985", "faint"],
+  ["gutwenger2000", "hopcroft1974", "faint"],
 ];
 
 const getGraphPaperForNode = (node) => {
@@ -853,7 +2250,10 @@ const getGraphPaperForNode = (node) => {
   const [name, rawYear] = node.label.split(", ");
   const year = rawYear || "Network";
   const citationCount = Math.round(
-    node.size * 27 + Math.abs(node.position[0]) * 1.8 + Math.abs(node.position[1]) + 180
+    node.size * 27 +
+      Math.abs(node.position[0]) * 1.8 +
+      Math.abs(node.position[1]) +
+      180,
   );
   const similarity = Math.min(97.6, 82.5 + node.size * 0.18).toFixed(1);
 
@@ -864,8 +2264,7 @@ const getGraphPaperForNode = (node) => {
     venue: "ScholarTrend Knowledge Graph",
     similarity: `${similarity}%`,
     citations: citationCount.toLocaleString("en-US"),
-    abstract:
-      `${node.label} sits inside a connected citation neighborhood. ScholarTrend ranks this node by graph proximity, citation overlap, and topical similarity to the selected research query.`,
+    abstract: `${node.label} sits inside a connected citation neighborhood. ScholarTrend ranks this node by graph proximity, citation overlap, and topical similarity to the selected research query.`,
     accessPoints: ["Open citation path", "Inspect related publications"],
   };
 };
@@ -882,13 +2281,20 @@ function StudentSidebar({ activeRoute }) {
   return (
     <aside className="student-sidebar">
       <div className="student-logo">
-        <a href="/" onClick={navTo("/")}>ScholarTrend</a>
+        <a href="/" onClick={navTo("/")}>
+          ScholarTrend
+        </a>
         <span>Analytical Intelligence</span>
       </div>
 
       <nav className="student-nav" aria-label="Student dashboard navigation">
         {sidebarItems.map((item) => (
-          <a className={item.route === activeRoute ? "active" : ""} href={item.route} onClick={navTo(item.route)} key={item.label}>
+          <a
+            className={item.route === activeRoute ? "active" : ""}
+            href={item.route}
+            onClick={navTo(item.route)}
+            key={item.label}
+          >
             <MiniIcon path={item.icon} />
             <span>{item.label}</span>
           </a>
@@ -896,9 +2302,16 @@ function StudentSidebar({ activeRoute }) {
       </nav>
 
       <div className="student-sidebar-footer">
-        <a className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`} href="/student-profile" onClick={navTo("/student-profile")}>
+        <a
+          className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`}
+          href="/student-profile"
+          onClick={navTo("/student-profile")}
+        >
           <div className="sidebar-avatar">
-            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="Avatar" />
+            <img
+              src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+              alt="Avatar"
+            />
           </div>
           <div className="sidebar-profile-info">
             <strong>Dr. A. Scientist</strong>
@@ -910,27 +2323,59 @@ function StudentSidebar({ activeRoute }) {
   );
 }
 
-function StudentTopbar({ crumb = "Dashboard", searchValue = "", wideSearch = false, variant = "default", searchPlaceholder = "Search keyword, author, or DOI..." }) {
+function StudentTopbar({
+  crumb = "Dashboard",
+  searchValue = "",
+  wideSearch = false,
+  variant = "default",
+  searchPlaceholder = "Search keyword, author, or DOI...",
+}) {
   const isProfileUtility = variant === "profile";
   const isUtility = variant === "utility" || isProfileUtility;
 
   return (
-    <header className={`student-topbar ${isUtility ? "utility" : ""} ${isProfileUtility ? "profile-utility" : ""}`}>
-      {crumb ? (typeof crumb === "string" ? <span>{crumb}</span> : crumb) : null}
+    <header
+      className={`student-topbar ${isUtility ? "utility" : ""} ${isProfileUtility ? "profile-utility" : ""}`}
+    >
+      {crumb ? typeof crumb === "string" ? <span>{crumb}</span> : crumb : null}
       <div className="student-top-actions">
-        <form className={`student-global-search ${wideSearch ? "wide" : ""}`} onSubmit={navTo("/student-search")}>
+        <form
+          className={`student-global-search ${wideSearch ? "wide" : ""}`}
+          onSubmit={navTo("/student-search")}
+        >
           <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
-          <input type="search" placeholder={searchPlaceholder} defaultValue={searchValue} />
+          <input
+            type="search"
+            placeholder={searchPlaceholder}
+            defaultValue={searchValue}
+          />
         </form>
         <div className="topbar-icon-group">
-          <button type="button" aria-label={isUtility ? "Help" : "Notifications"} className={`top-icon ${isUtility ? "" : "alert-dot"}`}>
-            <MiniIcon path={isUtility ? "M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" : "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4"} />
+          <button
+            type="button"
+            aria-label={isUtility ? "Help" : "Notifications"}
+            className={`top-icon ${isUtility ? "" : "alert-dot"}`}
+          >
+            <MiniIcon
+              path={
+                isUtility
+                  ? "M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                  : "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4"
+              }
+            />
           </button>
           <button type="button" aria-label="Settings" className="top-icon">
             <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
           </button>
-          <button type="button" aria-label="User profile" className="student-avatar image-avatar">
-            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="User profile" />
+          <button
+            type="button"
+            aria-label="User profile"
+            className="student-avatar image-avatar"
+          >
+            <img
+              src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+              alt="User profile"
+            />
           </button>
         </div>
       </div>
@@ -949,9 +2394,13 @@ function StudentDashboard() {
           <div className="student-welcome-row">
             <div>
               <h1>Welcome back, Alex</h1>
-              <p><span>Student</span> University of Applied Sciences</p>
+              <p>
+                <span>Student</span> University of Applied Sciences
+              </p>
             </div>
-            <button type="button" className="new-project">+ New Project</button>
+            <button type="button" className="new-project">
+              + New Project
+            </button>
           </div>
 
           <section className="student-stats" aria-label="Student metrics">
@@ -969,10 +2418,16 @@ function StudentDashboard() {
 
           <section className="deep-search" aria-label="Deep dive into research">
             <h2>Deep Dive into Research</h2>
-            <p>Search across millions of academic papers, journals, and analytical reports.</p>
+            <p>
+              Search across millions of academic papers, journals, and
+              analytical reports.
+            </p>
             <form onSubmit={navTo("/student-search")}>
               <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
-              <input type="search" placeholder="Search by title, author, DOI, or keyword..." />
+              <input
+                type="search"
+                placeholder="Search by title, author, DOI, or keyword..."
+              />
               <button type="submit">Search</button>
             </form>
             <div className="trending-keywords">
@@ -991,11 +2446,17 @@ function StudentDashboard() {
               </div>
               {publications.map((paper) => (
                 <article className="publication-card" key={paper.title}>
-                  <button type="button" aria-label="Bookmark publication" className="bookmark-button">
+                  <button
+                    type="button"
+                    aria-label="Bookmark publication"
+                    className="bookmark-button"
+                  >
                     <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
                   </button>
                   <div className="publication-tags">
-                    {paper.tags.map((tag) => <span key={tag}>{tag}</span>)}
+                    {paper.tags.map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
                   </div>
                   <h3>{paper.title}</h3>
                   <p>{paper.excerpt}</p>
@@ -1008,7 +2469,12 @@ function StudentDashboard() {
               <h2>Recent Activity</h2>
               <div className="activity-list">
                 {activities.map(([title, meta, icon], index) => (
-                  <a className="activity-item" href="/student-publication" onClick={navTo("/student-publication")} key={title}>
+                  <a
+                    className="activity-item"
+                    href="/student-publication"
+                    onClick={navTo("/student-publication")}
+                    key={title}
+                  >
                     <MiniIcon path={icon} />
                     <div>
                       <strong>{title}</strong>
@@ -1025,27 +2491,66 @@ function StudentDashboard() {
   );
 }
 
-function ResearcherSidebar({ activeRoute = "/researcher-dashboard", collapsed = false, mobileOpen = false, onClose, onToggleCollapse, onUpgrade }) {
+function ResearcherSidebar({
+  activeRoute = "/researcher-dashboard",
+  collapsed = false,
+  mobileOpen = false,
+  onClose,
+  onToggleCollapse,
+  onUpgrade,
+}) {
   return (
-    <aside className={`researcher-sidebar ${collapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}>
+    <aside
+      className={`researcher-sidebar ${collapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}
+    >
       <div className="researcher-logo">
-        <a href="/" onClick={navTo("/")}>ScholarTrend</a>
+        <a href="/" onClick={navTo("/")}>
+          ScholarTrend
+        </a>
         <span>Analytical Intelligence</span>
-        <button type="button" className="researcher-sidebar-close" aria-label="Close navigation" onClick={onClose}>
+        <button
+          type="button"
+          className="researcher-sidebar-close"
+          aria-label="Close navigation"
+          onClick={onClose}
+        >
           <MiniIcon path="M6 6l12 12M18 6 6 18" />
         </button>
-        <button type="button" className="researcher-sidebar-toggle" aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} onClick={onToggleCollapse}>
-          <MiniIcon path={collapsed ? "M9 6l6 6-6 6" : "M15 6l-6 6 6 6"} />
+        <button
+          type="button"
+          className="researcher-sidebar-toggle"
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          onClick={onToggleCollapse}
+        >
+          <MiniIcon
+            path={
+              collapsed
+                ? "M8 5.5v13M11 8l4 4-4 4M4.5 5.5h14v13h-14z"
+                : "M16 5.5v13M13 8l-4 4 4 4M5.5 5.5h14v13h-14z"
+            }
+          />
         </button>
       </div>
 
-      <nav className="researcher-nav" aria-label="Researcher dashboard navigation">
+      <nav
+        className="researcher-nav"
+        aria-label="Researcher dashboard navigation"
+      >
         {researcherNavGroups.map((group, groupIndex) => (
-          <div className="researcher-nav-group" key={group.heading || `primary-${groupIndex}`}>
+          <div
+            className="researcher-nav-group"
+            key={group.heading || `primary-${groupIndex}`}
+          >
             {group.heading ? <h2>{group.heading}</h2> : null}
             {group.items.map((item) => (
               <a
-                className={item.route === activeRoute && (activeRoute !== "/researcher-dashboard" || item.label === "Dashboard") ? "active" : ""}
+                className={
+                  item.route === activeRoute &&
+                  (activeRoute !== "/researcher-dashboard" ||
+                    item.label === "Dashboard")
+                    ? "active"
+                    : ""
+                }
                 href={item.route}
                 onClick={navTo(item.route)}
                 key={`${group.heading || "primary"}-${item.label}`}
@@ -1059,12 +2564,20 @@ function ResearcherSidebar({ activeRoute = "/researcher-dashboard", collapsed = 
       </nav>
 
       <div className="researcher-sidebar-footer">
-        <button type="button" className="researcher-upgrade" onClick={onUpgrade}>
+        <button
+          type="button"
+          className="researcher-upgrade"
+          onClick={onUpgrade}
+        >
           <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
           <span>Upgrade to Pro</span>
         </button>
         <div className="researcher-footer-actions">
-          <a href="/researcher-profile" onClick={navTo("/researcher-profile")} aria-label="Profile">
+          <a
+            href="/researcher-profile"
+            onClick={navTo("/researcher-profile")}
+            aria-label="Profile"
+          >
             <MiniIcon path="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM7 18.2a5.7 5.7 0 0 1 10 0" />
             <span>Profile</span>
           </a>
@@ -1110,9 +2623,22 @@ function UpgradeProModal({ open, onClose }) {
   const isYearly = billingCycle === "yearly";
 
   return (
-    <div className="upgrade-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="upgrade-modal" role="dialog" aria-modal="true" aria-labelledby="upgrade-modal-title">
-        <button type="button" className="upgrade-modal-close" aria-label="Close upgrade dialog" onClick={onClose}>
+    <div
+      className="upgrade-modal-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="upgrade-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upgrade-modal-title"
+      >
+        <button
+          type="button"
+          className="upgrade-modal-close"
+          aria-label="Close upgrade dialog"
+          onClick={onClose}
+        >
           <MiniIcon path="M6 6l12 12M18 6 6 18" />
         </button>
 
@@ -1123,12 +2649,26 @@ function UpgradeProModal({ open, onClose }) {
         <div className="upgrade-modal-heading">
           <span>ScholarTrend Pro</span>
           <h2 id="upgrade-modal-title">Upgrade to Pro</h2>
-          <p>Unlock deeper analytical intelligence for your tracked disciplines.</p>
+          <p>
+            Unlock deeper analytical intelligence for your tracked disciplines.
+          </p>
         </div>
 
         <div className="upgrade-billing-toggle" aria-label="Billing cycle">
-          <button type="button" className={!isYearly ? "active" : ""} onClick={() => setBillingCycle("monthly")}>Monthly</button>
-          <button type="button" className={isYearly ? "active" : ""} onClick={() => setBillingCycle("yearly")}>Yearly <span>Save 20%</span></button>
+          <button
+            type="button"
+            className={!isYearly ? "active" : ""}
+            onClick={() => setBillingCycle("monthly")}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            className={isYearly ? "active" : ""}
+            onClick={() => setBillingCycle("yearly")}
+          >
+            Yearly <span>Save 20%</span>
+          </button>
         </div>
 
         <div className="upgrade-price-row">
@@ -1145,12 +2685,18 @@ function UpgradeProModal({ open, onClose }) {
           ))}
         </div>
 
-        <button type="button" className="upgrade-primary-action" onClick={() => setUpgraded(true)}>
+        <button
+          type="button"
+          className="upgrade-primary-action"
+          onClick={() => setUpgraded(true)}
+        >
           {upgraded ? "Pro Activated" : "Upgrade Now"}
         </button>
 
         {upgraded ? (
-          <p className="upgrade-status" role="status">Your Pro workspace is ready in this prototype.</p>
+          <p className="upgrade-status" role="status">
+            Your Pro workspace is ready in this prototype.
+          </p>
         ) : (
           <p className="upgrade-note">Cancel anytime from profile settings.</p>
         )}
@@ -1180,31 +2726,64 @@ function useResearcherSidebarControls() {
   };
 }
 
-function ResearcherTopbar({ current = "Dashboard", onMenuClick, rootLabel = "ScholarTrend", rootPath = "/", searchPlaceholder = "Search publications, authors, keywords..." }) {
+function ResearcherTopbar({
+  current = "Dashboard",
+  onMenuClick,
+  rootLabel = "ScholarTrend",
+  rootPath = "/",
+  searchPlaceholder = "Search publications, authors, keywords...",
+}) {
   return (
     <header className="researcher-topbar">
-      <button type="button" className="researcher-menu-button" aria-label="Toggle navigation" onClick={onMenuClick}>
-        <MiniIcon path="M4 6h16M4 12h16M4 18h16" />
+      <button
+        type="button"
+        className="researcher-menu-button"
+        aria-label="Toggle navigation"
+        onClick={onMenuClick}
+      >
+        <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
       </button>
       <nav className="researcher-breadcrumb" aria-label="Breadcrumb">
-        <a href={rootPath} onClick={navTo(rootPath)}>{rootLabel}</a>
+        <a href={rootPath} onClick={navTo(rootPath)}>
+          {rootLabel}
+        </a>
         <span>&gt;</span>
         <strong>{current}</strong>
       </nav>
 
       <div className="researcher-top-actions">
-        <form className="researcher-search" onSubmit={navTo("/researcher-search")}>
-          <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
+        <form
+          className="researcher-search"
+          onSubmit={navTo("/researcher-search")}
+        >
+          <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6" />
           <input type="search" placeholder={searchPlaceholder} />
         </form>
-        <button type="button" className="researcher-top-icon alert-dot" aria-label="Notifications" onClick={navTo("/researcher-notifications")}>
-          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
+        <button
+          type="button"
+          className="researcher-top-icon alert-dot"
+          aria-label="Notifications"
+          onClick={navTo("/researcher-notifications")}
+        >
+          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M17.5 5.5l2-2M6.5 5.5l-2-2" />
         </button>
-        <button type="button" className="researcher-top-icon" aria-label="Settings">
-          <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
+        <button
+          type="button"
+          className="researcher-top-icon"
+          aria-label="Settings"
+        >
+          <MiniIcon path="M5 7h4M13 7h6M11 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 12h9M18 12h1M16 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 17h2M11 17h8M9 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0" />
         </button>
-        <button type="button" className="researcher-avatar" aria-label="User profile" onClick={navTo("/researcher-profile")}>
-          <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="Researcher profile" />
+        <button
+          type="button"
+          className="researcher-avatar"
+          aria-label="User profile"
+          onClick={navTo("/researcher-profile")}
+        >
+          <img
+            src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+            alt="Researcher profile"
+          />
         </button>
       </div>
     </header>
@@ -1224,23 +2803,31 @@ function ResearcherShell({
 }) {
   const sidebar = useResearcherSidebarControls();
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
-  const TopbarComponent = topbar === "graph" ? (
-    <ResearcherSearchTopbar onMenuClick={sidebar.handleMenu} />
-  ) : topbar === "publication" ? (
-    <ResearcherPublicationTopbar onMenuClick={sidebar.handleMenu} />
-  ) : (
-    <ResearcherTopbar
-      current={current}
-      onMenuClick={sidebar.handleMenu}
-      rootLabel={breadcrumbRootLabel}
-      rootPath={breadcrumbRootPath}
-      searchPlaceholder={searchPlaceholder}
-    />
-  );
+  const TopbarComponent =
+    topbar === "graph" ? (
+      <ResearcherSearchTopbar onMenuClick={sidebar.handleMenu} />
+    ) : topbar === "publication" ? (
+      <ResearcherPublicationTopbar onMenuClick={sidebar.handleMenu} />
+    ) : (
+      <ResearcherTopbar
+        current={current}
+        onMenuClick={sidebar.handleMenu}
+        rootLabel={breadcrumbRootLabel}
+        rootPath={breadcrumbRootPath}
+        searchPlaceholder={searchPlaceholder}
+      />
+    );
 
   return (
-    <main className={`researcher-app ${pageClassName} ${sidebar.collapsed ? "sidebar-collapsed" : ""} ${sidebar.mobileOpen ? "sidebar-mobile-open" : ""}`}>
-      <button type="button" className="researcher-sidebar-backdrop" aria-label="Close navigation" onClick={sidebar.closeMobile}></button>
+    <main
+      className={`researcher-app ${pageClassName} ${sidebar.collapsed ? "sidebar-collapsed" : ""} ${sidebar.mobileOpen ? "sidebar-mobile-open" : ""}`}
+    >
+      <button
+        type="button"
+        className="researcher-sidebar-backdrop"
+        aria-label="Close navigation"
+        onClick={sidebar.closeMobile}
+      ></button>
       <ResearcherSidebar
         activeRoute={activeRoute}
         collapsed={sidebar.collapsed}
@@ -1249,7 +2836,10 @@ function ResearcherShell({
         onToggleCollapse={sidebar.toggleCollapse}
         onUpgrade={() => setUpgradeOpen(true)}
       />
-      <UpgradeProModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      <UpgradeProModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+      />
       <section className={`researcher-main ${mainClassName}`}>
         {TopbarComponent}
         {children}
@@ -1272,7 +2862,9 @@ function ResearcherStatCard({ stat }) {
 }
 
 function PublicationGrowthChart() {
-  const [activeIndex, setActiveIndex] = React.useState(publicationGrowthData.length - 1);
+  const [activeIndex, setActiveIndex] = React.useState(
+    publicationGrowthData.length - 1,
+  );
   const chartWidth = 720;
   const chartHeight = 430;
   const padding = { top: 28, right: 34, bottom: 54, left: 68 };
@@ -1281,25 +2873,35 @@ function PublicationGrowthChart() {
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
   const bottom = chartHeight - padding.bottom;
-  const formatCount = (value) => (value === 0 ? "0" : `${Math.round(value / 1000)}k`);
-  const formatFullCount = (value) => new Intl.NumberFormat("en-US").format(value);
-  const getX = (index) => padding.left + (index / (publicationGrowthData.length - 1)) * plotWidth;
+  const formatCount = (value) =>
+    value === 0 ? "0" : `${Math.round(value / 1000)}k`;
+  const formatFullCount = (value) =>
+    new Intl.NumberFormat("en-US").format(value);
+  const getX = (index) =>
+    padding.left + (index / (publicationGrowthData.length - 1)) * plotWidth;
   const getY = (value) => padding.top + (1 - value / maxValue) * plotHeight;
   const points = publicationGrowthData.map((item, index) => ({
     ...item,
     x: getX(index),
     y: getY(item.publications),
   }));
-  const linePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const linePath = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
   const areaPath = `${linePath} L ${points[points.length - 1].x} ${bottom} L ${points[0].x} ${bottom} Z`;
   const activePoint = points[activeIndex];
   const previousPoint = points[activeIndex - 1];
   const activeDelta = previousPoint
-    ? ((activePoint.publications - previousPoint.publications) / previousPoint.publications) * 100
+    ? ((activePoint.publications - previousPoint.publications) /
+        previousPoint.publications) *
+      100
     : 0;
   const latestPoint = points[points.length - 1];
   const previousYear = points[points.length - 2];
-  const yearlyGrowth = ((latestPoint.publications - previousYear.publications) / previousYear.publications) * 100;
+  const yearlyGrowth =
+    ((latestPoint.publications - previousYear.publications) /
+      previousYear.publications) *
+    100;
   const tooltipTransform =
     activePoint.x < 130
       ? "translate(0, -112%)"
@@ -1308,7 +2910,10 @@ function PublicationGrowthChart() {
         : "translate(-50%, -112%)";
 
   return (
-    <section className="researcher-chart-card" aria-label="Publication growth over time">
+    <section
+      className="researcher-chart-card"
+      aria-label="Publication growth over time"
+    >
       <div className="researcher-card-heading">
         <div>
           <h2>Publication Growth Over Time</h2>
@@ -1319,14 +2924,31 @@ function PublicationGrowthChart() {
         </button>
       </div>
 
-      <div className="chart-summary" aria-label="Current publication growth summary">
-        <span><strong>{formatFullCount(latestPoint.publications)}</strong> publications in {latestPoint.year}</span>
-        <span className={yearlyGrowth >= 0 ? "positive" : "danger"}>{yearlyGrowth >= 0 ? "+" : ""}{yearlyGrowth.toFixed(1)}% YoY</span>
+      <div
+        className="chart-summary"
+        aria-label="Current publication growth summary"
+      >
+        <span>
+          <strong>{formatFullCount(latestPoint.publications)}</strong>{" "}
+          publications in {latestPoint.year}
+        </span>
+        <span className={yearlyGrowth >= 0 ? "positive" : "danger"}>
+          {yearlyGrowth >= 0 ? "+" : ""}
+          {yearlyGrowth.toFixed(1)}% YoY
+        </span>
       </div>
 
       <div className="growth-chart">
-        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none" role="img" aria-labelledby="growthChartTitle">
-          <title id="growthChartTitle">Publication growth chart from 2014 to 2024 based on yearly publication counts.</title>
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-labelledby="growthChartTitle"
+        >
+          <title id="growthChartTitle">
+            Publication growth chart from 2014 to 2024 based on yearly
+            publication counts.
+          </title>
           <defs>
             <linearGradient id="growthArea" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.2" />
@@ -1336,26 +2958,49 @@ function PublicationGrowthChart() {
 
           <g className="chart-grid">
             {yTicks.map((tick) => (
-              <path key={tick} d={`M${padding.left} ${getY(tick)}H${chartWidth - padding.right}`} />
+              <path
+                key={tick}
+                d={`M${padding.left} ${getY(tick)}H${chartWidth - padding.right}`}
+              />
             ))}
           </g>
-          <path className="chart-axis-line" d={`M${padding.left} ${bottom}H${chartWidth - padding.right}`} />
+          <path
+            className="chart-axis-line"
+            d={`M${padding.left} ${bottom}H${chartWidth - padding.right}`}
+          />
           <g className="chart-axis-labels y-labels">
             {yTicks.map((tick) => (
-              <text key={tick} x={padding.left - 18} y={getY(tick) + 4} textAnchor="end">{formatCount(tick)}</text>
+              <text
+                key={tick}
+                x={padding.left - 18}
+                y={getY(tick) + 4}
+                textAnchor="end"
+              >
+                {formatCount(tick)}
+              </text>
             ))}
           </g>
           <g className="chart-axis-labels x-labels">
-            {points.map((point, index) => (
+            {points.map((point, index) =>
               index % 2 === 0 || index === points.length - 1 ? (
-                <text key={point.year} x={point.x} y={chartHeight - 18} textAnchor="middle">{point.year}</text>
-              ) : null
-            ))}
+                <text
+                  key={point.year}
+                  x={point.x}
+                  y={chartHeight - 18}
+                  textAnchor="middle"
+                >
+                  {point.year}
+                </text>
+              ) : null,
+            )}
           </g>
 
           <path className="chart-area" d={areaPath} />
           <path className="chart-line" d={linePath} />
-          <path className="chart-active-line" d={`M${activePoint.x} ${padding.top}V${bottom}`} />
+          <path
+            className="chart-active-line"
+            d={`M${activePoint.x} ${padding.top}V${bottom}`}
+          />
 
           {points.map((point, index) => (
             <g
@@ -1367,8 +3012,18 @@ function PublicationGrowthChart() {
               onMouseEnter={() => setActiveIndex(index)}
               onFocus={() => setActiveIndex(index)}
             >
-              <circle className="chart-hit-area" cx={point.x} cy={point.y} r="16" />
-              <circle className="chart-point" cx={point.x} cy={point.y} r={index === activeIndex ? "5" : "4"} />
+              <circle
+                className="chart-hit-area"
+                cx={point.x}
+                cy={point.y}
+                r="16"
+              />
+              <circle
+                className="chart-point"
+                cx={point.x}
+                cy={point.y}
+                r={index === activeIndex ? "5" : "4"}
+              />
             </g>
           ))}
         </svg>
@@ -1384,7 +3039,9 @@ function PublicationGrowthChart() {
           <span>{activePoint.year}</span>
           <strong>{formatFullCount(activePoint.publications)}</strong>
           <em className={activeDelta >= 0 ? "positive" : "danger"}>
-            {previousPoint ? `${activeDelta >= 0 ? "+" : ""}${activeDelta.toFixed(1)}% vs previous year` : "Baseline year"}
+            {previousPoint
+              ? `${activeDelta >= 0 ? "+" : ""}${activeDelta.toFixed(1)}% vs previous year`
+              : "Baseline year"}
           </em>
         </div>
       </div>
@@ -1426,7 +3083,10 @@ function ResearchDomainsCard() {
           <p>Volume distribution</p>
         </div>
       </div>
-      <div className="domain-donut" aria-label="Medicine 40%, Engineering 30%, Biology 20%">
+      <div
+        className="domain-donut"
+        aria-label="Medicine 40%, Engineering 30%, Biology 20%"
+      >
         <span>Total</span>
       </div>
       <div className="domain-legend">
@@ -1444,33 +3104,37 @@ function ResearchDomainsCard() {
 function ResearcherDashboard() {
   return (
     <ResearcherShell activeRoute="/researcher-dashboard" current="Dashboard">
-        <div className="researcher-content">
-          <div className="researcher-intro-row">
-            <p>Here's your latest academic intelligence overview.</p>
-            <button type="button" className="researcher-date-filter">
-              <MiniIcon path="M7 7h10M9 12h6M11 17h2" />
-              Last 30 Days
-            </button>
-          </div>
-
-          <section className="researcher-stats" aria-label="Researcher metrics">
-            {researcherStats.map((stat) => (
-              <ResearcherStatCard stat={stat} key={stat.label} />
-            ))}
-          </section>
-
-          <div className="researcher-dashboard-grid">
-            <PublicationGrowthChart />
-            <aside className="researcher-side-column">
-              <TrendingKeywordsCard />
-              <ResearchDomainsCard />
-            </aside>
-          </div>
+      <div className="researcher-content">
+        <div className="researcher-intro-row">
+          <p>Here's your latest academic intelligence overview.</p>
+          <button type="button" className="researcher-date-filter">
+            <MiniIcon path="M7 7h10M9 12h6M11 17h2" />
+            Last 30 Days
+          </button>
         </div>
 
-        <button type="button" className="researcher-download" aria-label="Download report">
-          <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
-        </button>
+        <section className="researcher-stats" aria-label="Researcher metrics">
+          {researcherStats.map((stat) => (
+            <ResearcherStatCard stat={stat} key={stat.label} />
+          ))}
+        </section>
+
+        <div className="researcher-dashboard-grid">
+          <PublicationGrowthChart />
+          <aside className="researcher-side-column">
+            <TrendingKeywordsCard />
+            <ResearchDomainsCard />
+          </aside>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="researcher-download"
+        aria-label="Download report"
+      >
+        <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+      </button>
     </ResearcherShell>
   );
 }
@@ -1490,7 +3154,10 @@ function TrendMetricCard({ card }) {
       {card.bars ? (
         <div className="trend-mini-bars" aria-hidden="true">
           {card.bars.map((height, index) => (
-            <i style={{ height: `${height}%` }} key={`${card.label}-${index}`}></i>
+            <i
+              style={{ height: `${height}%` }}
+              key={`${card.label}-${index}`}
+            ></i>
           ))}
         </div>
       ) : (
@@ -1504,27 +3171,44 @@ function TrendMetricCard({ card }) {
 
 function TrendKeywordsOverview() {
   return (
-    <section className="trend-keywords-overview" aria-label="Top keywords overview">
+    <section
+      className="trend-keywords-overview"
+      aria-label="Top keywords overview"
+    >
       <div className="trend-overview-heading">
         <div>
           <span>Dashboard&nbsp; &gt;&nbsp; Trending Keywords</span>
           <h2>Top Keywords Overview</h2>
         </div>
-        <div className="trend-sort-toggle" aria-label="Keyword ranking strategy">
-          <button type="button" className="active">By Count</button>
+        <div
+          className="trend-sort-toggle"
+          aria-label="Keyword ranking strategy"
+        >
+          <button type="button" className="active">
+            By Count
+          </button>
           <button type="button">By Growth</button>
         </div>
       </div>
 
       <div className="trend-topic-filters" aria-label="Topic filters">
         {trendTopicFilters.map((filter, index) => (
-          <button type="button" className={index === 0 ? "active" : ""} key={filter}>{filter}</button>
+          <button
+            type="button"
+            className={index === 0 ? "active" : ""}
+            key={filter}
+          >
+            {filter}
+          </button>
         ))}
       </div>
 
       <div className="trend-keyword-card-grid">
         {trendKeywordOverview.map((keyword) => (
-          <article className={`trend-keyword-card ${keyword.selected ? "selected" : ""}`} key={keyword.keyword}>
+          <article
+            className={`trend-keyword-card ${keyword.selected ? "selected" : ""}`}
+            key={keyword.keyword}
+          >
             <div className="trend-keyword-topline">
               <div>
                 <h3>{keyword.keyword}</h3>
@@ -1532,10 +3216,18 @@ function TrendKeywordsOverview() {
               </div>
               <button
                 type="button"
-                aria-label={keyword.selected ? `Selected ${keyword.keyword}` : `Add ${keyword.keyword}`}
+                aria-label={
+                  keyword.selected
+                    ? `Selected ${keyword.keyword}`
+                    : `Add ${keyword.keyword}`
+                }
                 onClick={navTo("/researcher-trend-tracking")}
               >
-                {keyword.selected ? <MiniIcon path="M5 12.5 9.2 16.5 19 7" /> : "+"}
+                {keyword.selected ? (
+                  <MiniIcon path="M5 12.5 9.2 16.5 19 7" />
+                ) : (
+                  "+"
+                )}
               </button>
             </div>
             <div className="trend-keyword-bottomline">
@@ -1544,7 +3236,11 @@ function TrendKeywordsOverview() {
                 <span>Mentions</span>
               </div>
               <em className={keyword.tone}>
-                {keyword.tone === "up" ? <MiniIcon path="M12 19V5M7 10l5-5 5 5" /> : <MiniIcon path="M12 5v14M7 14l5 5 5-5" />}
+                {keyword.tone === "up" ? (
+                  <MiniIcon path="M12 19V5M7 10l5-5 5 5" />
+                ) : (
+                  <MiniIcon path="M12 5v14M7 14l5 5 5-5" />
+                )}
                 {keyword.change}
               </em>
             </div>
@@ -1563,37 +3259,81 @@ function TrendMainChart() {
   const minValue = 0;
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const getX = (index) => padding.left + (index / (trendLineData.length - 1)) * plotWidth;
-  const getY = (value) => padding.top + (1 - (value - minValue) / (maxValue - minValue)) * plotHeight;
-  const points = trendLineData.map((item, index) => ({ ...item, x: getX(index), y: getY(item.value) }));
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const getX = (index) =>
+    padding.left + (index / (trendLineData.length - 1)) * plotWidth;
+  const getY = (value) =>
+    padding.top + (1 - (value - minValue) / (maxValue - minValue)) * plotHeight;
+  const points = trendLineData.map((item, index) => ({
+    ...item,
+    x: getX(index),
+    y: getY(item.value),
+  }));
+  const path = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
   const ghostPath = `M ${points[2].x} ${points[2].y} L ${points[3].x} ${getY(56000)} L ${points[4].x} ${getY(66000)}`;
 
   return (
-    <section className="trend-panel trend-chart-panel" aria-label="Publication trend over time">
+    <section
+      className="trend-panel trend-chart-panel"
+      aria-label="Publication trend over time"
+    >
       <div className="trend-tabs">
-        <button type="button" className="active">Publications Over Time</button>
+        <button type="button" className="active">
+          Publications Over Time
+        </button>
         <button type="button">Distribution by Journal</button>
       </div>
       <div className="trend-chart-wrap">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Publications over time from 2019 to 2023">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Publications over time from 2019 to 2023"
+        >
           <g className="trend-grid">
             {[0, 1, 2, 3].map((tick) => (
-              <path key={tick} d={`M${padding.left} ${padding.top + tick * (plotHeight / 3)}H${width - padding.right}`} />
+              <path
+                key={tick}
+                d={`M${padding.left} ${padding.top + tick * (plotHeight / 3)}H${width - padding.right}`}
+              />
             ))}
           </g>
-          <path className="trend-axis" d={`M${padding.left} ${height - padding.bottom}H${width - padding.right}`} />
-          <path className="trend-axis" d={`M${padding.left} ${padding.top}V${height - padding.bottom}`} />
+          <path
+            className="trend-axis"
+            d={`M${padding.left} ${height - padding.bottom}H${width - padding.right}`}
+          />
+          <path
+            className="trend-axis"
+            d={`M${padding.left} ${padding.top}V${height - padding.bottom}`}
+          />
           <path className="trend-line-primary" d={path} />
           <path className="trend-line-secondary" d={ghostPath} />
           {points.map((point) => (
             <g key={point.year}>
-              <circle className="trend-point" cx={point.x} cy={point.y} r="4.5" />
-              <text x={point.x} y={height - 9} textAnchor="middle">{point.year}</text>
+              <circle
+                className="trend-point"
+                cx={point.x}
+                cy={point.y}
+                r="4.5"
+              />
+              <text x={point.x} y={height - 9} textAnchor="middle">
+                {point.year}
+              </text>
             </g>
           ))}
-          <circle className="trend-point emphasis" cx={points[4].x - 30} cy={getY(56000)} r="4.5" />
-          <circle className="trend-point emphasis" cx={points[4].x} cy={getY(62700)} r="4.5" />
+          <circle
+            className="trend-point emphasis"
+            cx={points[4].x - 30}
+            cy={getY(56000)}
+            r="4.5"
+          />
+          <circle
+            className="trend-point emphasis"
+            cx={points[4].x}
+            cy={getY(62700)}
+            r="4.5"
+          />
         </svg>
       </div>
     </section>
@@ -1615,7 +3355,10 @@ function TrendRankingTables() {
     <div className="trend-ranking-grid">
       <section className="trend-panel trend-table-card">
         <div className="trend-table-heading">
-          <h2><MiniIcon path="M5 7h14M5 12h14M5 17h14" /> Top 10 by Raw Count (Strategy A)</h2>
+          <h2>
+            <MiniIcon path="M5 7h14M5 12h14M5 17h14" /> Top 10 by Raw Count
+            (Strategy A)
+          </h2>
           <button type="button">Export</button>
         </div>
         <table>
@@ -1633,7 +3376,9 @@ function TrendRankingTables() {
                 <td>{index + 1}</td>
                 <td>{row.keyword}</td>
                 <td>{row.count}</td>
-                <td><TrendSparkline values={row.values} /></td>
+                <td>
+                  <TrendSparkline values={row.values} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1642,7 +3387,10 @@ function TrendRankingTables() {
 
       <section className="trend-panel trend-table-card">
         <div className="trend-table-heading">
-          <h2><MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" /> Top 10 by Growth Rate (Strategy B)</h2>
+          <h2>
+            <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" /> Top 10 by
+            Growth Rate (Strategy B)
+          </h2>
           <button type="button">Export</button>
         </div>
         <table>
@@ -1660,7 +3408,9 @@ function TrendRankingTables() {
                 <td>{index + 1}</td>
                 <td>{row.keyword}</td>
                 <td className="trend-positive">{row.growth}</td>
-                <td><MiniIcon path="M12 19V5M7 10l5-5 5 5" /></td>
+                <td>
+                  <MiniIcon path="M12 19V5M7 10l5-5 5 5" />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1691,7 +3441,9 @@ function TrendVolumeMatrix() {
             {trendVolumeRows.map((row) => (
               <tr className={row.summary ? "summary" : ""} key={row.discipline}>
                 <td>{row.discipline}</td>
-                {row.values.map((value, index) => <td key={`${row.discipline}-${index}`}>{value}</td>)}
+                {row.values.map((value, index) => (
+                  <td key={`${row.discipline}-${index}`}>{value}</td>
+                ))}
                 <td>{row.total}</td>
               </tr>
             ))}
@@ -1735,18 +3487,33 @@ function TrendTrackingDashboardPage() {
         <section className="trend-hero">
           <div>
             <h1>Trend Tracking</h1>
-            <p>Analyze keyword velocity and raw publication volume across disciplines.</p>
+            <p>
+              Analyze keyword velocity and raw publication volume across
+              disciplines.
+            </p>
           </div>
-          <form className="trend-filter-panel" onSubmit={navTo("/researcher-trend-tracking")}>
+          <form
+            className="trend-filter-panel"
+            onSubmit={navTo("/researcher-trend-tracking")}
+          >
             <label className="trend-keyword-field">
               <MiniIcon path="M6 5h12M8 12h8M10 19h4" />
-              <input type="search" defaultValue="Machine Learning" aria-label="Trend keyword" />
-              <button type="button" aria-label="Clear keyword">x</button>
+              <input
+                type="search"
+                defaultValue="Machine Learning"
+                aria-label="Trend keyword"
+              />
+              <button type="button" aria-label="Clear keyword">
+                x
+              </button>
             </label>
             <div className="trend-filter-row">
               <label>
                 <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6z" />
-                <select defaultValue="Last 5 Years (2019-2023)" aria-label="Date range">
+                <select
+                  defaultValue="Last 5 Years (2019-2023)"
+                  aria-label="Date range"
+                >
                   <option>Last 5 Years (2019-2023)</option>
                   <option>Last 3 Years (2021-2023)</option>
                   <option>Last 10 Years (2014-2023)</option>
@@ -1758,7 +3525,9 @@ function TrendTrackingDashboardPage() {
         </section>
 
         <section className="trend-metric-grid" aria-label="Trend metrics">
-          {trendMetricCards.map((card) => <TrendMetricCard card={card} key={card.label} />)}
+          {trendMetricCards.map((card) => (
+            <TrendMetricCard card={card} key={card.label} />
+          ))}
         </section>
 
         <TrendMainChart />
@@ -1772,7 +3541,9 @@ function TrendTrackingDashboardPage() {
 function ReportStepCard({ step, title, icon, children, accent = false }) {
   return (
     <section className={`report-step-card ${accent ? "accent" : ""}`}>
-      <h2><MiniIcon path={icon} /> Step {step}: {title}</h2>
+      <h2>
+        <MiniIcon path={icon} /> Step {step}: {title}
+      </h2>
       {children}
     </section>
   );
@@ -1797,12 +3568,20 @@ function ReportsPage() {
 
         <div className="reports-layout">
           <aside className="reports-config-column">
-            <ReportStepCard step="1" title="Select Scope" icon="M4 5h16l-6 7v5l-4 2v-7L4 5Z">
+            <ReportStepCard
+              step="1"
+              title="Select Scope"
+              icon="M4 5h16l-6 7v5l-4 2v-7L4 5ZM8 8h8M10 12h4"
+            >
               <label className="report-field">
                 <span>Keywords (Multi-select)</span>
                 <div className="report-token-box">
-                  <span>machine learning <button type="button">x</button></span>
-                  <span>climate models <button type="button">x</button></span>
+                  <span>
+                    machine learning <button type="button">x</button>
+                  </span>
+                  <span>
+                    climate models <button type="button">x</button>
+                  </span>
                   <input type="text" placeholder="Type and press enter..." />
                 </div>
               </label>
@@ -1811,37 +3590,63 @@ function ReportsPage() {
                 <div className="report-empty-select"></div>
               </label>
               <div className="report-year-grid">
-                <label className="report-field"><span>Start Year</span><input type="text" defaultValue="2018" /></label>
-                <label className="report-field"><span>End Year</span><input type="text" defaultValue="2023" /></label>
+                <label className="report-field">
+                  <span>Start Year</span>
+                  <input type="text" defaultValue="2018" />
+                </label>
+                <label className="report-field">
+                  <span>End Year</span>
+                  <input type="text" defaultValue="2023" />
+                </label>
               </div>
               <label className="report-field">
                 <span>Topics</span>
-                <input type="text" defaultValue="e.g. Artificial Intelligence, Genomics" />
+                <input
+                  type="text"
+                  defaultValue="e.g. Artificial Intelligence, Genomics"
+                />
               </label>
             </ReportStepCard>
 
-            <ReportStepCard step="2" title="Choose Metrics" icon="M5 5h14v14H5zM8 15V9M12 15v-4M16 15v-7">
+            <ReportStepCard
+              step="2"
+              title="Choose Metrics"
+              icon="M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 15V9M12 15v-3M15 15v-5"
+            >
               <div className="report-metric-options">
                 {reportMetrics.map((metric, index) => (
                   <label key={metric}>
-                    <input type="checkbox" defaultChecked={index !== 3 && index !== 5} />
+                    <input
+                      type="checkbox"
+                      defaultChecked={index !== 3 && index !== 5}
+                    />
                     <span>{metric}</span>
                   </label>
                 ))}
               </div>
             </ReportStepCard>
 
-            <ReportStepCard step="4" title="Export Options" icon="M12 4v10M8 10l4 4 4-4M5 19h14" accent>
+            <ReportStepCard
+              step="4"
+              title="Export Options"
+              icon="M12 4v10M8 10l4 4 4-4M5 19h14M7 6h3M14 6h3"
+              accent
+            >
               <div className="report-format-options">
-                <label><input type="radio" name="format" defaultChecked /> <span>Excel (.xlsx)</span></label>
-                <label><input type="radio" name="format" /> <span>CSV</span></label>
+                <label>
+                  <input type="radio" name="format" defaultChecked />{" "}
+                  <span>Excel (.xlsx)</span>
+                </label>
+                <label>
+                  <input type="radio" name="format" /> <span>CSV</span>
+                </label>
               </div>
               <label className="report-switch">
                 <input type="checkbox" defaultChecked />
                 <span>Include raw data sheets</span>
               </label>
               <button type="button" className="report-generate-button">
-                <MiniIcon path="M13 3 5 14h6l-1 7 8-11h-6l1-7Z" />
+                <MiniIcon path="M13 3 5 14h6l-1 7 8-11h-6l1-7ZM8 5h2M15 18h2" />
                 Generate Report
               </button>
             </ReportStepCard>
@@ -1850,29 +3655,70 @@ function ReportsPage() {
           <section className="reports-preview-column">
             <section className="report-preview-card">
               <div className="report-panel-heading">
-                <h2><MiniIcon path="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z" /> Step 3: Live Preview</h2>
+                <h2>
+                  <MiniIcon path="M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6ZM16.5 6.5l2-2" />{" "}
+                  Step 3: Live Preview
+                </h2>
                 <button type="button">Sample Data</button>
               </div>
               <div className="report-document-preview">
-                <h3>Trend Analysis: Machine Learning in Nature &amp; Science (2018-2023)</h3>
-                <p>Generated on: [Current Date] • Scope: 2 Keywords, 2 Journals</p>
+                <h3>
+                  Trend Analysis: Machine Learning in Nature &amp; Science
+                  (2018-2023)
+                </h3>
+                <p>
+                  Generated on: [Current Date] • Scope: 2 Keywords, 2 Journals
+                </p>
                 <div className="report-preview-metrics">
-                  <div><span>Total Publications</span><strong>1,245</strong><i></i></div>
-                  <div><span>Avg Growth Rate</span><strong>+14.2%</strong><i></i></div>
-                  <div><span>Avg Citations/Paper</span><strong>42.8</strong><i></i></div>
+                  <div>
+                    <span>Total Publications</span>
+                    <strong>1,245</strong>
+                    <i></i>
+                  </div>
+                  <div>
+                    <span>Avg Growth Rate</span>
+                    <strong>+14.2%</strong>
+                    <i></i>
+                  </div>
+                  <div>
+                    <span>Avg Citations/Paper</span>
+                    <strong>42.8</strong>
+                    <i></i>
+                  </div>
                 </div>
-                <div className="report-bar-chart" aria-label="Publication bar chart">
-                  {[35, 48, 58, 74, 86].map((height, index) => <i style={{ height: `${height}%` }} key={index}></i>)}
+                <div
+                  className="report-bar-chart"
+                  aria-label="Publication bar chart"
+                >
+                  {[35, 48, 58, 74, 86].map((height, index) => (
+                    <i style={{ height: `${height}%` }} key={index}></i>
+                  ))}
                   <span></span>
                 </div>
                 <table className="report-author-table">
                   <thead>
-                    <tr><th>Top Authors</th><th>Pubs</th><th>Trend Score A</th></tr>
+                    <tr>
+                      <th>Top Authors</th>
+                      <th>Pubs</th>
+                      <th>Trend Score A</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    <tr><td>J. Smith et al.</td><td>42</td><td>89.4</td></tr>
-                    <tr><td>A. Johnson</td><td>38</td><td>85.1</td></tr>
-                    <tr><td>L. Williams</td><td>31</td><td>72.0</td></tr>
+                    <tr>
+                      <td>J. Smith et al.</td>
+                      <td>42</td>
+                      <td>89.4</td>
+                    </tr>
+                    <tr>
+                      <td>A. Johnson</td>
+                      <td>38</td>
+                      <td>85.1</td>
+                    </tr>
+                    <tr>
+                      <td>L. Williams</td>
+                      <td>31</td>
+                      <td>72.0</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -1880,25 +3726,52 @@ function ReportsPage() {
 
             <section className="report-history-card">
               <div className="report-panel-heading">
-                <h2><MiniIcon path="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5M12 8v5l3 2" /> Report History</h2>
+                <h2>
+                  <MiniIcon path="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5M12 8v5l3 2" />{" "}
+                  Report History
+                </h2>
                 <span>Last 10 reports</span>
               </div>
               <table>
                 <thead>
-                  <tr><th>Report Name</th><th>Date Generated</th><th>Format</th><th>Action</th></tr>
+                  <tr>
+                    <th>Report Name</th>
+                    <th>Date Generated</th>
+                    <th>Format</th>
+                    <th>Action</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {reportHistoryRows.map((row) => (
                     <tr key={row.name}>
                       <td>{row.name}</td>
                       <td>{row.date}</td>
-                      <td><span className={row.format === "Excel" ? "excel" : "csv"}>{row.format}</span></td>
-                      <td><a href="/researcher-reports" onClick={navTo("/researcher-reports")}>Download</a></td>
+                      <td>
+                        <span
+                          className={row.format === "Excel" ? "excel" : "csv"}
+                        >
+                          {row.format}
+                        </span>
+                      </td>
+                      <td>
+                        <a
+                          href="/researcher-reports"
+                          onClick={navTo("/researcher-reports")}
+                        >
+                          Download
+                        </a>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <a className="report-history-link" href="/researcher-reports" onClick={navTo("/researcher-reports")}>View all historical reports</a>
+              <a
+                className="report-history-link"
+                href="/researcher-reports"
+                onClick={navTo("/researcher-reports")}
+              >
+                View all historical reports
+              </a>
             </section>
           </section>
         </div>
@@ -1919,14 +3792,25 @@ function YearMetricCard({ card }) {
       {card.note ? <small>{card.note}</small> : null}
       {card.bars ? (
         <div className="year-mini-bars" aria-hidden="true">
-          {card.bars.map((height, index) => <i style={{ height: `${height}%` }} key={index}></i>)}
+          {card.bars.map((height, index) => (
+            <i style={{ height: `${height}%` }} key={index}></i>
+          ))}
         </div>
       ) : (
         <div className="year-rank-grid">
-          {card.ranks.map((rank, index) => <span className={card.danger && index === 1 ? "danger" : ""} key={rank}>{rank}</span>)}
+          {card.ranks.map((rank, index) => (
+            <span
+              className={card.danger && index === 1 ? "danger" : ""}
+              key={rank}
+            >
+              {rank}
+            </span>
+          ))}
         </div>
       )}
-      {card.subvalue ? <b className={card.danger ? "danger" : ""}>{card.subvalue}</b> : null}
+      {card.subvalue ? (
+        <b className={card.danger ? "danger" : ""}>{card.subvalue}</b>
+      ) : null}
     </article>
   );
 }
@@ -1938,39 +3822,94 @@ function YearTrajectoryChart() {
   const maxValue = 1600;
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const getX = (index) => padding.left + (index / (yearTrajectoryData.length - 1)) * plotWidth;
+  const getX = (index) =>
+    padding.left + (index / (yearTrajectoryData.length - 1)) * plotWidth;
   const getY = (value) => padding.top + (1 - value / maxValue) * plotHeight;
-  const points = yearTrajectoryData.map((item, index) => ({ ...item, x: getX(index), yBase: getY(item.baseline), yComp: getY(item.comparison) }));
-  const baselinePath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.yBase}`).join(" ");
-  const comparisonPath = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.yComp}`).join(" ");
+  const points = yearTrajectoryData.map((item, index) => ({
+    ...item,
+    x: getX(index),
+    yBase: getY(item.baseline),
+    yComp: getY(item.comparison),
+  }));
+  const baselinePath = points
+    .map(
+      (point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.yBase}`,
+    )
+    .join(" ");
+  const comparisonPath = points
+    .map(
+      (point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.yComp}`,
+    )
+    .join(" ");
 
   return (
     <section className="year-chart-card">
       <div className="year-chart-heading">
-        <h2>Publication Volume<br />Trajectory</h2>
+        <h2>
+          Publication Volume
+          <br />
+          Trajectory
+        </h2>
         <div className="year-chart-legend">
-          <span><i className="baseline"></i> 2024<br />(Baseline)</span>
-          <span><i className="comparison"></i> 2025<br />(Comparison)</span>
+          <span>
+            <i className="baseline"></i> 2024
+            <br />
+            (Baseline)
+          </span>
+          <span>
+            <i className="comparison"></i> 2025
+            <br />
+            (Comparison)
+          </span>
         </div>
       </div>
-      <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Publication volume trajectory comparing 2024 and 2025">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Publication volume trajectory comparing 2024 and 2025"
+      >
         <g className="year-grid">
           {[0, 500, 1000, 1500].map((tick) => (
-            <path key={tick} d={`M${padding.left} ${getY(tick)}H${width - padding.right}`} />
+            <path
+              key={tick}
+              d={`M${padding.left} ${getY(tick)}H${width - padding.right}`}
+            />
           ))}
         </g>
         <g className="year-y-labels">
           {[0, 500, 1000, 1500].map((tick) => (
-            <text key={tick} x={padding.left - 16} y={getY(tick) + 4} textAnchor="end">{tick === 0 ? "0" : `${(tick / 1000).toFixed(tick === 1000 ? 1 : 1)}k`}</text>
+            <text
+              key={tick}
+              x={padding.left - 16}
+              y={getY(tick) + 4}
+              textAnchor="end"
+            >
+              {tick === 0
+                ? "0"
+                : `${(tick / 1000).toFixed(tick === 1000 ? 1 : 1)}k`}
+            </text>
           ))}
         </g>
-        <path className="year-axis" d={`M${padding.left} ${height - padding.bottom}H${width - padding.right}`} />
+        <path
+          className="year-axis"
+          d={`M${padding.left} ${height - padding.bottom}H${width - padding.right}`}
+        />
         <path className="year-baseline-line" d={baselinePath} />
         <path className="year-comparison-line" d={comparisonPath} />
         {points.map((point, index) => (
           <g key={`${point.quarter}-${index}`}>
-            <circle className="year-comparison-point" cx={point.x} cy={point.yComp} r={index === points.length - 1 ? "9" : "8"} />
-            {index < 4 ? <text x={point.x} y={height - 12} textAnchor="middle">{point.quarter}</text> : null}
+            <circle
+              className="year-comparison-point"
+              cx={point.x}
+              cy={point.yComp}
+              r={index === points.length - 1 ? "9" : "8"}
+            />
+            {index < 4 ? (
+              <text x={point.x} y={height - 12} textAnchor="middle">
+                {point.quarter}
+              </text>
+            ) : null}
           </g>
         ))}
       </svg>
@@ -1987,13 +3926,18 @@ function YearKeywordDifferential() {
       </div>
       <table>
         <thead>
-          <tr><th>Keyword</th><th>Delta</th></tr>
+          <tr>
+            <th>Keyword</th>
+            <th>Delta</th>
+          </tr>
         </thead>
         <tbody>
           {yearKeywordDiff.map((row) => (
             <tr key={row.keyword}>
               <td>{row.keyword}</td>
-              <td><span className={row.tone}>{row.delta}</span></td>
+              <td>
+                <span className={row.tone}>{row.delta}</span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -2019,16 +3963,38 @@ function YearComparisonPage() {
             <span>Dashboard&nbsp; &gt;&nbsp; Year Comparison</span>
             <h1>Year Comparison Analysis</h1>
           </div>
-          <form className="year-controls" onSubmit={navTo("/researcher-year-comparison")}>
-            <label>Baseline <select defaultValue="2024"><option>2024</option><option>2023</option></select></label>
+          <form
+            className="year-controls"
+            onSubmit={navTo("/researcher-year-comparison")}
+          >
+            <label>
+              Baseline{" "}
+              <select defaultValue="2024">
+                <option>2024</option>
+                <option>2023</option>
+              </select>
+            </label>
             <MiniIcon path="M8 7h10M14 3l4 4-4 4M16 17H6M10 13l-4 4 4 4" />
-            <label>Comparison <select defaultValue="2025"><option>2025</option><option>2024</option></select></label>
-            <button type="submit"><MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" /> Export Data</button>
+            <label>
+              Comparison{" "}
+              <select defaultValue="2025">
+                <option>2025</option>
+                <option>2024</option>
+              </select>
+            </label>
+            <button type="submit">
+              <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" /> Export Data
+            </button>
           </form>
         </section>
 
-        <section className="year-metric-grid" aria-label="Year comparison metrics">
-          {yearMetricCards.map((card) => <YearMetricCard card={card} key={card.label} />)}
+        <section
+          className="year-metric-grid"
+          aria-label="Year comparison metrics"
+        >
+          {yearMetricCards.map((card) => (
+            <YearMetricCard card={card} key={card.label} />
+          ))}
         </section>
 
         <div className="year-analysis-grid">
@@ -2051,9 +4017,18 @@ function SyncSourceCard({ source }) {
         <span className={source.statusTone}>{source.status}</span>
       </div>
       <div className="sync-source-stats">
-        <div><span>Synced Records</span><strong>{source.synced}</strong></div>
-        <div><span>Latency</span><strong>{source.latency}</strong></div>
-        <div><span>Coverage</span><strong>{source.coverage}</strong></div>
+        <div>
+          <span>Synced Records</span>
+          <strong>{source.synced}</strong>
+        </div>
+        <div>
+          <span>Latency</span>
+          <strong>{source.latency}</strong>
+        </div>
+        <div>
+          <span>Coverage</span>
+          <strong>{source.coverage}</strong>
+        </div>
       </div>
     </article>
   );
@@ -2075,22 +4050,34 @@ function SyncManagementPage() {
           <div>
             <span>Dashboard&nbsp; &gt;&nbsp; Sync Management</span>
             <h1>Academic Data Sync Management</h1>
-            <p>Monitor publication metadata ingestion, API comparison samples, normalization, scheduled jobs, and failure logs.</p>
+            <p>
+              Monitor publication metadata ingestion, API comparison samples,
+              normalization, scheduled jobs, and failure logs.
+            </p>
           </div>
           <div className="sync-hero-actions">
-            <button type="button" className="sync-secondary-button"><MiniIcon path="M4 4v6h6M20 20v-6h-6M20 8a7 7 0 0 0-12.1-4M4 16a7 7 0 0 0 12.1 4" /> Run Dry Check</button>
-            <button type="button" className="sync-primary-button"><MiniIcon path="M12 5v14M5 12h14" /> Start Sync</button>
+            <button type="button" className="sync-secondary-button">
+              <MiniIcon path="M4 4v6h6M20 20v-6h-6M20 8a7 7 0 0 0-12.1-4M4 16a7 7 0 0 0 12.1 4M9 12h6" />{" "}
+              Run Dry Check
+            </button>
+            <button type="button" className="sync-primary-button">
+              <MiniIcon path="M12 5v14M5 12h14M7 7l10 10" /> Start Sync
+            </button>
           </div>
         </section>
 
         <section className="sync-source-grid" aria-label="Sync data sources">
-          {syncSourceCards.map((source) => <SyncSourceCard source={source} key={source.name} />)}
+          {syncSourceCards.map((source) => (
+            <SyncSourceCard source={source} key={source.name} />
+          ))}
         </section>
 
         <div className="sync-dashboard-grid">
           <section className="sync-panel sync-pipeline-panel">
             <div className="sync-panel-heading">
-              <h2><MiniIcon path="M4 7h4l3 10h4l3-10h2" /> Metadata Pipeline</h2>
+              <h2>
+                <MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" /> Metadata Pipeline
+              </h2>
               <span>Current batch: #SS-2026-0618</span>
             </div>
             <div className="sync-pipeline-steps">
@@ -2109,12 +4096,21 @@ function SyncManagementPage() {
 
           <section className="sync-panel sync-schedule-panel">
             <div className="sync-panel-heading">
-              <h2><MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6z" /> Hangfire Schedule</h2>
+              <h2>
+                <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6zM9 13h2M13 13h2M9 16h2" /> Hangfire
+                Schedule
+              </h2>
               <button type="button">Configure</button>
             </div>
             <table>
               <thead>
-                <tr><th>Job</th><th>Schedule</th><th>Last Run</th><th>Duration</th><th>Status</th></tr>
+                <tr>
+                  <th>Job</th>
+                  <th>Schedule</th>
+                  <th>Last Run</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                </tr>
               </thead>
               <tbody>
                 {syncJobs.map((job) => (
@@ -2123,7 +4119,11 @@ function SyncManagementPage() {
                     <td>{job.schedule}</td>
                     <td>{job.lastRun}</td>
                     <td>{job.duration}</td>
-                    <td><span className={job.status.toLowerCase()}>{job.status}</span></td>
+                    <td>
+                      <span className={job.status.toLowerCase()}>
+                        {job.status}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2132,24 +4132,49 @@ function SyncManagementPage() {
 
           <section className="sync-panel sync-health-panel">
             <div className="sync-panel-heading">
-              <h2><MiniIcon path="M12 21s8-4.5 8-11V5l-8-3-8 3v5c0 6.5 8 11 8 11Z" /> Database Health</h2>
+              <h2>
+                <MiniIcon path="M12 21s8-4.5 8-11V5l-8-3-8 3v5c0 6.5 8 11 8 11ZM8.5 12l2.2 2.2L15.8 9" />{" "}
+                Database Health
+              </h2>
             </div>
             <div className="sync-health-grid">
-              <div><span>Canonical Publications</span><strong>152,900</strong><i style={{ width: "88%" }}></i></div>
-              <div><span>Normalized Authors</span><strong>48,730</strong><i style={{ width: "74%" }}></i></div>
-              <div><span>Duplicate Merge Rate</span><strong>3.8%</strong><i style={{ width: "38%" }}></i></div>
-              <div><span>Error Queue</span><strong>42</strong><i className="danger" style={{ width: "24%" }}></i></div>
+              <div>
+                <span>Canonical Publications</span>
+                <strong>152,900</strong>
+                <i style={{ width: "88%" }}></i>
+              </div>
+              <div>
+                <span>Normalized Authors</span>
+                <strong>48,730</strong>
+                <i style={{ width: "74%" }}></i>
+              </div>
+              <div>
+                <span>Duplicate Merge Rate</span>
+                <strong>3.8%</strong>
+                <i style={{ width: "38%" }}></i>
+              </div>
+              <div>
+                <span>Error Queue</span>
+                <strong>42</strong>
+                <i className="danger" style={{ width: "24%" }}></i>
+              </div>
             </div>
           </section>
 
           <section className="sync-panel sync-log-panel">
             <div className="sync-panel-heading">
-              <h2><MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5" /> Sync Logs & Errors</h2>
+              <h2>
+                <MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5M18 4l2-2M20 6l2-2" /> Sync Logs
+                & Errors
+              </h2>
               <span>Live logging</span>
             </div>
             <div className="sync-log-list">
               {syncLogs.map((log) => (
-                <article className={`sync-log ${log.level.toLowerCase()}`} key={`${log.time}-${log.message}`}>
+                <article
+                  className={`sync-log ${log.level.toLowerCase()}`}
+                  key={`${log.time}-${log.message}`}
+                >
                   <time>{log.time}</time>
                   <strong>{log.level}</strong>
                   <p>{log.message}</p>
@@ -2166,34 +4191,55 @@ function SyncManagementPage() {
 function ResearcherSearchTopbar({ onMenuClick }) {
   return (
     <header className="researcher-graph-topbar">
-      <button type="button" className="researcher-menu-button" aria-label="Toggle navigation" onClick={onMenuClick}>
-        <MiniIcon path="M4 6h16M4 12h16M4 18h16" />
+      <button
+        type="button"
+        className="researcher-menu-button"
+        aria-label="Toggle navigation"
+        onClick={onMenuClick}
+      >
+        <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
       </button>
       <nav className="researcher-graph-breadcrumb" aria-label="Breadcrumb">
-        <a href="/researcher-dashboard" onClick={navTo("/researcher-dashboard")}>Dashboard</a>
+        <a
+          href="/researcher-dashboard"
+          onClick={navTo("/researcher-dashboard")}
+        >
+          Dashboard
+        </a>
         <span>&gt;</span>
         <strong>Knowledge Graph</strong>
       </nav>
 
-      <form className="researcher-graph-search" onSubmit={navTo("/researcher-search")}>
-        <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
-        <input type="search" defaultValue="DeepFruits: A Fruit Detection System..." aria-label="Search knowledge graph" />
+      <form
+        className="researcher-graph-search"
+        onSubmit={navTo("/researcher-search")}
+      >
+        <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6" />
+        <input
+          type="search"
+          defaultValue="DeepFruits: A Fruit Detection System..."
+          aria-label="Search knowledge graph"
+        />
       </form>
 
       <div className="researcher-graph-actions">
         <button type="button" className="graph-toolbar-button">
-          <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+          <MiniIcon path="M6 6h12M6 12h12M6 18h12M4 6h.01M4 12h.01M4 18h.01" />
           List View
         </button>
         <button type="button" className="graph-toolbar-button active">
-          <MiniIcon path="M4 5h16l-6.2 7.1V18l-3.6 1.6v-7.5L4 5Z" />
+          <MiniIcon path="M4 5h16l-6.2 7.1V18l-3.6 1.6v-7.5L4 5ZM8 8h8" />
           Filters
         </button>
         <button type="button" className="graph-icon-button" aria-label="Help">
-          <MiniIcon path="M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          <MiniIcon path="M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM18.5 5.5l1.5-1.5" />
         </button>
-        <button type="button" className="graph-icon-button" aria-label="Settings">
-          <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
+        <button
+          type="button"
+          className="graph-icon-button"
+          aria-label="Settings"
+        >
+          <MiniIcon path="M5 7h4M13 7h6M11 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 12h9M18 12h1M16 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 17h2M11 17h8M9 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0" />
         </button>
       </div>
     </header>
@@ -2203,30 +4249,63 @@ function ResearcherSearchTopbar({ onMenuClick }) {
 function ResearcherPublicationTopbar({ onMenuClick }) {
   return (
     <header className="researcher-topbar researcher-publication-topbar">
-      <button type="button" className="researcher-menu-button" aria-label="Toggle navigation" onClick={onMenuClick}>
-        <MiniIcon path="M4 6h16M4 12h16M4 18h16" />
+      <button
+        type="button"
+        className="researcher-menu-button"
+        aria-label="Toggle navigation"
+        onClick={onMenuClick}
+      >
+        <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
       </button>
       <nav className="researcher-breadcrumb" aria-label="Breadcrumb">
-        <a href="/researcher-search" onClick={navTo("/researcher-search")}>Search</a>
+        <a href="/researcher-search" onClick={navTo("/researcher-search")}>
+          Search
+        </a>
         <span>&gt;</span>
-        <a href="/researcher-search" onClick={navTo("/researcher-search")}>Results</a>
+        <a href="/researcher-search" onClick={navTo("/researcher-search")}>
+          Results
+        </a>
         <span>&gt;</span>
         <strong>Deep Learning for Advanced Pattern Recognition...</strong>
       </nav>
 
       <div className="researcher-top-actions">
-        <form className="researcher-search" onSubmit={navTo("/researcher-search")}>
-          <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
-          <input type="search" placeholder="Search..." aria-label="Search publications" />
+        <form
+          className="researcher-search"
+          onSubmit={navTo("/researcher-search")}
+        >
+          <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6" />
+          <input
+            type="search"
+            placeholder="Search..."
+            aria-label="Search publications"
+          />
         </form>
-        <button type="button" className="researcher-top-icon" aria-label="Notifications" onClick={navTo("/researcher-notifications")}>
-          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
+        <button
+          type="button"
+          className="researcher-top-icon"
+          aria-label="Notifications"
+          onClick={navTo("/researcher-notifications")}
+        >
+          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M17.5 5.5l2-2M6.5 5.5l-2-2" />
         </button>
-        <button type="button" className="researcher-top-icon" aria-label="Settings">
-          <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
+        <button
+          type="button"
+          className="researcher-top-icon"
+          aria-label="Settings"
+        >
+          <MiniIcon path="M5 7h4M13 7h6M11 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 12h9M18 12h1M16 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 17h2M11 17h8M9 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0" />
         </button>
-        <button type="button" className="researcher-avatar" aria-label="User profile" onClick={navTo("/researcher-profile")}>
-          <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="Researcher profile" />
+        <button
+          type="button"
+          className="researcher-avatar"
+          aria-label="User profile"
+          onClick={navTo("/researcher-profile")}
+        >
+          <img
+            src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+            alt="Researcher profile"
+          />
         </button>
       </div>
     </header>
@@ -2273,6 +4352,8 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
     graphGroup.rotation.x = -0.08;
     graphGroup.rotation.y = -0.18;
     graphGroup.position.x = 22;
+    graphGroup.position.y = 110;
+    graphGroup.scale.setScalar(0.86);
     scene.add(graphGroup);
 
     scene.add(new THREE.AmbientLight(0xffffff, 1.2));
@@ -2283,7 +4364,9 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
     fillLight.position.set(-260, -120, 220);
     scene.add(fillLight);
 
-    const nodeById = Object.fromEntries(graph3DNodes.map((node) => [node.id, node]));
+    const nodeById = Object.fromEntries(
+      graph3DNodes.map((node) => [node.id, node]),
+    );
     const labelItems = [];
     const nodeItems = new Map();
     const nodeMeshes = [];
@@ -2312,7 +4395,7 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
         transparent: true,
         opacity: 0.22,
         depthWrite: false,
-      })
+      }),
     );
     const selectionRing = new THREE.Mesh(
       new THREE.TorusGeometry(1.22, 0.055, 16, 120),
@@ -2321,7 +4404,7 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
         transparent: true,
         opacity: 0.86,
         depthWrite: false,
-      })
+      }),
     );
     selectionGroup.add(selectionHalo, selectionRing);
     selectionGroup.visible = false;
@@ -2330,7 +4413,8 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
     graph3DNodes.forEach((node) => {
       const selectedRadius = node.size;
       const idleRadius = Math.max(node.size * 0.42, 8);
-      const radius = node.id === selectedNodeIdRef.current ? selectedRadius : idleRadius;
+      const radius =
+        node.id === selectedNodeIdRef.current ? selectedRadius : idleRadius;
       const position = new THREE.Vector3(...node.position);
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(node.color),
@@ -2339,7 +4423,10 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
         roughness: 0.48,
         metalness: 0.05,
       });
-      const sphere = new THREE.Mesh(new THREE.SphereGeometry(1, 40, 24), material);
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 40, 24),
+        material,
+      );
       sphere.position.copy(position);
       sphere.scale.setScalar(radius);
       sphere.userData.nodeId = node.id;
@@ -2347,7 +4434,10 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
       nodeMeshes.push(sphere);
 
       const label = document.createElement("span");
-      label.className = node.id === selectedNodeIdRef.current ? "graph-3d-label selected" : "graph-3d-label";
+      label.className =
+        node.id === selectedNodeIdRef.current
+          ? "graph-3d-label selected"
+          : "graph-3d-label";
       label.textContent = node.label;
       labelLayer.appendChild(label);
       const item = {
@@ -2373,7 +4463,9 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
         item.material.opacity = active ? 0.72 : 0.82;
         item.material.emissive.set(active ? 0x6d4df2 : 0x000000);
         item.material.emissiveIntensity = active ? 0.08 : 0;
-        item.label.className = active ? "graph-3d-label selected" : "graph-3d-label";
+        item.label.className = active
+          ? "graph-3d-label selected"
+          : "graph-3d-label";
       });
 
       if (selectedItem) {
@@ -2385,25 +4477,29 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
 
     selectionApiRef.current = { applySelection };
     applySelection(selectedNodeIdRef.current);
+    let graphZoom = 0.86;
 
     const resize = () => {
       const width = Math.max(mount.clientWidth, 320);
       const height = Math.max(mount.clientHeight, 320);
       const isNarrow = width < 620;
+      const baseZoom = isNarrow ? 0.78 : 0.86;
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
-      camera.position.z = isNarrow ? 1060 : 780;
-      graphGroup.position.x = isNarrow ? -86 : 22;
-      graphGroup.position.y = isNarrow ? 14 : 0;
-      controls.minDistance = isNarrow ? 620 : 360;
-      controls.maxDistance = isNarrow ? 1320 : 980;
+      camera.position.z = isNarrow ? 1160 : 920;
+      graphGroup.position.x = isNarrow ? -46 : 54;
+      graphGroup.position.y = isNarrow ? 84 : 92;
+      graphZoom = baseZoom;
+      graphGroup.scale.setScalar(graphZoom);
+      controls.target.set(graphGroup.position.x, graphGroup.position.y, 0);
+      controls.minDistance = isNarrow ? 760 : 520;
+      controls.maxDistance = isNarrow ? 1420 : 1180;
       camera.updateProjectionMatrix();
       controls.update();
     };
 
-    let graphZoom = 1;
     const setGraphZoom = (nextZoom) => {
-      graphZoom = THREE.MathUtils.clamp(nextZoom, 0.72, 1.62);
+      graphZoom = THREE.MathUtils.clamp(nextZoom, 0.62, 1.42);
       graphGroup.scale.setScalar(graphZoom);
       controls.autoRotate = false;
       controls.update();
@@ -2421,7 +4517,8 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      return raycaster.intersectObjects(nodeMeshes, false)[0]?.object.userData.nodeId;
+      return raycaster.intersectObjects(nodeMeshes, false)[0]?.object.userData
+        .nodeId;
     };
 
     const handlePointerDown = (event) => {
@@ -2430,12 +4527,17 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
     };
 
     const handlePointerMove = (event) => {
-      renderer.domElement.style.cursor = getIntersectedNodeId(event) ? "pointer" : "grab";
+      renderer.domElement.style.cursor = getIntersectedNodeId(event)
+        ? "pointer"
+        : "grab";
     };
 
     const handlePointerUp = (event) => {
       if (!pointerDown) return;
-      const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
+      const moved = Math.hypot(
+        event.clientX - pointerDown.x,
+        event.clientY - pointerDown.y,
+      );
       pointerDown = null;
       if (moved > 7) return;
 
@@ -2474,7 +4576,11 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
         const x = (projectedPosition.x * 0.5 + 0.5) * width;
         const y = (-projectedPosition.y * 0.5 + 0.5) * height;
         const visible = projectedPosition.z < 1;
-        const depthScale = THREE.MathUtils.clamp(1.08 - projectedPosition.z * 0.22, 0.72, 1.08);
+        const depthScale = THREE.MathUtils.clamp(
+          1.08 - projectedPosition.z * 0.22,
+          0.72,
+          1.08,
+        );
         label.style.opacity = visible ? (isSelected ? "1" : "0.86") : "0";
         label.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${depthScale})`;
       });
@@ -2492,7 +4598,10 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerup", handlePointerUp);
-      renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
+      renderer.domElement.removeEventListener(
+        "pointerleave",
+        handlePointerLeave,
+      );
       graphActionsRef.current.zoomIn = null;
       graphActionsRef.current.zoomOut = null;
       selectionApiRef.current = null;
@@ -2514,13 +4623,36 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
   }, [onSelectNode]);
 
   return (
-    <section className="knowledge-graph-panel" aria-label="Research knowledge graph">
-      <div className="knowledge-graph-webgl" ref={mountRef} aria-hidden="true"></div>
-      <div className="knowledge-graph-label-layer" ref={labelLayerRef} aria-hidden="true"></div>
+    <section
+      className="knowledge-graph-panel"
+      aria-label="Research knowledge graph"
+    >
+      <div
+        className="knowledge-graph-webgl"
+        ref={mountRef}
+        aria-hidden="true"
+      ></div>
+      <div
+        className="knowledge-graph-label-layer"
+        ref={labelLayerRef}
+        aria-hidden="true"
+      ></div>
 
       <div className="graph-zoom-controls" aria-label="Zoom controls">
-        <button type="button" aria-label="Zoom in" onClick={() => graphActionsRef.current.zoomIn?.()}>+</button>
-        <button type="button" aria-label="Zoom out" onClick={() => graphActionsRef.current.zoomOut?.()}>-</button>
+        <button
+          type="button"
+          aria-label="Zoom in"
+          onClick={() => graphActionsRef.current.zoomIn?.()}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          aria-label="Zoom out"
+          onClick={() => graphActionsRef.current.zoomOut?.()}
+        >
+          -
+        </button>
       </div>
 
       <div className="graph-bottom-bar">
@@ -2531,8 +4663,20 @@ function KnowledgeGraphCanvas({ selectedNodeId, onSelectNode }) {
         <label className="year-range-control">
           <span>Year Range</span>
           <em>2010</em>
-          <input type="range" min="2010" max="2024" defaultValue="2020" aria-label="Start year" />
-          <input type="range" min="2010" max="2024" defaultValue="2024" aria-label="End year" />
+          <input
+            type="range"
+            min="2010"
+            max="2024"
+            defaultValue="2020"
+            aria-label="Start year"
+          />
+          <input
+            type="range"
+            min="2010"
+            max="2024"
+            defaultValue="2024"
+            aria-label="End year"
+          />
           <em>2024</em>
         </label>
       </div>
@@ -2544,28 +4688,41 @@ function ResearcherPaperPanel({ selectedNode }) {
   const selectedPaper = getGraphPaperForNode(selectedNode);
 
   return (
-    <aside className="researcher-paper-panel" aria-label="Selected research paper">
+    <aside
+      className="researcher-paper-panel"
+      aria-label="Selected research paper"
+    >
       <div className="paper-panel-actions">
         <span>Selected Node</span>
         <div>
           <button type="button" aria-label="Share paper">
             <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
           </button>
-          <button type="button" aria-label="Open paper" onClick={navTo("/researcher-publication")}>
+          <button
+            type="button"
+            aria-label="Open paper"
+            onClick={navTo("/researcher-publication")}
+          >
             <MiniIcon path="M7 7h10v10M7 17 17 7" />
           </button>
         </div>
       </div>
 
       <h1>
-        <a href="/researcher-publication" onClick={navTo("/researcher-publication")}>
+        <a
+          href="/researcher-publication"
+          onClick={navTo("/researcher-publication")}
+        >
           {selectedPaper.title}
         </a>
       </h1>
       <p className="paper-authors">{selectedPaper.authors}</p>
       <div className="paper-meta-row">
         <span>{selectedPaper.year}</span>
-        <span><MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />{selectedPaper.venue}</span>
+        <span>
+          <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
+          {selectedPaper.venue}
+        </span>
       </div>
 
       <div className="paper-metric-grid">
@@ -2584,7 +4741,12 @@ function ResearcherPaperPanel({ selectedNode }) {
       <section className="paper-summary">
         <h2>Abstract Summary</h2>
         <p>{selectedPaper.abstract}</p>
-        <a href="/researcher-publication" onClick={navTo("/researcher-publication")}>Read full abstract</a>
+        <a
+          href="/researcher-publication"
+          onClick={navTo("/researcher-publication")}
+        >
+          Read full abstract
+        </a>
       </section>
 
       <div className="paper-save-actions">
@@ -2601,8 +4763,18 @@ function ResearcherPaperPanel({ selectedNode }) {
       <section className="paper-access-points">
         <h2>Access Points</h2>
         {selectedPaper.accessPoints.map((point, index) => (
-          <a href="/researcher-search" onClick={navTo("/researcher-search")} key={point}>
-            <MiniIcon path={index === 0 ? "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3" : "M12 4 5 19h14L12 4ZM12 9v4M12 16h.01"} />
+          <a
+            href="/researcher-search"
+            onClick={navTo("/researcher-search")}
+            key={point}
+          >
+            <MiniIcon
+              path={
+                index === 0
+                  ? "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3"
+                  : "M12 4 5 19h14L12 4ZM12 9v4M12 16h.01"
+              }
+            />
             {point}
           </a>
         ))}
@@ -2614,16 +4786,26 @@ function ResearcherPaperPanel({ selectedNode }) {
 function ResearcherSearchPage() {
   const [selectedNodeId, setSelectedNodeId] = React.useState("deepfruits");
   const selectedNode = React.useMemo(
-    () => graph3DNodes.find((node) => node.id === selectedNodeId) || graph3DNodes[0],
-    [selectedNodeId]
+    () =>
+      graph3DNodes.find((node) => node.id === selectedNodeId) ||
+      graph3DNodes[0],
+    [selectedNodeId],
   );
 
   return (
-    <ResearcherShell activeRoute="/researcher-search" topbar="graph" pageClassName="researcher-search-page" mainClassName="researcher-graph-main">
-        <div className="researcher-graph-layout">
-          <KnowledgeGraphCanvas selectedNodeId={selectedNode.id} onSelectNode={setSelectedNodeId} />
-          <ResearcherPaperPanel selectedNode={selectedNode} />
-        </div>
+    <ResearcherShell
+      activeRoute="/researcher-search"
+      topbar="graph"
+      pageClassName="researcher-search-page"
+      mainClassName="researcher-graph-main"
+    >
+      <div className="researcher-graph-layout">
+        <KnowledgeGraphCanvas
+          selectedNodeId={selectedNode.id}
+          onSelectNode={setSelectedNodeId}
+        />
+        <ResearcherPaperPanel selectedNode={selectedNode} />
+      </div>
     </ResearcherShell>
   );
 }
@@ -2647,15 +4829,29 @@ function SearchFilterPanel() {
 
       <section className="filter-card">
         <h3>Data Source</h3>
-        <label><input type="radio" name="source" defaultChecked /> Semantic Scholar</label>
-        <label><input type="radio" name="source" /> OpenAlex</label>
+        <label>
+          <input type="radio" name="source" defaultChecked /> Semantic Scholar
+        </label>
+        <label>
+          <input type="radio" name="source" /> OpenAlex
+        </label>
       </section>
 
       <section className="filter-card">
         <h3>Keywords</h3>
         <div className="keyword-chips">
-          <span>Machine Learning <button type="button" aria-label="Remove Machine Learning">x</button></span>
-          <span>Neural Networks <button type="button" aria-label="Remove Neural Networks">x</button></span>
+          <span>
+            Machine Learning{" "}
+            <button type="button" aria-label="Remove Machine Learning">
+              x
+            </button>
+          </span>
+          <span>
+            Neural Networks{" "}
+            <button type="button" aria-label="Remove Neural Networks">
+              x
+            </button>
+          </span>
           <button type="button">+ Add</button>
         </div>
       </section>
@@ -2666,21 +4862,37 @@ function SearchFilterPanel() {
 function SearchResultCard({ result }) {
   return (
     <article className="search-result-card">
-      <button className={`result-save ${result.saved ? "saved" : ""}`} type="button" aria-label="Save publication">
+      <button
+        className={`result-save ${result.saved ? "saved" : ""}`}
+        type="button"
+        aria-label="Save publication"
+      >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
       </button>
-      <a className="result-title-link" href="/student-publication" onClick={navTo("/student-publication")}>
+      <a
+        className="result-title-link"
+        href="/student-publication"
+        onClick={navTo("/student-publication")}
+      >
         <h2>{result.title}</h2>
       </a>
       <p className="result-authors">{result.authors}</p>
       <p className="result-abstract">{result.abstract}</p>
       <div className="result-meta-row">
         <div className="result-meta">
-          <span><MiniIcon path="M7 4v3M17 4v3M5 8h14M6 6h12v13H6z" />{result.year}</span>
-          <span><MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />{result.source}</span>
+          <span>
+            <MiniIcon path="M7 4v3M17 4v3M5 8h14M6 6h12v13H6z" />
+            {result.year}
+          </span>
+          <span>
+            <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
+            {result.source}
+          </span>
           <strong>99 {result.citations} Citations</strong>
         </div>
-        <a href="/student-publication" onClick={navTo("/student-publication")}>View Source <span aria-hidden="true">-&gt;</span></a>
+        <a href="/student-publication" onClick={navTo("/student-publication")}>
+          View Source <span aria-hidden="true">-&gt;</span>
+        </a>
       </div>
     </article>
   );
@@ -2691,7 +4903,15 @@ function StudentSearchPage() {
     <main className="student-app">
       <StudentSidebar activeRoute="/student-search" />
       <section className="student-main">
-        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Search Results</strong></div>} searchValue="" wideSearch />
+        <StudentTopbar
+          crumb={
+            <div className="topbar-breadcrumb">
+              Dashboard <span>&gt;</span> <strong>Search Results</strong>
+            </div>
+          }
+          searchValue=""
+          wideSearch
+        />
 
         <div className="student-content search-content">
           <h1 className="search-page-title">Publication Search</h1>
@@ -2699,7 +4919,10 @@ function StudentSearchPage() {
           <div className="search-layout">
             <SearchFilterPanel />
 
-            <section className="search-results-area" aria-label="Publication search results">
+            <section
+              className="search-results-area"
+              aria-label="Publication search results"
+            >
               <div className="search-results-toolbar">
                 <p>Found 1,248 highly relevant publications</p>
                 <label>
@@ -2721,13 +4944,19 @@ function StudentSearchPage() {
               <div className="pagination-row">
                 <p>Showing 1-10 of 1,248 results</p>
                 <nav className="pagination" aria-label="Search result pages">
-                  <button type="button" aria-label="Previous page">&lt;</button>
-                  <button className="active" type="button">1</button>
+                  <button type="button" aria-label="Previous page">
+                    &lt;
+                  </button>
+                  <button className="active" type="button">
+                    1
+                  </button>
                   <button type="button">2</button>
                   <button type="button">3</button>
                   <span>...</span>
                   <button type="button">125</button>
-                  <button type="button" aria-label="Next page">&gt;</button>
+                  <button type="button" aria-label="Next page">
+                    &gt;
+                  </button>
                 </nav>
               </div>
             </section>
@@ -2746,9 +4975,18 @@ function BookmarkPaperCard({ paper, detailPath = "/student-publication" }) {
       </a>
       <p>{paper.excerpt}</p>
       <div className="bookmark-paper-meta">
-        <span><MiniIcon path="M7 4v3M17 4v3M5 8h14M6 6h12v13H6z" />{paper.date}</span>
-        <span><MiniIcon path="M4 14.5 9 10l3.2 2.7L20 5.5M17 5.5h3v3" />{paper.citations} Citations</span>
-        <span><MiniIcon path="M4 15.5 9.2 10l3.4 3L20 6.5" />Impact: {paper.impact}</span>
+        <span>
+          <MiniIcon path="M7 4v3M17 4v3M5 8h14M6 6h12v13H6z" />
+          {paper.date}
+        </span>
+        <span>
+          <MiniIcon path="M4 14.5 9 10l3.2 2.7L20 5.5M17 5.5h3v3" />
+          {paper.citations} Citations
+        </span>
+        <span>
+          <MiniIcon path="M4 15.5 9.2 10l3.4 3L20 6.5" />
+          Impact: {paper.impact}
+        </span>
       </div>
     </article>
   );
@@ -2757,12 +4995,21 @@ function BookmarkPaperCard({ paper, detailPath = "/student-publication" }) {
 function BookmarksPage({ role = "student" }) {
   const [activeTab, setActiveTab] = React.useState("Publications");
   const isResearcher = role === "researcher";
-  const detailPath = isResearcher ? "/researcher-publication" : "/student-publication";
-  const dashboardPath = isResearcher ? "/researcher-dashboard" : "/student-dashboard";
+  const detailPath = isResearcher
+    ? "/researcher-publication"
+    : "/student-publication";
+  const dashboardPath = isResearcher
+    ? "/researcher-dashboard"
+    : "/student-dashboard";
 
   if (isResearcher) {
     return (
-      <ResearcherShell activeRoute="/researcher-bookmarks" current="Bookmarks" pageClassName="bookmarks-page researcher-bookmarks-page" mainClassName="researcher-bookmarks-main">
+      <ResearcherShell
+        activeRoute="/researcher-bookmarks"
+        current="Bookmarks"
+        pageClassName="bookmarks-page researcher-bookmarks-page"
+        mainClassName="researcher-bookmarks-main"
+      >
         <div className="researcher-bookmarks-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
 
@@ -2780,15 +5027,25 @@ function BookmarksPage({ role = "student" }) {
           </nav>
 
           {activeTab === "Publications" && (
-            <section className="bookmark-paper-list" aria-label="Bookmarked publications">
+            <section
+              className="bookmark-paper-list"
+              aria-label="Bookmarked publications"
+            >
               {bookmarkedPapers.map((paper) => (
-                <BookmarkPaperCard paper={paper} detailPath={detailPath} key={paper.title} />
+                <BookmarkPaperCard
+                  paper={paper}
+                  detailPath={detailPath}
+                  key={paper.title}
+                />
               ))}
             </section>
           )}
 
           {activeTab === "Keywords" && (
-            <section className="bookmark-keyword-list" aria-label="Bookmarked keywords">
+            <section
+              className="bookmark-keyword-list"
+              aria-label="Bookmarked keywords"
+            >
               {bookmarkedKeywords.map((keyword) => (
                 <article className="bookmark-keyword-card" key={keyword.name}>
                   <div className="card-header">
@@ -2797,16 +5054,23 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>{keyword.count}</span>
-                    <span className="trend-badge positive">{keyword.trend}</span>
+                    <span className="trend-badge positive">
+                      {keyword.trend}
+                    </span>
                   </div>
-                  <a href={dashboardPath} onClick={navTo(dashboardPath)}>View Analytics -&gt;</a>
+                  <a href={dashboardPath} onClick={navTo(dashboardPath)}>
+                    View Analytics -&gt;
+                  </a>
                 </article>
               ))}
             </section>
           )}
 
           {activeTab === "Journals" && (
-            <section className="bookmark-journal-list" aria-label="Bookmarked journals">
+            <section
+              className="bookmark-journal-list"
+              aria-label="Bookmarked journals"
+            >
               {bookmarkedJournals.map((journal) => (
                 <article className="bookmark-journal-card" key={journal.name}>
                   <div className="card-header">
@@ -2814,17 +5078,24 @@ function BookmarksPage({ role = "student" }) {
                     <h2>{journal.name}</h2>
                   </div>
                   <div className="card-body">
-                    <span>Impact Factor: <strong>{journal.impactFactor}</strong></span>
+                    <span>
+                      Impact Factor: <strong>{journal.impactFactor}</strong>
+                    </span>
                     <span className="status-badge">{journal.status}</span>
                   </div>
-                  <a href={detailPath} onClick={navTo(detailPath)}>View Journal -&gt;</a>
+                  <a href={detailPath} onClick={navTo(detailPath)}>
+                    View Journal -&gt;
+                  </a>
                 </article>
               ))}
             </section>
           )}
 
           {activeTab === "Topics" && (
-            <section className="bookmark-topic-list" aria-label="Bookmarked topics">
+            <section
+              className="bookmark-topic-list"
+              aria-label="Bookmarked topics"
+            >
               {bookmarkedTopics.map((topic) => (
                 <article className="bookmark-topic-card" key={topic.name}>
                   <div className="card-header">
@@ -2832,10 +5103,18 @@ function BookmarksPage({ role = "student" }) {
                     <h2>{topic.name}</h2>
                   </div>
                   <div className="card-body">
-                    <span>Tracked: <strong>{topic.tracked}</strong></span>
-                    <span className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}>{topic.activity}</span>
+                    <span>
+                      Tracked: <strong>{topic.tracked}</strong>
+                    </span>
+                    <span
+                      className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}
+                    >
+                      {topic.activity}
+                    </span>
                   </div>
-                  <a href={detailPath} onClick={navTo(detailPath)}>View Topic -&gt;</a>
+                  <a href={detailPath} onClick={navTo(detailPath)}>
+                    View Topic -&gt;
+                  </a>
                 </article>
               ))}
             </section>
@@ -2849,7 +5128,15 @@ function BookmarksPage({ role = "student" }) {
     <main className="student-app bookmarks-page">
       <StudentSidebar activeRoute="/student-bookmarks" />
       <section className="student-main">
-        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Bookmarks</strong></div>} variant="utility" searchPlaceholder="Search..." />
+        <StudentTopbar
+          crumb={
+            <div className="topbar-breadcrumb">
+              Dashboard <span>&gt;</span> <strong>Bookmarks</strong>
+            </div>
+          }
+          variant="utility"
+          searchPlaceholder="Search..."
+        />
 
         <div className="student-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
@@ -2868,15 +5155,25 @@ function BookmarksPage({ role = "student" }) {
           </nav>
 
           {activeTab === "Publications" && (
-            <section className="bookmark-paper-list" aria-label="Bookmarked publications">
+            <section
+              className="bookmark-paper-list"
+              aria-label="Bookmarked publications"
+            >
               {bookmarkedPapers.map((paper) => (
-                <BookmarkPaperCard paper={paper} detailPath={detailPath} key={paper.title} />
+                <BookmarkPaperCard
+                  paper={paper}
+                  detailPath={detailPath}
+                  key={paper.title}
+                />
               ))}
             </section>
           )}
 
           {activeTab === "Keywords" && (
-            <section className="bookmark-keyword-list" aria-label="Bookmarked keywords">
+            <section
+              className="bookmark-keyword-list"
+              aria-label="Bookmarked keywords"
+            >
               {bookmarkedKeywords.map((keyword) => (
                 <article className="bookmark-keyword-card" key={keyword.name}>
                   <div className="card-header">
@@ -2885,16 +5182,23 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>{keyword.count}</span>
-                    <span className="trend-badge positive">{keyword.trend}</span>
+                    <span className="trend-badge positive">
+                      {keyword.trend}
+                    </span>
                   </div>
-                  <a href={dashboardPath} onClick={navTo(dashboardPath)}>View Analytics -&gt;</a>
+                  <a href={dashboardPath} onClick={navTo(dashboardPath)}>
+                    View Analytics -&gt;
+                  </a>
                 </article>
               ))}
             </section>
           )}
 
           {activeTab === "Journals" && (
-            <section className="bookmark-journal-list" aria-label="Bookmarked journals">
+            <section
+              className="bookmark-journal-list"
+              aria-label="Bookmarked journals"
+            >
               {bookmarkedJournals.map((journal) => (
                 <article className="bookmark-journal-card" key={journal.name}>
                   <div className="card-header">
@@ -2902,17 +5206,24 @@ function BookmarksPage({ role = "student" }) {
                     <h2>{journal.name}</h2>
                   </div>
                   <div className="card-body">
-                    <span>Impact Factor: <strong>{journal.impactFactor}</strong></span>
+                    <span>
+                      Impact Factor: <strong>{journal.impactFactor}</strong>
+                    </span>
                     <span className="status-badge">{journal.status}</span>
                   </div>
-                  <a href={detailPath} onClick={navTo(detailPath)}>View Journal -&gt;</a>
+                  <a href={detailPath} onClick={navTo(detailPath)}>
+                    View Journal -&gt;
+                  </a>
                 </article>
               ))}
             </section>
           )}
 
           {activeTab === "Topics" && (
-            <section className="bookmark-topic-list" aria-label="Bookmarked topics">
+            <section
+              className="bookmark-topic-list"
+              aria-label="Bookmarked topics"
+            >
               {bookmarkedTopics.map((topic) => (
                 <article className="bookmark-topic-card" key={topic.name}>
                   <div className="card-header">
@@ -2920,10 +5231,18 @@ function BookmarksPage({ role = "student" }) {
                     <h2>{topic.name}</h2>
                   </div>
                   <div className="card-body">
-                    <span>Tracked: <strong>{topic.tracked}</strong></span>
-                    <span className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}>{topic.activity}</span>
+                    <span>
+                      Tracked: <strong>{topic.tracked}</strong>
+                    </span>
+                    <span
+                      className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}
+                    >
+                      {topic.activity}
+                    </span>
                   </div>
-                  <a href={detailPath} onClick={navTo(detailPath)}>View Topic -&gt;</a>
+                  <a href={detailPath} onClick={navTo(detailPath)}>
+                    View Topic -&gt;
+                  </a>
                 </article>
               ))}
             </section>
@@ -2938,12 +5257,22 @@ function NotificationFilterPanel() {
   return (
     <aside className="notification-filters" aria-label="Notification filters">
       {notificationFilters.map((group, groupIndex) => (
-        <section className={groupIndex > 0 ? "separated" : ""} key={`${group.title}-${groupIndex}`}>
+        <section
+          className={groupIndex > 0 ? "separated" : ""}
+          key={`${group.title}-${groupIndex}`}
+        >
           {group.title ? <h2>{group.title}</h2> : null}
           <div className="notification-filter-options">
             {group.options.map((option) => (
-              <label className={option.active ? "active" : ""} key={option.label}>
-                <input type="radio" name={`notification-filter-${groupIndex}`} defaultChecked={option.active} />
+              <label
+                className={option.active ? "active" : ""}
+                key={option.label}
+              >
+                <input
+                  type="radio"
+                  name={`notification-filter-${groupIndex}`}
+                  defaultChecked={option.active}
+                />
                 <span>{option.label}</span>
               </label>
             ))}
@@ -2961,7 +5290,9 @@ function renderFormattedText(text) {
     if (part.startsWith('"') && part.endsWith('"')) {
       return <i key={index}>{part}</i>;
     }
-    const subParts = part.split(/(Deep Learning|Nature Physics|ArXiv|Semantic Scholar|OpenAlex)/g);
+    const subParts = part.split(
+      /(Deep Learning|Nature Physics|ArXiv|Semantic Scholar|OpenAlex)/g,
+    );
     return subParts.map((subPart, subIndex) => {
       if (
         subPart === "Deep Learning" ||
@@ -2983,7 +5314,9 @@ function renderFormattedText(text) {
 
 function NotificationCard({ item }) {
   return (
-    <article className={`notification-card ${item.tone} ${item.unread ? "unread" : ""}`}>
+    <article
+      className={`notification-card ${item.tone} ${item.unread ? "unread" : ""}`}
+    >
       <div className={`notification-icon ${item.tone}`}>
         <MiniIcon path={item.icon} />
       </div>
@@ -2993,11 +5326,23 @@ function NotificationCard({ item }) {
           <i aria-hidden="true"></i>
           <span>{item.time}</span>
         </div>
-        <p>{item.title ? <strong>{item.title} </strong> : null}{renderFormattedText(item.text)}</p>
+        <p>
+          {item.title ? <strong>{item.title} </strong> : null}
+          {renderFormattedText(item.text)}
+        </p>
       </div>
-      {item.unread ? <span className="notification-unread-dot" aria-label="Unread notification"></span> : null}
+      {item.unread ? (
+        <span
+          className="notification-unread-dot"
+          aria-label="Unread notification"
+        ></span>
+      ) : null}
       {item.bookmarked ? (
-        <button type="button" className="notification-bookmark" aria-label="Save notification">
+        <button
+          type="button"
+          className="notification-bookmark"
+          aria-label="Save notification"
+        >
           <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
         </button>
       ) : null}
@@ -3010,7 +5355,7 @@ const extraNotificationItems = [
     type: "NEW PUBLICATION",
     time: "4 days ago",
     title: "NEW RESEARCH:",
-    text: "Dr. Elena Rostova published \"Topological Regularization in Deep Autoencoders\" in Nature Computational Science.",
+    text: 'Dr. Elena Rostova published "Topological Regularization in Deep Autoencoders" in Nature Computational Science.',
     icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
     tone: "purple-soft",
     unread: false,
@@ -3028,11 +5373,11 @@ const extraNotificationItems = [
     type: "TREND ALERT",
     time: "1 week ago",
     title: "TREND SPIKE:",
-    text: "Keyword \"Single-cell RNA\" citation velocity increased by 28% in computational biology journals.",
+    text: 'Keyword "Single-cell RNA" citation velocity increased by 28% in computational biology journals.',
     icon: "M5 15.5 9.2 11l3.2 2.6L19 7M16 7h3v3",
     tone: "green",
     unread: false,
-  }
+  },
 ];
 
 function NotificationsPage({ role = "student" }) {
@@ -3046,17 +5391,29 @@ function NotificationsPage({ role = "student" }) {
   };
 
   const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
+    setNotifications((prev) =>
+      prev.map((item) => ({ ...item, unread: false })),
+    );
   };
 
   const pageContent = (
-    <div className={isResearcher ? "researcher-notifications-content notifications-content" : "student-content notifications-content"}>
+    <div
+      className={
+        isResearcher
+          ? "researcher-notifications-content notifications-content"
+          : "student-content notifications-content"
+      }
+    >
       <div className="notifications-header">
         <div>
           <h1>Notifications</h1>
           <p>Stay updated on publications, trends, and system alerts.</p>
         </div>
-        <button type="button" className="mark-read-button" onClick={handleMarkAllRead}>
+        <button
+          type="button"
+          className="mark-read-button"
+          onClick={handleMarkAllRead}
+        >
           <MiniIcon path="M5 12.5 9 16.5 19 6.5" />
           Mark all as read
         </button>
@@ -3066,12 +5423,34 @@ function NotificationsPage({ role = "student" }) {
         <NotificationFilterPanel />
         <section className="notification-list" aria-label="Notifications list">
           {notifications.map((item, index) => (
-            <NotificationCard item={item} key={`${item.type}-${item.time}-${index}`} />
+            <NotificationCard
+              item={item}
+              key={`${item.type}-${item.time}-${index}`}
+            />
           ))}
           {hasMore ? (
-            <button type="button" className="load-more-button" onClick={handleLoadMore}>Load More</button>
+            <button
+              type="button"
+              className="load-more-button"
+              onClick={handleLoadMore}
+            >
+              Load More
+            </button>
           ) : (
-            <div className="no-more-notifications" style={{ textAlign: "center", color: "#6b7280", fontSize: "13px", padding: "12px", background: "#fff", border: "1px dashed #cbd2df", borderRadius: "8px" }}>No more notifications</div>
+            <div
+              className="no-more-notifications"
+              style={{
+                textAlign: "center",
+                color: "#6b7280",
+                fontSize: "13px",
+                padding: "12px",
+                background: "#fff",
+                border: "1px dashed #cbd2df",
+                borderRadius: "8px",
+              }}
+            >
+              No more notifications
+            </div>
           )}
         </section>
       </div>
@@ -3080,7 +5459,12 @@ function NotificationsPage({ role = "student" }) {
 
   if (isResearcher) {
     return (
-      <ResearcherShell activeRoute="/researcher-notifications" current="Notifications" pageClassName="notifications-page researcher-notifications-page" mainClassName="researcher-notifications-main">
+      <ResearcherShell
+        activeRoute="/researcher-notifications"
+        current="Notifications"
+        pageClassName="notifications-page researcher-notifications-page"
+        mainClassName="researcher-notifications-main"
+      >
         {pageContent}
       </ResearcherShell>
     );
@@ -3090,7 +5474,15 @@ function NotificationsPage({ role = "student" }) {
     <main className="student-app notifications-page">
       <StudentSidebar activeRoute="/student-notifications" />
       <section className="student-main">
-        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Notifications</strong></div>} variant="utility" searchPlaceholder="Search ScholarTrend..." />
+        <StudentTopbar
+          crumb={
+            <div className="topbar-breadcrumb">
+              Dashboard <span>&gt;</span> <strong>Notifications</strong>
+            </div>
+          }
+          variant="utility"
+          searchPlaceholder="Search ScholarTrend..."
+        />
         {pageContent}
       </section>
     </main>
@@ -3121,7 +5513,9 @@ function ProfileField({ label, value, readOnly = false, locked = false }) {
       <span>{label}</span>
       <span className={`profile-input ${locked ? "locked" : ""}`}>
         <input type="text" defaultValue={value} readOnly={readOnly} />
-        {locked ? <MiniIcon path="M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" /> : null}
+        {locked ? (
+          <MiniIcon path="M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" />
+        ) : null}
       </span>
     </label>
   );
@@ -3129,143 +5523,446 @@ function ProfileField({ label, value, readOnly = false, locked = false }) {
 
 function ProfilePage({ role = "student" }) {
   const [activeTab, setActiveTab] = React.useState("Personal Info");
+  const [identityConnections, setIdentityConnections] = React.useState({
+    orcid: true,
+    scholar: false,
+    semantic: true,
+  });
+  const [autoSync, setAutoSync] = React.useState(true);
+  const [identityMessage, setIdentityMessage] = React.useState(
+    "Academic profile synced 2 hours ago.",
+  );
   const isResearcher = role === "researcher";
 
+  const toggleIdentityConnection = (key, label) => {
+    setIdentityConnections((current) => {
+      const nextValue = !current[key];
+      setIdentityMessage(
+        nextValue
+          ? `${label} connected. ScholarTrend will include it in publication matching.`
+          : `${label} disconnected from automatic publication matching.`,
+      );
+      return { ...current, [key]: nextValue };
+    });
+  };
+
+  const runIdentitySync = () => {
+    setIdentityMessage(
+      "Sync queued: ScholarTrend is refreshing author IDs, citations, and topic fingerprints.",
+    );
+  };
+
   const pageContent = (
-        <div className={isResearcher ? "researcher-profile-content profile-content" : "student-content profile-content"}>
-          <h1>User Profile</h1>
-          <p className="profile-subtitle">Manage your personal information, security, and academic preferences.</p>
+    <div
+      className={
+        isResearcher
+          ? "researcher-profile-content profile-content"
+          : "student-content profile-content"
+      }
+    >
+      <h1>User Profile</h1>
+      <p className="profile-subtitle">
+        Manage your personal information, security, and academic preferences.
+      </p>
 
-          <div className="profile-layout">
-            <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+      <div className="profile-layout">
+        <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} />
 
-            {activeTab === "Personal Info" && (
-              <section className="profile-card" aria-label="Personal information">
-                <div className="profile-card-header">
-                  <h2>Personal Information</h2>
-                  <span>Lead Researcher</span>
-                </div>
+        {activeTab === "Personal Info" && (
+          <section className="profile-card" aria-label="Personal information">
+            <div className="profile-card-header">
+              <h2>Personal Information</h2>
+              <span>Lead Researcher</span>
+            </div>
 
-                <div className="profile-photo-row">
-                  <div className="profile-photo" aria-label="Profile photo">
-                    <span>A</span>
-                  </div>
-                  <div className="profile-upload-actions">
-                    <div>
-                      <button type="button" className="upload-button">Upload New</button>
-                      <button type="button" className="remove-button">Remove</button>
-                    </div>
-                    <p>JPG, GIF or PNG. Max size of 800K</p>
-                  </div>
+            <div className="profile-photo-row">
+              <div className="profile-photo" aria-label="Profile photo">
+                <span>A</span>
+              </div>
+              <div className="profile-upload-actions">
+                <div>
+                  <button type="button" className="upload-button">
+                    Upload New
+                  </button>
+                  <button type="button" className="remove-button">
+                    Remove
+                  </button>
                 </div>
+                <p>JPG, GIF or PNG. Max size of 800K</p>
+              </div>
+            </div>
 
-                <div className="profile-form-grid">
-                  <ProfileField label="Full Name" value="Dr. Alexander Scientist" />
-                  <ProfileField label="Email Address (Read-only)" value="alexander.s@scholartrend.edu" readOnly locked />
-                  <ProfileField label="Institution" value="Institute of Advanced Analytics" />
-                  <ProfileField label="Department" value="Computational Biology" />
-                </div>
-              </section>
-            )}
+            <div className="profile-form-grid">
+              <ProfileField label="Full Name" value="Dr. Alexander Scientist" />
+              <ProfileField
+                label="Email Address (Read-only)"
+                value="alexander.s@scholartrend.edu"
+                readOnly
+                locked
+              />
+              <ProfileField
+                label="Institution"
+                value="Institute of Advanced Analytics"
+              />
+              <ProfileField label="Department" value="Computational Biology" />
+            </div>
+          </section>
+        )}
 
-            {activeTab === "Change Password" && (
-              <section className="profile-card" aria-label="Change password">
-                <div className="profile-card-header">
-                  <h2>Change Password</h2>
-                  <span>Security</span>
-                </div>
-                <div className="profile-form-grid">
-                  <label className="profile-field" style={{ gridColumn: "span 2" }}>
-                    <span>Current Password</span>
-                    <span className="profile-input">
-                      <input type="password" placeholder="••••••••" style={{ maxWidth: "45%" }} />
-                    </span>
-                  </label>
-                  <label className="profile-field">
-                    <span>New Password</span>
-                    <span className="profile-input">
-                      <input type="password" placeholder="••••••••" />
-                    </span>
-                  </label>
-                  <label className="profile-field">
-                    <span>Confirm New Password</span>
-                    <span className="profile-input">
-                      <input type="password" placeholder="••••••••" />
-                    </span>
-                  </label>
-                </div>
-              </section>
-            )}
+        {activeTab === "Academic Identity" && (
+          <section
+            className="profile-card academic-identity-card"
+            aria-label="Academic identity"
+          >
+            <div className="profile-card-header">
+              <h2>Academic Identity</h2>
+              <span>Publication Sync</span>
+            </div>
 
-            {activeTab === "Research Interests" && (
-              <section className="profile-card" aria-label="Research interests">
-                <div className="profile-card-header">
-                  <h2>Research Interests</h2>
-                  <span>Academic Interests</span>
-                </div>
-                <p style={{ fontSize: "13px", color: "#4b5563", marginBottom: "20px" }}>
-                  Manage the research keywords and topics you follow to customize your dashboard feeds and alert notifications.
+            <div className="identity-summary-grid">
+              <div>
+                <span>Verified Author IDs</span>
+                <strong>3</strong>
+                <em>ORCID, Scholar, Semantic Scholar</em>
+              </div>
+              <div>
+                <span>Matched Publications</span>
+                <strong>128</strong>
+                <em>+14 this month</em>
+              </div>
+              <div>
+                <span>Citation Footprint</span>
+                <strong>4,820</strong>
+                <em>98.2% profile confidence</em>
+              </div>
+            </div>
+
+            <div className="identity-sync-panel">
+              <div>
+                <h3>Auto-sync author profile</h3>
+                <p>
+                  Keep publications, citations, and followed research topics
+                  aligned with connected academic data sources.
                 </p>
-                <div className="keyword-chips" style={{ marginBottom: "20px" }}>
-                  <span>Deep Learning <button type="button" aria-label="Remove Deep Learning" style={{ cursor: "pointer" }}>x</button></span>
-                  <span>Computational Biology <button type="button" aria-label="Remove Computational Biology" style={{ cursor: "pointer" }}>x</button></span>
-                  <span>Quantum Computing <button type="button" aria-label="Remove Quantum Computing" style={{ cursor: "pointer" }}>x</button></span>
-                  <span>Single-cell RNA <button type="button" aria-label="Remove Single-cell RNA" style={{ cursor: "pointer" }}>x</button></span>
-                  <button type="button" style={{ borderStyle: "dashed", cursor: "pointer" }}>+ Add Keyword</button>
-                </div>
-              </section>
-            )}
+              </div>
+              <button
+                type="button"
+                className={autoSync ? "identity-toggle active" : "identity-toggle"}
+                aria-pressed={autoSync}
+                onClick={() => {
+                  setAutoSync((enabled) => !enabled);
+                  setIdentityMessage(
+                    autoSync
+                      ? "Auto-sync paused. Manual sync is still available."
+                      : "Auto-sync enabled for publication and citation updates.",
+                  );
+                }}
+              >
+                <span></span>
+                {autoSync ? "Enabled" : "Paused"}
+              </button>
+            </div>
 
-            {activeTab === "Preferences" && (
-              <section className="profile-card" aria-label="Preferences">
-                <div className="profile-card-header">
-                  <h2>System Preferences</h2>
-                  <span>Preferences</span>
-                </div>
-                <div style={{ display: "grid", gap: "20px" }}>
+            <div className="identity-source-list">
+              {[
+                {
+                  key: "orcid",
+                  name: "ORCID",
+                  detail: "0000-0002-1825-0097",
+                  icon: "iD",
+                  tone: "green",
+                },
+                {
+                  key: "scholar",
+                  name: "Google Scholar",
+                  detail: "Import public author profile and citation graph",
+                  icon: "GS",
+                  tone: "blue",
+                },
+                {
+                  key: "semantic",
+                  name: "Semantic Scholar",
+                  detail: "Match papers by author ID, DOI, and title similarity",
+                  icon: "SS",
+                  tone: "purple",
+                },
+              ].map((source) => (
+                <article className="identity-source-card" key={source.key}>
+                  <div className={`identity-source-icon ${source.tone}`}>
+                    {source.icon}
+                  </div>
                   <div>
-                    <h3 style={{ fontSize: "14px", fontWeight: "800", marginBottom: "10px", color: "#111827" }}>Notification Frequency</h3>
-                    <div style={{ display: "grid", gap: "10px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
-                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> Real-time alerts for new publication matches
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
-                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> Weekly summary email digest
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
-                        <input type="checkbox" style={{ width: "16px", height: "16px", margin: 0 }} /> System health & sync status alerts
-                      </label>
-                    </div>
+                    <h3>{source.name}</h3>
+                    <p>{source.detail}</p>
                   </div>
-                  <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "15px" }}>
-                    <h3 style={{ fontSize: "14px", fontWeight: "800", marginBottom: "10px", color: "#111827" }}>Default Search Sources</h3>
-                    <div style={{ display: "grid", gap: "10px" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
-                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> Semantic Scholar API
-                      </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "13px", color: "#374151" }}>
-                        <input type="checkbox" defaultChecked style={{ width: "16px", height: "16px", margin: 0 }} /> OpenAlex Database
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            )}
-          </div>
+                  <button
+                    type="button"
+                    className={
+                      identityConnections[source.key]
+                        ? "identity-connect connected"
+                        : "identity-connect"
+                    }
+                    onClick={() =>
+                      toggleIdentityConnection(source.key, source.name)
+                    }
+                  >
+                    {identityConnections[source.key] ? "Connected" : "Connect"}
+                  </button>
+                </article>
+              ))}
+            </div>
 
-          <div className="profile-action-bar">
-            <button type="button" className="profile-cancel">Cancel</button>
-            <button type="button" className="profile-save">
-              <MiniIcon path="M5 5h14v14H5zM8 5v5h8V5M8 19v-5h8v5" />
-              Save Changes
-            </button>
-          </div>
-        </div>
+            <div className="identity-action-row">
+              <p role="status">{identityMessage}</p>
+              <button type="button" onClick={runIdentitySync}>
+                <MiniIcon path="M4 4v6h6M20 20v-6h-6M5 15a7 7 0 0 0 11.7 3.2M19 9A7 7 0 0 0 7.3 5.8" />
+                Sync Now
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Change Password" && (
+          <section className="profile-card" aria-label="Change password">
+            <div className="profile-card-header">
+              <h2>Change Password</h2>
+              <span>Security</span>
+            </div>
+            <div className="profile-form-grid">
+              <label className="profile-field" style={{ gridColumn: "span 2" }}>
+                <span>Current Password</span>
+                <span className="profile-input">
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    style={{ maxWidth: "45%" }}
+                  />
+                </span>
+              </label>
+              <label className="profile-field">
+                <span>New Password</span>
+                <span className="profile-input">
+                  <input type="password" placeholder="••••••••" />
+                </span>
+              </label>
+              <label className="profile-field">
+                <span>Confirm New Password</span>
+                <span className="profile-input">
+                  <input type="password" placeholder="••••••••" />
+                </span>
+              </label>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Research Interests" && (
+          <section className="profile-card" aria-label="Research interests">
+            <div className="profile-card-header">
+              <h2>Research Interests</h2>
+              <span>Academic Interests</span>
+            </div>
+            <p
+              style={{
+                fontSize: "13px",
+                color: "#4b5563",
+                marginBottom: "20px",
+              }}
+            >
+              Manage the research keywords and topics you follow to customize
+              your dashboard feeds and alert notifications.
+            </p>
+            <div className="keyword-chips" style={{ marginBottom: "20px" }}>
+              <span>
+                Deep Learning{" "}
+                <button
+                  type="button"
+                  aria-label="Remove Deep Learning"
+                  style={{ cursor: "pointer" }}
+                >
+                  x
+                </button>
+              </span>
+              <span>
+                Computational Biology{" "}
+                <button
+                  type="button"
+                  aria-label="Remove Computational Biology"
+                  style={{ cursor: "pointer" }}
+                >
+                  x
+                </button>
+              </span>
+              <span>
+                Quantum Computing{" "}
+                <button
+                  type="button"
+                  aria-label="Remove Quantum Computing"
+                  style={{ cursor: "pointer" }}
+                >
+                  x
+                </button>
+              </span>
+              <span>
+                Single-cell RNA{" "}
+                <button
+                  type="button"
+                  aria-label="Remove Single-cell RNA"
+                  style={{ cursor: "pointer" }}
+                >
+                  x
+                </button>
+              </span>
+              <button
+                type="button"
+                style={{ borderStyle: "dashed", cursor: "pointer" }}
+              >
+                + Add Keyword
+              </button>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Preferences" && (
+          <section className="profile-card" aria-label="Preferences">
+            <div className="profile-card-header">
+              <h2>System Preferences</h2>
+              <span>Preferences</span>
+            </div>
+            <div style={{ display: "grid", gap: "20px" }}>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "800",
+                    marginBottom: "10px",
+                    color: "#111827",
+                  }}
+                >
+                  Notification Frequency
+                </h3>
+                <div style={{ display: "grid", gap: "10px" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "13px",
+                      color: "#374151",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      style={{ width: "16px", height: "16px", margin: 0 }}
+                    />{" "}
+                    Real-time alerts for new publication matches
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "13px",
+                      color: "#374151",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      style={{ width: "16px", height: "16px", margin: 0 }}
+                    />{" "}
+                    Weekly summary email digest
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "13px",
+                      color: "#374151",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      style={{ width: "16px", height: "16px", margin: 0 }}
+                    />{" "}
+                    System health & sync status alerts
+                  </label>
+                </div>
+              </div>
+              <div
+                style={{ borderTop: "1px solid #e5e7eb", paddingTop: "15px" }}
+              >
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "800",
+                    marginBottom: "10px",
+                    color: "#111827",
+                  }}
+                >
+                  Default Search Sources
+                </h3>
+                <div style={{ display: "grid", gap: "10px" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "13px",
+                      color: "#374151",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      style={{ width: "16px", height: "16px", margin: 0 }}
+                    />{" "}
+                    Semantic Scholar API
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      fontSize: "13px",
+                      color: "#374151",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      defaultChecked
+                      style={{ width: "16px", height: "16px", margin: 0 }}
+                    />{" "}
+                    OpenAlex Database
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+
+      <div className="profile-action-bar">
+        <button type="button" className="profile-cancel">
+          Cancel
+        </button>
+        <button type="button" className="profile-save">
+          <MiniIcon path="M5 5h14v14H5zM8 5v5h8V5M8 19v-5h8v5" />
+          Save Changes
+        </button>
+      </div>
+    </div>
   );
 
   if (isResearcher) {
     return (
-      <ResearcherShell activeRoute="/researcher-profile" current="Profile" pageClassName="profile-page researcher-profile-page" mainClassName="researcher-profile-main">
+      <ResearcherShell
+        activeRoute="/researcher-profile"
+        current="Profile"
+        pageClassName="profile-page researcher-profile-page"
+        mainClassName="researcher-profile-main"
+      >
         {pageContent}
       </ResearcherShell>
     );
@@ -3275,7 +5972,15 @@ function ProfilePage({ role = "student" }) {
     <main className="student-app profile-page">
       <StudentSidebar activeRoute="/student-profile" />
       <section className="student-main">
-        <StudentTopbar crumb={<div className="topbar-breadcrumb">Dashboard <span>&gt;</span> <strong>Profile</strong></div>} variant="profile" searchPlaceholder="Search ScholarTrend..." />
+        <StudentTopbar
+          crumb={
+            <div className="topbar-breadcrumb">
+              Dashboard <span>&gt;</span> <strong>Profile</strong>
+            </div>
+          }
+          variant="profile"
+          searchPlaceholder="Search ScholarTrend..."
+        />
         {pageContent}
       </section>
     </main>
@@ -3295,8 +6000,12 @@ function ImpactAnalyticsCard() {
       </div>
       <div className="analytics-block">
         <span>Field Percentile</span>
-        <div className="percentile-bar"><i></i></div>
-        <strong className="percentile-label">Top 2% in Computational Biology</strong>
+        <div className="percentile-bar">
+          <i></i>
+        </div>
+        <strong className="percentile-label">
+          Top 2% in Computational Biology
+        </strong>
       </div>
       <button type="button" className="track-topic">
         <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
@@ -3314,13 +6023,21 @@ function ImpactAnalyticsCard() {
 }
 
 function ExtractedTopicsCard() {
-  const topics = ["Deep Learning", "Single-cell RNA", "Manifold Learning", "Autoencoders", "Biological Trajectories"];
+  const topics = [
+    "Deep Learning",
+    "Single-cell RNA",
+    "Manifold Learning",
+    "Autoencoders",
+    "Biological Trajectories",
+  ];
 
   return (
     <aside className="topics-card">
       <h2>Extracted Topics</h2>
       <div>
-        {topics.map((topic) => <span key={topic}>{topic}</span>)}
+        {topics.map((topic) => (
+          <span key={topic}>{topic}</span>
+        ))}
       </div>
     </aside>
   );
@@ -3331,141 +6048,410 @@ function StudentPublicationDetailPage({ role = "student" }) {
   const isResearcher = role === "researcher";
 
   const pageContent = (
-        <div className={`${isResearcher ? "researcher-detail-content" : "student-content"} detail-content`}>
-          <div className="detail-layout">
-            <section className="detail-main-column">
-              <article className="publication-detail-hero">
-                <div className="detail-hero-actions">
-                  <span className="article-type">Journal Article</span>
-                  <div>
-                    <button type="button" aria-label="Bookmark article">
-                      <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
-                    </button>
-                    <button type="button" aria-label="Share article">
-                      <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
-                    </button>
-                    <button type="button" className="cite-button">99 Cite</button>
-                  </div>
-                </div>
+    <div
+      className={`${isResearcher ? "researcher-detail-content" : "student-content"} detail-content`}
+    >
+      <div className="detail-layout">
+        <section className="detail-main-column">
+          <article className="publication-detail-hero">
+            <div className="detail-hero-actions">
+              <span className="article-type">Journal Article</span>
+              <div>
+                <button type="button" aria-label="Bookmark article">
+                  <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
+                </button>
+                <button type="button" aria-label="Share article">
+                  <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
+                </button>
+                <button type="button" className="cite-button">
+                  99 Cite
+                </button>
+              </div>
+            </div>
 
-                <h1>Deep Learning for Advanced Pattern Recognition in Complex Biological Systems</h1>
-                <p className="detail-authors"><strong>Dr. Elena Rostova</strong>, Marcus Thorne, Jin-Soo Park</p>
-                <p className="detail-journal"><MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" /> Nature Computational Science  (2023)</p>
+            <h1>
+              Deep Learning for Advanced Pattern Recognition in Complex
+              Biological Systems
+            </h1>
+            <p className="detail-authors">
+              <strong>Dr. Elena Rostova</strong>, Marcus Thorne, Jin-Soo Park
+            </p>
+            <p className="detail-journal">
+              <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />{" "}
+              Nature Computational Science (2023)
+            </p>
 
-                <div className="detail-meta-strip">
-                  <span><MiniIcon path="M4 14.5 9 10l3.2 2.7L20 5.5M17 5.5h3v3" /> 1,428 Citations</span>
-                  <a
-                    href={isResearcher ? "/researcher-publication" : "/student-publication"}
-                    onClick={navTo(isResearcher ? "/researcher-publication" : "/student-publication")}
+            <div className="detail-meta-strip">
+              <span>
+                <MiniIcon path="M4 14.5 9 10l3.2 2.7L20 5.5M17 5.5h3v3" /> 1,428
+                Citations
+              </span>
+              <a
+                href={
+                  isResearcher
+                    ? "/researcher-publication"
+                    : "/student-publication"
+                }
+                onClick={navTo(
+                  isResearcher
+                    ? "/researcher-publication"
+                    : "/student-publication",
+                )}
+              >
+                DOI: 10.1038/s43588-023-00123-x -&gt;
+              </a>
+            </div>
+          </article>
+
+          <article className="publication-tabs-card">
+            <nav className="detail-tabs" aria-label="Publication metadata tabs">
+              {["Abstract", "Keywords", "Authors", "Raw Metadata"].map(
+                (tab) => (
+                  <button
+                    className={activeTab === tab ? "active" : ""}
+                    type="button"
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
                   >
-                    DOI: 10.1038/s43588-023-00123-x -&gt;
-                  </a>
-                </div>
-              </article>
+                    {tab}
+                  </button>
+                ),
+              )}
+            </nav>
 
-              <article className="publication-tabs-card">
-                <nav className="detail-tabs" aria-label="Publication metadata tabs">
-                  {["Abstract", "Keywords", "Authors", "Raw Metadata"].map((tab) => (
-                    <button
-                      className={activeTab === tab ? "active" : ""}
-                      type="button"
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
+            {activeTab === "Abstract" && (
+              <div className="abstract-body">
+                <h2>Abstract</h2>
+                <p>
+                  The integration of deep neural networks into the analysis of
+                  multi-omic biological data presents significant challenges due
+                  to the high dimensionality and inherent noise of the datasets.
+                  In this paper, we introduce a novel manifold learning
+                  architecture designed specifically for extracting stable
+                  structural features from single-cell RNA sequencing data. By
+                  employing a sparse autoencoder with a custom topological
+                  regularization term, our model achieves state-of-the-art
+                  performance in identifying rare cell populations.
+                </p>
+
+                <h3>Key Findings</h3>
+                <ul>
+                  <li>
+                    Novel architecture improves rare cell detection by 24% over
+                    baseline models.
+                  </li>
+                  <li>
+                    Topological regularization prevents manifold fragmentation
+                    during training.
+                  </li>
+                  <li>
+                    The proposed method scales to datasets exceeding 10 million
+                    cells.
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {activeTab === "Keywords" && (
+              <div className="abstract-body keywords-tab-body">
+                <h2>Keywords</h2>
+                <p style={{ marginBottom: "24px" }}>
+                  The following semantic concepts were extracted from this
+                  publication and cross-referenced with your tracked items.
+                </p>
+                <div
+                  className="keyword-chips-list"
+                  style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}
+                >
+                  <span
+                    className="keyword-chip-large"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                    <strong>Deep Learning</strong>
+                    <span
+                      style={{
+                        color: "rgba(255, 255, 255, 0.5)",
+                        fontSize: "12px",
+                      }}
                     >
-                      {tab}
-                    </button>
-                  ))}
-                </nav>
+                      (Tracked)
+                    </span>
+                  </span>
+                  <span
+                    className="keyword-chip-large"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                    <strong>Single-cell RNA</strong>
+                    <span
+                      style={{
+                        color: "rgba(255, 255, 255, 0.5)",
+                        fontSize: "12px",
+                      }}
+                    >
+                      (Tracked)
+                    </span>
+                  </span>
+                  <span
+                    className="keyword-chip-large"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                    <strong>Manifold Learning</strong>
+                  </span>
+                  <span
+                    className="keyword-chip-large"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                    <strong>Autoencoders</strong>
+                  </span>
+                  <span
+                    className="keyword-chip-large"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "rgba(255, 255, 255, 0.04)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      color: "#ffffff",
+                      fontSize: "14px",
+                    }}
+                  >
+                    <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
+                    <strong>Biological Trajectories</strong>
+                  </span>
+                </div>
+              </div>
+            )}
 
-                {activeTab === "Abstract" && (
-                  <div className="abstract-body">
-                    <h2>Abstract</h2>
-                    <p>
-                      The integration of deep neural networks into the analysis of multi-omic biological
-                      data presents significant challenges due to the high dimensionality and inherent
-                      noise of the datasets. In this paper, we introduce a novel manifold learning
-                      architecture designed specifically for extracting stable structural features from
-                      single-cell RNA sequencing data. By employing a sparse autoencoder with a custom
-                      topological regularization term, our model achieves state-of-the-art performance
-                      in identifying rare cell populations.
-                    </p>
-
-                    <h3>Key Findings</h3>
-                    <ul>
-                      <li>Novel architecture improves rare cell detection by 24% over baseline models.</li>
-                      <li>Topological regularization prevents manifold fragmentation during training.</li>
-                      <li>The proposed method scales to datasets exceeding 10 million cells.</li>
-                    </ul>
-                  </div>
-                )}
-
-                {activeTab === "Keywords" && (
-                  <div className="abstract-body keywords-tab-body">
-                    <h2>Keywords</h2>
-                    <p style={{ marginBottom: "24px" }}>The following semantic concepts were extracted from this publication and cross-referenced with your tracked items.</p>
-                    <div className="keyword-chips-list" style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
-                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
-                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
-                        <strong>Deep Learning</strong>
-                        <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: "12px" }}>(Tracked)</span>
-                      </span>
-                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
-                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
-                        <strong>Single-cell RNA</strong>
-                        <span style={{ color: "rgba(255, 255, 255, 0.5)", fontSize: "12px" }}>(Tracked)</span>
-                      </span>
-                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
-                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
-                        <strong>Manifold Learning</strong>
-                      </span>
-                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
-                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
-                        <strong>Autoencoders</strong>
-                      </span>
-                      <span className="keyword-chip-large" style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)", padding: "10px 16px", borderRadius: "8px", color: "#ffffff", fontSize: "14px" }}>
-                        <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
-                        <strong>Biological Trajectories</strong>
+            {activeTab === "Authors" && (
+              <div className="abstract-body authors-tab-body">
+                <h2>Authors</h2>
+                <div
+                  style={{ display: "grid", gap: "20px", marginTop: "24px" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "16px",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      border: "1px solid rgba(255, 255, 255, 0.06)",
+                      padding: "20px",
+                      borderRadius: "12px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "50%",
+                        background: "var(--brand)",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: "18px",
+                        fontWeight: "bold",
+                        color: "#ffffff",
+                      }}
+                    >
+                      ER
+                    </div>
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: "18px",
+                          color: "#ffffff",
+                        }}
+                      >
+                        Dr. Elena Rostova
+                      </h3>
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          fontSize: "14px",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        Institute of Advanced Analytics · Computational Biology
+                      </p>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: "#6366f1",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          marginTop: "6px",
+                        }}
+                      >
+                        ORCID: 0000-0002-1825-0097
                       </span>
                     </div>
                   </div>
-                )}
-
-                {activeTab === "Authors" && (
-                  <div className="abstract-body authors-tab-body">
-                    <h2>Authors</h2>
-                    <div style={{ display: "grid", gap: "20px", marginTop: "24px" }}>
-                      <div style={{ display: "flex", gap: "16px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", padding: "20px", borderRadius: "12px", alignItems: "center" }}>
-                        <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--brand)", display: "grid", placeItems: "center", fontSize: "18px", fontWeight: "bold", color: "#ffffff" }}>ER</div>
-                        <div>
-                          <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>Dr. Elena Rostova</h3>
-                          <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#94a3b8" }}>Institute of Advanced Analytics  ·  Computational Biology</p>
-                          <span style={{ fontSize: "12px", color: "#6366f1", display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "6px" }}>ORCID: 0000-0002-1825-0097</span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: "16px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", padding: "20px", borderRadius: "12px", alignItems: "center" }}>
-                        <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#4f46e5", display: "grid", placeItems: "center", fontSize: "18px", fontWeight: "bold", color: "#ffffff" }}>MT</div>
-                        <div>
-                          <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>Marcus Thorne</h3>
-                          <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#94a3b8" }}>University of Applied Sciences  ·  Deep Learning Lab</p>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: "16px", background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.06)", padding: "20px", borderRadius: "12px", alignItems: "center" }}>
-                        <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#06b6d4", display: "grid", placeItems: "center", fontSize: "18px", fontWeight: "bold", color: "#ffffff" }}>JP</div>
-                        <div>
-                          <h3 style={{ margin: 0, fontSize: "18px", color: "#ffffff" }}>Jin-Soo Park</h3>
-                          <p style={{ margin: "4px 0 0", fontSize: "14px", color: "#94a3b8" }}>Seoul Institute of Technology  ·  Bioinformatics Research Division</p>
-                        </div>
-                      </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "16px",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      border: "1px solid rgba(255, 255, 255, 0.06)",
+                      padding: "20px",
+                      borderRadius: "12px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "50%",
+                        background: "#4f46e5",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: "18px",
+                        fontWeight: "bold",
+                        color: "#ffffff",
+                      }}
+                    >
+                      MT
+                    </div>
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: "18px",
+                          color: "#ffffff",
+                        }}
+                      >
+                        Marcus Thorne
+                      </h3>
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          fontSize: "14px",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        University of Applied Sciences · Deep Learning Lab
+                      </p>
                     </div>
                   </div>
-                )}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "16px",
+                      background: "rgba(255, 255, 255, 0.02)",
+                      border: "1px solid rgba(255, 255, 255, 0.06)",
+                      padding: "20px",
+                      borderRadius: "12px",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "50%",
+                        background: "#06b6d4",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: "18px",
+                        fontWeight: "bold",
+                        color: "#ffffff",
+                      }}
+                    >
+                      JP
+                    </div>
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: "18px",
+                          color: "#ffffff",
+                        }}
+                      >
+                        Jin-Soo Park
+                      </h3>
+                      <p
+                        style={{
+                          margin: "4px 0 0",
+                          fontSize: "14px",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        Seoul Institute of Technology · Bioinformatics Research
+                        Division
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                {activeTab === "Raw Metadata" && (
-                  <div className="abstract-body metadata-tab-body">
-                    <h2>Raw Metadata</h2>
-                    <p style={{ marginBottom: "20px" }}>API metadata payload returned from the indexing data source.</p>
-                    <pre style={{ background: "#0b0f19", border: "1px solid #1e293b", padding: "20px", borderRadius: "8px", overflowX: "auto", fontSize: "13px", color: "#a5b4fc", fontFamily: "monospace", lineHeight: "1.5" }}>
-{`{
+            {activeTab === "Raw Metadata" && (
+              <div className="abstract-body metadata-tab-body">
+                <h2>Raw Metadata</h2>
+                <p style={{ marginBottom: "20px" }}>
+                  API metadata payload returned from the indexing data source.
+                </p>
+                <pre
+                  style={{
+                    background: "#0b0f19",
+                    border: "1px solid #1e293b",
+                    padding: "20px",
+                    borderRadius: "8px",
+                    overflowX: "auto",
+                    fontSize: "13px",
+                    color: "#a5b4fc",
+                    fontFamily: "monospace",
+                    lineHeight: "1.5",
+                  }}
+                >
+                  {`{
   "paperId": "10.1038/s43588-023-00123-x",
   "title": "Deep Learning for Advanced Pattern Recognition in Complex Biological Systems",
   "authors": [
@@ -3486,39 +6472,48 @@ function StudentPublicationDetailPage({ role = "student" }) {
   ],
   "indexedDate": "2023-10-15T08:32:00Z"
 }`}
-                    </pre>
+                </pre>
+              </div>
+            )}
+          </article>
+
+          <section className="related-section">
+            <h2>Related Publications</h2>
+            <div className="related-list">
+              {relatedPublications.map((paper) => (
+                <article className="related-card" key={paper.title}>
+                  <div className="related-icon">
+                    <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
                   </div>
-                )}
-              </article>
+                  <div>
+                    <h3>{paper.title}</h3>
+                    <p>
+                      {paper.authors} • {paper.meta}
+                    </p>
+                    <span>{paper.stats}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        </section>
 
-              <section className="related-section">
-                <h2>Related Publications</h2>
-                <div className="related-list">
-                  {relatedPublications.map((paper) => (
-                    <article className="related-card" key={paper.title}>
-                      <div className="related-icon"><MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" /></div>
-                      <div>
-                        <h3>{paper.title}</h3>
-                        <p>{paper.authors}  •  {paper.meta}</p>
-                        <span>{paper.stats}</span>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            </section>
-
-            <section className="detail-side-column">
-              <ImpactAnalyticsCard />
-              <ExtractedTopicsCard />
-            </section>
-          </div>
-        </div>
+        <section className="detail-side-column">
+          <ImpactAnalyticsCard />
+          <ExtractedTopicsCard />
+        </section>
+      </div>
+    </div>
   );
 
   if (isResearcher) {
     return (
-      <ResearcherShell activeRoute="/researcher-search" topbar="publication" pageClassName="researcher-publication-page" mainClassName="researcher-publication-main">
+      <ResearcherShell
+        activeRoute="/researcher-search"
+        topbar="publication"
+        pageClassName="researcher-publication-page"
+        mainClassName="researcher-publication-main"
+      >
         {pageContent}
       </ResearcherShell>
     );
@@ -3528,7 +6523,10 @@ function StudentPublicationDetailPage({ role = "student" }) {
     <main className="student-app">
       <StudentSidebar activeRoute="/student-search" />
       <section className="student-main">
-        <StudentTopbar crumb="Search  >  Results  >  Deep Learning for Advanced Pattern Recognition..." searchValue="" />
+        <StudentTopbar
+          crumb="Search  >  Results  >  Deep Learning for Advanced Pattern Recognition..."
+          searchValue=""
+        />
         {pageContent}
       </section>
     </main>
@@ -3551,15 +6549,20 @@ export default function App() {
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/researcher-dashboard") return <ResearcherDashboard />;
-  if (path === "/researcher-trend-tracking") return <TrendTrackingDashboardPage />;
-  if (path === "/researcher-trend-dashboard") return <TrendTrackingDashboardPage />;
+  if (path === "/researcher-trend-tracking")
+    return <TrendTrackingDashboardPage />;
+  if (path === "/researcher-trend-dashboard")
+    return <TrendTrackingDashboardPage />;
   if (path === "/researcher-reports") return <ReportsPage />;
   if (path === "/researcher-year-comparison") return <YearComparisonPage />;
   if (path === "/researcher-sync-management") return <SyncManagementPage />;
   if (path === "/researcher-search") return <ResearcherSearchPage />;
-  if (path === "/researcher-publication") return <StudentPublicationDetailPage role="researcher" />;
-  if (path === "/researcher-bookmarks") return <BookmarksPage role="researcher" />;
-  if (path === "/researcher-notifications") return <NotificationsPage role="researcher" />;
+  if (path === "/researcher-publication")
+    return <StudentPublicationDetailPage role="researcher" />;
+  if (path === "/researcher-bookmarks")
+    return <BookmarksPage role="researcher" />;
+  if (path === "/researcher-notifications")
+    return <NotificationsPage role="researcher" />;
   if (path === "/researcher-profile") return <ProfilePage role="researcher" />;
   if (path === "/student-dashboard") return <StudentDashboard />;
   if (path === "/student-search") return <StudentSearchPage />;
