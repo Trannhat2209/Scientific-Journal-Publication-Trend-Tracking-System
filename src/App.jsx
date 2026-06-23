@@ -1,10 +1,22 @@
 import React from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import Chart from "chart.js/auto";
+
+const getAcademicRole = () =>
+  window.location.pathname.startsWith("/lecturer-") ? "lecturer" : "researcher";
+
+const getAcademicPath = (path, role = getAcademicRole()) => {
+  if (role === "lecturer" && path.startsWith("/researcher-")) {
+    return path.replace("/researcher-", "/lecturer-");
+  }
+
+  return path;
+};
 
 const navTo = (path) => (event) => {
   event.preventDefault();
-  window.history.pushState({}, "", path);
+  window.history.pushState({}, "", getAcademicPath(path));
   window.dispatchEvent(new Event("scholartrend:navigate"));
 };
 
@@ -686,9 +698,9 @@ function LoginPage() {
 
   const roleRoutes = {
     Researcher: "/researcher-dashboard",
-    Lecturer: "/researcher-dashboard",
+    Lecturer: "/lecturer-dashboard",
     Student: "/student-dashboard",
-    Administrator: "/researcher-dashboard",
+    Administrator: "/admin-dashboard",
   };
 
   const roleEmails = {
@@ -707,7 +719,7 @@ function LoginPage() {
     "lecturer@university.edu": {
       password: "Scholar2024",
       role: "Lecturer",
-      route: "/researcher-dashboard",
+      route: "/lecturer-dashboard",
     },
     "student@university.edu": {
       password: "Scholar2024",
@@ -717,7 +729,7 @@ function LoginPage() {
     "admin@university.edu": {
       password: "Scholar2024",
       role: "Administrator",
-      route: "/researcher-dashboard",
+      route: "/admin-dashboard",
     },
   };
 
@@ -2493,6 +2505,7 @@ function StudentDashboard() {
 
 function ResearcherSidebar({
   activeRoute = "/researcher-dashboard",
+  role = "researcher",
   collapsed = false,
   mobileOpen = false,
   onClose,
@@ -2534,7 +2547,7 @@ function ResearcherSidebar({
 
       <nav
         className="researcher-nav"
-        aria-label="Researcher dashboard navigation"
+        aria-label={`${role === "lecturer" ? "Lecturer" : "Researcher"} dashboard navigation`}
       >
         {researcherNavGroups.map((group, groupIndex) => (
           <div
@@ -2542,23 +2555,31 @@ function ResearcherSidebar({
             key={group.heading || `primary-${groupIndex}`}
           >
             {group.heading ? <h2>{group.heading}</h2> : null}
-            {group.items.map((item) => (
-              <a
-                className={
-                  item.route === activeRoute &&
-                  (activeRoute !== "/researcher-dashboard" ||
-                    item.label === "Dashboard")
-                    ? "active"
-                    : ""
-                }
-                href={item.route}
-                onClick={navTo(item.route)}
-                key={`${group.heading || "primary"}-${item.label}`}
-              >
-                <MiniIcon path={item.icon} />
-                <span>{item.label}</span>
-              </a>
-            ))}
+            {group.items.map((item) => {
+              const itemRoute = getAcademicPath(item.route, role);
+              const dashboardRoute = getAcademicPath(
+                "/researcher-dashboard",
+                role,
+              );
+
+              return (
+                <a
+                  className={
+                    itemRoute === activeRoute &&
+                    (activeRoute !== dashboardRoute ||
+                      item.label === "Dashboard")
+                      ? "active"
+                      : ""
+                  }
+                  href={itemRoute}
+                  onClick={navTo(itemRoute)}
+                  key={`${group.heading || "primary"}-${item.label}`}
+                >
+                  <MiniIcon path={item.icon} />
+                  <span>{item.label}</span>
+                </a>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -2574,8 +2595,8 @@ function ResearcherSidebar({
         </button>
         <div className="researcher-footer-actions">
           <a
-            href="/researcher-profile"
-            onClick={navTo("/researcher-profile")}
+            href={getAcademicPath("/researcher-profile", role)}
+            onClick={navTo(getAcademicPath("/researcher-profile", role))}
             aria-label="Profile"
           >
             <MiniIcon path="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM7 18.2a5.7 5.7 0 0 1 10 0" />
@@ -2790,6 +2811,61 @@ function ResearcherTopbar({
   );
 }
 
+function LecturerTopbar({ onMenuClick }) {
+  return (
+    <header className="researcher-topbar lecturer-topbar">
+      <button
+        type="button"
+        className="researcher-menu-button"
+        aria-label="Toggle navigation"
+        onClick={onMenuClick}
+      >
+        <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
+      </button>
+
+      <strong className="lecturer-topbar-title">Dashboard</strong>
+
+      <form
+        className="researcher-search lecturer-global-search"
+        onSubmit={navTo("/lecturer-search")}
+      >
+        <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6" />
+        <input
+          type="search"
+          placeholder="Search keywords, reports, or users..."
+          aria-label="Search Lecturer workspace"
+        />
+      </form>
+
+      <div className="researcher-top-actions lecturer-top-actions">
+        <button
+          type="button"
+          className="researcher-top-icon"
+          aria-label="Notifications"
+          onClick={navTo("/lecturer-notifications")}
+        >
+          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
+        </button>
+        <button
+          type="button"
+          className="researcher-top-icon"
+          aria-label="Settings"
+        >
+          <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
+        </button>
+        <button
+          type="button"
+          className="researcher-avatar lecturer-avatar"
+          aria-label="Lecturer profile"
+          onClick={navTo("/lecturer-profile")}
+        >
+          <span>AT</span>
+        </button>
+      </div>
+    </header>
+  );
+}
+
 function ResearcherShell({
   activeRoute = "/researcher-dashboard",
   current = "Dashboard",
@@ -2803,8 +2879,15 @@ function ResearcherShell({
 }) {
   const sidebar = useResearcherSidebarControls();
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
+  const academicRole = getAcademicRole();
+  const isLecturer = academicRole === "lecturer";
+  const resolvedActiveRoute = getAcademicPath(activeRoute, academicRole);
   const TopbarComponent =
-    topbar === "graph" ? (
+    topbar === "lecturer" ? (
+      <LecturerTopbar onMenuClick={sidebar.handleMenu} />
+    ) : topbar === "list" ? (
+      <ResearcherListTopbar onMenuClick={sidebar.handleMenu} />
+    ) : topbar === "graph" ? (
       <ResearcherSearchTopbar onMenuClick={sidebar.handleMenu} />
     ) : topbar === "publication" ? (
       <ResearcherPublicationTopbar onMenuClick={sidebar.handleMenu} />
@@ -2820,7 +2903,7 @@ function ResearcherShell({
 
   return (
     <main
-      className={`researcher-app ${pageClassName} ${sidebar.collapsed ? "sidebar-collapsed" : ""} ${sidebar.mobileOpen ? "sidebar-mobile-open" : ""}`}
+      className={`researcher-app ${isLecturer ? "lecturer-app" : ""} ${pageClassName} ${sidebar.collapsed ? "sidebar-collapsed" : ""} ${sidebar.mobileOpen ? "sidebar-mobile-open" : ""}`}
     >
       <button
         type="button"
@@ -2829,7 +2912,8 @@ function ResearcherShell({
         onClick={sidebar.closeMobile}
       ></button>
       <ResearcherSidebar
-        activeRoute={activeRoute}
+        activeRoute={resolvedActiveRoute}
+        role={academicRole}
         collapsed={sidebar.collapsed}
         mobileOpen={sidebar.mobileOpen}
         onClose={sidebar.closeMobile}
@@ -3098,6 +3182,199 @@ function ResearchDomainsCard() {
         ))}
       </div>
     </section>
+  );
+}
+
+const lecturerStats = [
+  {
+    label: "My Bookmarks",
+    value: "1,284",
+    badge: "↑ 12%",
+    tone: "blue",
+    icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+  },
+  {
+    label: "Followed Keywords",
+    value: "42",
+    badge: "↑ 4%",
+    tone: "purple",
+    icon: "M12 4a8 8 0 1 0 8 8M12 7a5 5 0 1 0 5 5M12 10a2 2 0 1 0 2 2",
+  },
+  {
+    label: "Alerts",
+    value: "7 Unread",
+    badge: "New",
+    tone: "slate",
+    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M7 4.5 5.5 6M17 4.5 18.5 6",
+  },
+  {
+    label: "Research Pulse",
+    value: "High Activity",
+    tone: "green",
+    icon: "M4 12h3l2-4 3.2 8 2.4-5H20M5 5.5h14v13H5z",
+  },
+];
+
+const lecturerTrendingKeywords = [
+  { label: "Neural Networks", value: 85 },
+  { label: "Quantum Comp", value: 72 },
+  { label: "CRISPR", value: 64 },
+  { label: "Machine Learning", value: 58 },
+  { label: "Climate Models", value: 45 },
+];
+
+const lecturerFieldPublications = [
+  {
+    title: "Advancements in Generative AI for Academic Synthesis",
+    authors: "Smith, J., Doe, A. et al.",
+    journal: "Journal of Data Science",
+    date: "Oct 2023",
+    citations: 124,
+  },
+  {
+    title: "Evaluating Deep Learning Models in Predictive Analytics",
+    authors: "Wang, L., Chen, H.",
+    journal: "IEEE Transactions",
+    date: "Sep 2023",
+    citations: 89,
+  },
+  {
+    title: "Sustainable Methodologies in Computational Research",
+    authors: "Green, R.",
+    journal: "Nature Computational Science",
+  },
+];
+
+function LecturerStatCard({ stat }) {
+  return (
+    <article className={`lecturer-stat-card ${stat.tone}`}>
+      <div className="lecturer-stat-topline">
+        <span className="lecturer-stat-icon">
+          <MiniIcon path={stat.icon} />
+        </span>
+        {stat.badge ? <em>{stat.badge}</em> : null}
+      </div>
+      <span className="lecturer-stat-label">{stat.label}</span>
+      <strong>{stat.value}</strong>
+    </article>
+  );
+}
+
+function LecturerTrendingCard() {
+  return (
+    <section className="lecturer-dashboard-card lecturer-trending-card">
+      <div className="lecturer-card-heading lecturer-trending-heading">
+        <span className="lecturer-heading-icon">
+          <MiniIcon path="M4 17 9 11l3 3 8-9" />
+        </span>
+        <h2>Top 5 Trending Keywords</h2>
+        <a
+          href="/lecturer-trend-tracking"
+          onClick={navTo("/lecturer-trend-tracking")}
+        >
+          Full Trend Tracking
+        </a>
+        <MiniIcon path="M9 6l6 6-6 6" />
+      </div>
+
+      <div className="lecturer-keyword-list">
+        {lecturerTrendingKeywords.map((keyword) => (
+          <div className="lecturer-keyword-row" key={keyword.label}>
+            <strong>{keyword.label}</strong>
+            <span className="lecturer-keyword-track" aria-hidden="true">
+              <i style={{ width: `${keyword.value}%` }}></i>
+            </span>
+            <em>{keyword.value}%</em>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LecturerPublicationsCard() {
+  return (
+    <section className="lecturer-dashboard-card lecturer-publications-card">
+      <div className="lecturer-card-heading lecturer-publications-heading">
+        <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
+        <h2>Publications in your field</h2>
+        <button type="button" aria-label="Publication options">
+          <MiniIcon path="M12 5.5h.01M12 12h.01M12 18.5h.01" />
+        </button>
+      </div>
+
+      <div className="lecturer-publication-list">
+        {lecturerFieldPublications.map((publication) => (
+          <a
+            className="lecturer-publication-item"
+            href="/lecturer-publication"
+            onClick={navTo("/lecturer-publication")}
+            key={publication.title}
+          >
+            <span className="lecturer-pdf-tile">PDF</span>
+            <span className="lecturer-publication-copy">
+              <strong>{publication.title}</strong>
+              <small>
+                {publication.authors} <i>•</i> {publication.journal}
+              </small>
+              {publication.date ? (
+                <em>
+                  <span>▣ {publication.date}</span>
+                  <span>⌁ {publication.citations} Citations</span>
+                </em>
+              ) : null}
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LecturerDashboard() {
+  const [exported, setExported] = React.useState(false);
+
+  return (
+    <ResearcherShell
+      activeRoute="/lecturer-dashboard"
+      topbar="lecturer"
+      pageClassName="lecturer-dashboard-page"
+      mainClassName="lecturer-dashboard-main"
+    >
+      <div className="lecturer-dashboard-content">
+        <div className="lecturer-welcome-row">
+          <div>
+            <div className="lecturer-title-row">
+              <h1>Welcome back, Dr. Aris Thorne</h1>
+              <span>Lecturer</span>
+            </div>
+            <p>
+              Here is the latest analytical intelligence for your tracked
+              disciplines.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="lecturer-export-button"
+            onClick={() => setExported(true)}
+          >
+            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+            {exported ? "Report Exported" : "Export Report"}
+          </button>
+        </div>
+
+        <section className="lecturer-stat-grid" aria-label="Lecturer metrics">
+          {lecturerStats.map((stat) => (
+            <LecturerStatCard stat={stat} key={stat.label} />
+          ))}
+        </section>
+
+        <div className="lecturer-dashboard-grid">
+          <LecturerTrendingCard />
+          <LecturerPublicationsCard />
+        </div>
+      </div>
+    </ResearcherShell>
   );
 }
 
@@ -4223,7 +4500,11 @@ function ResearcherSearchTopbar({ onMenuClick }) {
       </form>
 
       <div className="researcher-graph-actions">
-        <button type="button" className="graph-toolbar-button">
+        <button
+          type="button"
+          className="graph-toolbar-button"
+          onClick={navTo("/researcher-search?view=list")}
+        >
           <MiniIcon path="M6 6h12M6 12h12M6 18h12M4 6h.01M4 12h.01M4 18h.01" />
           List View
         </button>
@@ -4783,7 +5064,339 @@ function ResearcherPaperPanel({ selectedNode }) {
   );
 }
 
+const listViewPapers = [
+  {
+    id: "deepfruits",
+    title: "DeepFruits: A Fruit Detection System Using Deep Neural Networks",
+    authors: "Inkyu Sa, ZongYuan Ge, Feras Dayoub, B. Upcroft, Tristan Perez",
+    year: 2016,
+    citations: 986,
+    references: 38,
+    similarity: 100,
+  },
+  {
+    id: "bell-pepper",
+    title: "Automated Bell Pepper Harvesting using Robotic Vision System",
+    authors: "Silpa Ajith Kumar, J. S. Kumar",
+    year: 2019,
+    citations: 0,
+    references: 23,
+    similarity: 43.5,
+    summary:
+      "The automation technology used in harvesting the yellow bell pepper makes use of open source computer vision platform to detect the crop amidst the foliage using various image processing techniques and send appropriate signals to move the robot to harvest the crop.",
+    tags: ["Computer Vision", "Robotic Harvesting", "Agricultural Automation"],
+  },
+  {
+    id: "fruit-classification",
+    title: "Automatic Fruits Classification System Based on Deep Neural Networks",
+    authors: "Khadija Munir, A. I. Umar, Waqas Yousaf",
+    year: 2020,
+    citations: 7,
+    references: 27,
+    similarity: 42,
+  },
+  {
+    id: "cnn-fruit",
+    title: "Convolutional Neural Networks (CNN) for Detecting Fruit in Orchards",
+    authors: "Fouzia Risdin, P. Mondal, Kazi Mahmudul Hassan",
+    year: 2020,
+    citations: 21,
+    references: 28,
+    similarity: 41,
+  },
+  {
+    id: "orchard-detection",
+    title: "Deep fruit detection in orchards",
+    authors: "Suchet Bargoti, J. Underwood",
+    year: 2016,
+    citations: 494,
+    references: 24,
+    similarity: 40.1,
+  },
+  {
+    id: "detsseg",
+    title: "DetSSeg: A Selective On-Field Pomegranate Segmentation Method",
+    authors: "Shubham S. Mane, Prashant Bartakke, Tulshidas S.",
+    year: 2023,
+    citations: 2,
+    references: 25,
+    similarity: 39.3,
+  },
+  {
+    id: "occluded-crop",
+    title: "Visual detection of occluded crop: For automated harvesting",
+    authors: "C. McCool, Inkyu Sa, Feras Dayoub, Christopher Lehnert",
+    year: 2016,
+    citations: 77,
+    references: 17,
+    similarity: 29.2,
+  },
+  {
+    id: "image-segmentation",
+    title: "Image Segmentation for Fruit Detection and Yield Estimation",
+    authors: "Suchet Bargoti, J. Underwood",
+    year: 2016,
+    citations: 444,
+    references: 56,
+    similarity: 26.6,
+  },
+];
+
+function ResearcherListTopbar({ onMenuClick }) {
+  return (
+    <header className="researcher-list-topbar">
+      <button
+        type="button"
+        className="researcher-menu-button researcher-list-menu"
+        aria-label="Toggle navigation"
+        onClick={onMenuClick}
+      >
+        <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
+      </button>
+      <form
+        className="researcher-list-search"
+        onSubmit={navTo("/researcher-search?view=list")}
+      >
+        <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
+        <input
+          type="search"
+          placeholder="Search for a paper, author or concept..."
+          aria-label="Search list results"
+        />
+      </form>
+
+      <nav className="researcher-list-relations" aria-label="Paper relations">
+        <button type="button">Prior works</button>
+        <button type="button">Derivative works</button>
+      </nav>
+
+      <div className="researcher-list-view-toggle" aria-label="Result view">
+        <button type="button" className="active">
+          <MiniIcon path="M7 7h12M7 12h12M7 17h12M4 7h.01M4 12h.01M4 17h.01" />
+          List view
+        </button>
+        <button type="button" onClick={navTo("/researcher-search")}> 
+          <MiniIcon path="M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10" />
+          Graph view
+        </button>
+      </div>
+
+      <span className="researcher-list-divider" aria-hidden="true"></span>
+      <div className="researcher-list-utilities">
+        <button type="button" aria-label="Filter results">
+          <MiniIcon path="M5 7h14M8 12h8M10 17h4" />
+        </button>
+        <button type="button" aria-label="Settings">
+          <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
+        </button>
+        <button type="button" aria-label="Help">
+          <MiniIcon path="M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function ResearcherListDetail({ paper }) {
+  const [originAdded, setOriginAdded] = React.useState(false);
+  const [saved, setSaved] = React.useState(false);
+  const summary =
+    paper.summary ||
+    `This publication explores ${paper.title.toLowerCase()} through a practical computer vision workflow, connecting detection accuracy with reliable deployment in field conditions.`;
+  const tags = paper.tags || ["Computer Vision", "Deep Learning", "Fruit Detection"];
+
+  React.useEffect(() => {
+    setOriginAdded(false);
+    setSaved(false);
+  }, [paper.id]);
+
+  return (
+    <aside className="researcher-list-detail" aria-label="Selected paper details">
+      <div className="researcher-list-detail-flags">
+        <span>Top Similarity</span>
+        <span>Highly Cited</span>
+        <button type="button" aria-label="More paper actions">
+          <MiniIcon path="M12 5.5h.01M12 12h.01M12 18.5h.01" />
+        </button>
+      </div>
+
+      <h2>{paper.title}</h2>
+      <p className="researcher-list-detail-authors">{paper.authors}</p>
+      <div className="researcher-list-detail-meta">
+        <span>{paper.year}</span>
+        <span>•</span>
+        <span>⌁ {paper.citations} Citations</span>
+      </div>
+
+      <div className="researcher-list-primary-actions">
+        <button type="button" onClick={navTo("/researcher-search")}>
+          <MiniIcon path="M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10" />
+          Open graph
+        </button>
+        <button type="button" onClick={() => setOriginAdded((value) => !value)}>
+          <MiniIcon path={originAdded ? "M5 12.5 9.5 17 19 7" : "M12 5v14M5 12h14"} />
+          {originAdded ? "Origin added" : "Add origin"}
+        </button>
+      </div>
+
+      <button
+        type="button"
+        className={`researcher-list-save ${saved ? "saved" : ""}`}
+        onClick={() => setSaved((value) => !value)}
+      >
+        <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
+        {saved ? "Saved to collection" : "Save to collection"}
+      </button>
+
+      <section className="researcher-list-open-in">
+        <h3>Open in</h3>
+        <div>
+          <a href="https://scholar.google.com" target="_blank" rel="noreferrer">
+            ▱ Google Scholar
+          </a>
+          <a href="https://doi.org" target="_blank" rel="noreferrer">
+            <MiniIcon path="M7 4h8l3 3v13H7zM15 4v4h3M10 12h5M10 15h4" />
+            DOI.org
+          </a>
+        </div>
+      </section>
+
+      <section className="researcher-list-tldr">
+        <h3>
+          <MiniIcon path="M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5" />
+          S2 TL;DR
+        </h3>
+        <p>“{summary}”</p>
+      </section>
+
+      <section className="researcher-list-tags">
+        <h3>Key metaphors &amp; trends</h3>
+        <div>
+          {tags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+      </section>
+
+      <div className="researcher-vision-preview" aria-label="Vision processing simulation preview">
+        <div className="researcher-vision-arm">
+          <i></i>
+          <i></i>
+          <i></i>
+        </div>
+        <span>Vision Processing Simulation</span>
+      </div>
+    </aside>
+  );
+}
+
+function ResearcherListViewPage() {
+  const [selectedPaperId, setSelectedPaperId] = React.useState("bell-pepper");
+  const selectedPaper =
+    listViewPapers.find((paper) => paper.id === selectedPaperId) ||
+    listViewPapers[1];
+
+  const downloadResults = () => {
+    const rows = [
+      ["Title", "Authors", "Year", "Citations", "References", "Similarity"],
+      ...listViewPapers.map((paper) => [
+        paper.title,
+        paper.authors,
+        paper.year,
+        paper.citations,
+        paper.references,
+        paper.similarity,
+      ]),
+    ];
+    const csv = rows
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "scholartrend-list-results.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <ResearcherShell
+      activeRoute="/researcher-search"
+      topbar="list"
+      pageClassName="researcher-list-view-page"
+      mainClassName="researcher-list-shell-main"
+    >
+      <div className="researcher-list-workspace">
+        <section className="researcher-list-results">
+          <header className="researcher-list-heading">
+            <div>
+              <h1>DeepFruits: A Fruit Detection System</h1>
+              <p>
+                Knowledge Graph <span>›</span> <strong>List View</strong>
+              </p>
+            </div>
+            <div>
+              <button type="button" onClick={downloadResults}>
+                <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+                Download Results
+              </button>
+              <button
+                type="button"
+                aria-label="Close list view"
+                onClick={navTo("/researcher-search")}
+              >
+                <MiniIcon path="M6 6l12 12M18 6 6 18" />
+              </button>
+            </div>
+          </header>
+
+          <div className="researcher-list-table-wrap">
+            <table className="researcher-list-table">
+              <thead>
+                <tr>
+                  <th>Title ↕</th>
+                  <th>Authors ↕</th>
+                  <th>Year ↕</th>
+                  <th>Citations ↕</th>
+                  <th>References ↕</th>
+                  <th>Similarity ↕</th>
+                </tr>
+              </thead>
+              <tbody>
+                {listViewPapers.map((paper) => (
+                  <tr
+                    className={paper.id === selectedPaperId ? "selected" : ""}
+                    key={paper.id}
+                    onClick={() => setSelectedPaperId(paper.id)}
+                  >
+                    <td>
+                      <button type="button">{paper.title}</button>
+                    </td>
+                    <td>{paper.authors}</td>
+                    <td>{paper.year}</td>
+                    <td>{paper.citations}</td>
+                    <td>{paper.references}</td>
+                    <td>
+                      <span className="researcher-list-similarity">
+                        <i style={{ width: `${paper.similarity}%` }}></i>
+                      </span>
+                      <strong>{paper.similarity.toFixed(1)}</strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <ResearcherListDetail paper={selectedPaper} />
+      </div>
+    </ResearcherShell>
+  );
+}
+
 function ResearcherSearchPage() {
+  const view = new URLSearchParams(window.location.search).get("view");
   const [selectedNodeId, setSelectedNodeId] = React.useState("deepfruits");
   const selectedNode = React.useMemo(
     () =>
@@ -4791,6 +5404,8 @@ function ResearcherSearchPage() {
       graph3DNodes[0],
     [selectedNodeId],
   );
+
+  if (view === "list") return <ResearcherListViewPage />;
 
   return (
     <ResearcherShell
@@ -6533,6 +7148,1095 @@ function StudentPublicationDetailPage({ role = "student" }) {
   );
 }
 
+const adminNavItems = [
+  {
+    label: "Admin Dashboard",
+    route: "/admin-dashboard",
+    icon: "M4.5 5.5h6v6h-6zM13.5 5.5h6v4h-6zM4.5 14.5h6v4h-6zM13.5 12.5h6v6h-6z",
+  },
+  {
+    label: "Sync Management",
+    route: "/admin-sync-management",
+    icon: "M7 7h7.5a4.5 4.5 0 0 1 4.2 6.1M17.5 7H14V3.5M17 17H9.5a4.5 4.5 0 0 1-4.2-6.1M6.5 17H10v3.5",
+  },
+  {
+    label: "User Management",
+    route: "/admin-user-management",
+    icon: "M8.8 11.5a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM3.7 19.5a5.2 5.2 0 0 1 10.2 0M16.8 10.5a2.7 2.7 0 1 0 0-5.4M15.7 14.2a4.5 4.5 0 0 1 4.6 4.8",
+  },
+  {
+    label: "System Logs",
+    route: "/admin-system-logs",
+    icon: "M6 4.5h12v15H6zM9 8h6M9 11.5h6M9 15h3.5M16.5 15h.01",
+  },
+];
+
+const adminStats = [
+  {
+    label: "Total Users",
+    value: "24,592",
+    note: "↗ +12% from last month",
+    tone: "users",
+    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
+  },
+  {
+    label: "Total Publications",
+    value: "14.2M+",
+    note: "Indexed across repositories",
+    tone: "publications",
+    icon: "M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4M4 7v14h11",
+  },
+  {
+    label: "Last Sync Status",
+    value: "Success",
+    note: "2 hours ago",
+    tone: "sync",
+    icon: "M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9",
+  },
+  {
+    label: "API Health",
+    tone: "api",
+    icon: "M4 8h5l2 4 2-7 2 7 2-4h3M4 17h16",
+    values: [
+      ["Semantic Scholar", "99.9%"],
+      ["OpenAlex", "98.5%"],
+    ],
+  },
+];
+
+const adminActivity = [
+  {
+    text: "New user Dr. A. Smith registered.",
+    time: "10 mins ago",
+    tone: "purple",
+    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 7v6M14 10h6",
+  },
+  {
+    text: "OpenAlex delta sync completed.",
+    time: "45 mins ago",
+    tone: "green",
+    icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
+  },
+  {
+    text: "Role changed for J. Doe to Lecturer.",
+    time: "2 hours ago",
+    tone: "blue",
+    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M18 8v7M15 12h6",
+  },
+  {
+    text: "Batch import of 50 students completed.",
+    time: "3 hours ago",
+    tone: "purple",
+    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 7v6M14 10h6",
+  },
+  {
+    text: "Semantic Scholar API rate limit approaching.",
+    time: "5 hours ago",
+    tone: "red",
+    icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+  },
+];
+
+function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
+  return (
+    <aside className={`admin-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+      <div className="admin-sidebar-brand">
+        <span className="admin-brand-mark">
+          <MiniIcon path="M5 4h14v16H5zM9 15v-3M12 15V8M15 15v-5M8 18h8" />
+        </span>
+        <div>
+          <strong>ScholarTrend</strong>
+          <b>Analytical Intelligence</b>
+        </div>
+        <button type="button" aria-label="Close Admin navigation" onClick={onClose}>
+          <MiniIcon path="M6 6l12 12M18 6 6 18" />
+        </button>
+      </div>
+
+      <nav className="admin-nav" aria-label="Administrator navigation">
+        {adminNavItems.map((item) => (
+          <a
+            className={activeRoute === item.route ? "active" : ""}
+            href={item.route}
+            onClick={navTo(item.route)}
+            key={item.route}
+          >
+            <MiniIcon path={item.icon} />
+            <span>{item.label}</span>
+          </a>
+        ))}
+      </nav>
+
+      <div className="admin-sidebar-footer">
+        <p><i></i> System Status: Healthy</p>
+        <button type="button">
+          <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
+          Settings
+        </button>
+        <button type="button">
+          <MiniIcon path="M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          Support
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function AdminTopbar({ current = "Overview", onMenuClick, sectionPage = false }) {
+  return (
+    <header className={`admin-topbar ${sectionPage ? "admin-section-topbar" : ""}`}>
+      <button type="button" className="admin-menu-button" aria-label="Open Admin navigation" onClick={onMenuClick}>
+        <MiniIcon path="M4 6h16M4 12h16M4 18h16" />
+      </button>
+      <h1>{sectionPage ? "ScholarTrend Admin" : <>ScholarTrend<br />Admin</>}</h1>
+      {!sectionPage ? (
+        <>
+          <nav aria-label="Admin breadcrumb">
+            <span>Dashboard</span><b>›</b><strong>{current}</strong>
+          </nav>
+          <form onSubmit={(event) => event.preventDefault()}>
+            <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
+            <input type="search" placeholder="Search..." aria-label="Search Admin workspace" />
+          </form>
+        </>
+      ) : null}
+      <div className="admin-top-actions">
+        <button type="button" className="alert" aria-label="Admin notifications">
+          <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
+        </button>
+        <button type="button" aria-label="Admin settings">
+          <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
+        </button>
+        <span className="admin-mode">Admin<br />Mode</span>
+        <span className="admin-avatar">AD</span>
+      </div>
+    </header>
+  );
+}
+
+function AdminShell({
+  activeRoute = "/admin-dashboard",
+  current,
+  sectionPage = false,
+  children,
+}) {
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+  const routeClass = activeRoute.replace(/^\//, "").replaceAll("-", "-");
+
+  return (
+    <main className={`admin-app ${routeClass}-app ${mobileOpen ? "sidebar-mobile-open" : ""}`}>
+      <button type="button" className="admin-sidebar-backdrop" aria-label="Close Admin navigation" onClick={() => setMobileOpen(false)}></button>
+      <AdminSidebar activeRoute={activeRoute} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <section className="admin-main">
+        <AdminTopbar
+          current={current}
+          sectionPage={sectionPage}
+          onMenuClick={() => setMobileOpen(true)}
+        />
+        {children}
+      </section>
+    </main>
+  );
+}
+
+function AdminStatCard({ stat }) {
+  return (
+    <article className={`admin-stat-card ${stat.tone}`}>
+      <div className="admin-stat-heading">
+        <span>{stat.label}</span>
+        <MiniIcon path={stat.icon} />
+      </div>
+      {stat.values ? (
+        <div className="admin-api-values">
+          {stat.values.map(([label, value]) => (
+            <p key={label}><span>{label}</span><strong>{value}</strong></p>
+          ))}
+        </div>
+      ) : (
+        <>
+          <strong className="admin-stat-value">{stat.value}</strong>
+          <p className="admin-stat-note">{stat.note}</p>
+          {stat.tone !== "sync" ? <i className="admin-stat-line"></i> : null}
+        </>
+      )}
+    </article>
+  );
+}
+
+function AdminUserGrowthChart() {
+  const canvasRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!canvasRef.current) return undefined;
+    const context = canvasRef.current.getContext("2d");
+    const gradient = context.createLinearGradient(0, 0, 0, 260);
+    gradient.addColorStop(0, "rgba(79, 70, 229, 0.76)");
+    gradient.addColorStop(1, "rgba(139, 131, 232, 0.24)");
+
+    const chart = new Chart(context, {
+      type: "bar",
+      data: {
+        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        datasets: [
+          {
+            label: "Users",
+            data: [9800, 13600, 12400, 17200, 20800, 24592],
+            backgroundColor: gradient,
+            borderColor: "#6c63e7",
+            borderWidth: 1,
+            borderRadius: 2,
+            borderSkipped: false,
+            barPercentage: 0.83,
+            categoryPercentage: 0.92,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 700 },
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: "#111827",
+            padding: 10,
+            displayColors: false,
+            callbacks: {
+              label: (item) => `${new Intl.NumberFormat("en-US").format(item.raw)} users`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            border: { display: false },
+            grid: { display: false },
+            ticks: { color: "#667085", font: { size: 10 } },
+          },
+          y: {
+            beginAtZero: true,
+            suggestedMax: 26000,
+            border: { display: false },
+            grid: { color: "rgba(148, 163, 184, 0.2)" },
+            ticks: {
+              stepSize: 5000,
+              color: "#667085",
+              font: { size: 10 },
+              callback: (value) => (value === 0 ? "0" : `${value / 1000}k`),
+            },
+          },
+        },
+      },
+    });
+
+    return () => chart.destroy();
+  }, []);
+
+  return <canvas ref={canvasRef} aria-label="User growth over six months" role="img"></canvas>;
+}
+
+function AdminRoleDistributionChart() {
+  const canvasRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!canvasRef.current) return undefined;
+    const centerLabel = {
+      id: "adminRoleCenterLabel",
+      afterDraw(chart) {
+        const { ctx, chartArea } = chart;
+        if (!chartArea) return;
+        const centerX = (chartArea.left + chartArea.right) / 2;
+        const centerY = (chartArea.top + chartArea.bottom) / 2;
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#172033";
+        ctx.font = "700 17px Inter, sans-serif";
+        ctx.fillText("Total", centerX, centerY - 8);
+        ctx.font = "800 13px Inter, sans-serif";
+        ctx.fillText("24,592", centerX, centerY + 14);
+        ctx.restore();
+      },
+    };
+
+    const chart = new Chart(canvasRef.current, {
+      type: "doughnut",
+      data: {
+        labels: ["Researcher", "Student", "Lecturer", "Admin"],
+        datasets: [
+          {
+            data: [45, 30, 20, 5],
+            backgroundColor: ["#5145e5", "#45d6aa", "#cfe1fb", "#101827"],
+            borderColor: "#ffffff",
+            borderWidth: 3,
+            hoverOffset: 5,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: "70%",
+        rotation: -88,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (item) => `${item.label}: ${item.raw}%` } },
+        },
+      },
+      plugins: [centerLabel],
+    });
+
+    return () => chart.destroy();
+  }, []);
+
+  return <canvas ref={canvasRef} aria-label="Role distribution" role="img"></canvas>;
+}
+
+function AdminActivityPanel() {
+  return (
+    <section className="admin-activity-card">
+      <h2>Recent System Activity</h2>
+      <div>
+        {adminActivity.map((activity) => (
+          <article key={`${activity.text}-${activity.time}`}>
+            <span className={activity.tone}><MiniIcon path={activity.icon} /></span>
+            <p><strong>{activity.text}</strong><small>{activity.time}</small></p>
+          </article>
+        ))}
+      </div>
+      <button type="button" onClick={navTo("/admin-system-logs")}>View All Logs</button>
+    </section>
+  );
+}
+
+const adminSyncHistory = [
+  {
+    source: "Semantic Scholar",
+    status: "Failed",
+    records: "4,102",
+    time: "Today, 11:30 AM",
+    error: "429 Rate Limit Exceeded",
+    detail: "The API rejected requests due to high volume. Retry scheduled at next run.",
+  },
+  {
+    source: "Semantic Scholar",
+    status: "Completed",
+    records: "12,450",
+    time: "Today, 10:00 AM",
+  },
+  {
+    source: "OpenAlex",
+    status: "Completed",
+    records: "3,201",
+    time: "Yesterday, 10:00 AM",
+  },
+  {
+    source: "Semantic Scholar",
+    status: "Completed",
+    records: "11,890",
+    time: "Yesterday, 10:00 AM",
+  },
+];
+
+function AdminSourceToggle({ enabled, onToggle, label, detail }) {
+  return (
+    <div className="admin-source-toggle">
+      <div><strong>{label}</strong><span>{detail}</span></div>
+      <button
+        type="button"
+        className={enabled ? "enabled" : ""}
+        role="switch"
+        aria-checked={enabled}
+        aria-label={`${enabled ? "Disable" : "Enable"} ${label}`}
+        onClick={onToggle}
+      ><i></i></button>
+    </div>
+  );
+}
+
+function AdminSyncConfiguration() {
+  const [sources, setSources] = React.useState({ semantic: true, openAlex: false });
+  const [keywords, setKeywords] = React.useState(["Machine Learning", "NLP"]);
+  const [addingKeyword, setAddingKeyword] = React.useState(false);
+  const [newKeyword, setNewKeyword] = React.useState("");
+  const [cron, setCron] = React.useState("0 0 * * *");
+  const [rateLimit, setRateLimit] = React.useState(120);
+  const [saved, setSaved] = React.useState(false);
+
+  const addKeyword = (event) => {
+    event.preventDefault();
+    const value = newKeyword.trim();
+    if (value && !keywords.includes(value)) setKeywords((items) => [...items, value]);
+    setNewKeyword("");
+    setAddingKeyword(false);
+    setSaved(false);
+  };
+
+  return (
+    <section className="admin-sync-config-card">
+      <h2><MiniIcon path="M6 4v4M6 12v8M12 4v9M12 17v3M18 4v2M18 10v10M4 8h4M10 13h4M16 6h4" />Configuration</h2>
+      <div className="admin-config-body">
+        <AdminSourceToggle
+          enabled={sources.semantic}
+          onToggle={() => { setSources((value) => ({ ...value, semantic: !value.semantic })); setSaved(false); }}
+          label="Semantic Scholar"
+          detail="Primary Source"
+        />
+        <AdminSourceToggle
+          enabled={sources.openAlex}
+          onToggle={() => { setSources((value) => ({ ...value, openAlex: !value.openAlex })); setSaved(false); }}
+          label="OpenAlex"
+          detail="Secondary Source"
+        />
+
+        <div className="admin-config-field admin-keyword-field">
+          <label>Keyword Filters</label>
+          <div>
+            {keywords.map((keyword) => (
+              <span key={keyword}>{keyword}<button type="button" aria-label={`Remove ${keyword}`} onClick={() => { setKeywords((items) => items.filter((item) => item !== keyword)); setSaved(false); }}>×</button></span>
+            ))}
+            {addingKeyword ? (
+              <form onSubmit={addKeyword}>
+                <input autoFocus value={newKeyword} onChange={(event) => setNewKeyword(event.target.value)} onBlur={() => !newKeyword && setAddingKeyword(false)} aria-label="New keyword" />
+              </form>
+            ) : (
+              <button type="button" className="admin-add-keyword" aria-label="Add keyword" onClick={() => setAddingKeyword(true)}>+</button>
+            )}
+          </div>
+        </div>
+
+        <div className="admin-config-field admin-cron-field">
+          <label htmlFor="admin-cron">Cron Schedule</label>
+          <div><input id="admin-cron" value={cron} onChange={(event) => { setCron(event.target.value); setSaved(false); }} /><span>Daily at midnight</span></div>
+        </div>
+
+        <div className="admin-config-field admin-rate-field">
+          <label htmlFor="admin-rate">Rate Limit (req/min)<strong>{rateLimit}</strong></label>
+          <input id="admin-rate" type="range" min="10" max="500" value={rateLimit} onChange={(event) => { setRateLimit(Number(event.target.value)); setSaved(false); }} />
+          <div><span>10</span><span>500</span></div>
+        </div>
+      </div>
+      <div className="admin-config-save">
+        <button type="button" onClick={() => setSaved(true)}>{saved ? "Configuration Saved" : "Save Configuration"}</button>
+      </div>
+    </section>
+  );
+}
+
+function AdminSyncHistory() {
+  const [failedOnly, setFailedOnly] = React.useState(false);
+  const [page, setPage] = React.useState(1);
+  const rows = failedOnly
+    ? adminSyncHistory.filter((item) => item.status === "Failed")
+    : adminSyncHistory;
+
+  const downloadLogs = () => {
+    const header = "Source API,Status,Records Synced,Start Time";
+    const body = adminSyncHistory.map((row) => `${row.source},${row.status},${row.records.replace(",", "")},${row.time}`).join("\n");
+    const url = URL.createObjectURL(new Blob([`${header}\n${body}`], { type: "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "scholartrend-sync-history.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <section className="admin-sync-history-card" id="admin-sync-history">
+      <div className="admin-sync-history-heading">
+        <h2><MiniIcon path="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5M12 8v5l3 2" />Sync History / Logs</h2>
+        <div>
+          <button type="button" className={failedOnly ? "active" : ""} aria-label="Filter failed logs" onClick={() => setFailedOnly((value) => !value)}><MiniIcon path="M5 7h14M8 12h8M10 17h4" /></button>
+          <button type="button" aria-label="Download sync logs" onClick={downloadLogs}><MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" /></button>
+        </div>
+      </div>
+      <div className="admin-sync-table-wrap">
+        <table className="admin-sync-table">
+          <thead><tr><th>Source API</th><th>Status</th><th>Records Synced</th><th>Start Time</th></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <React.Fragment key={`${row.source}-${row.time}`}>
+                <tr className={row.status.toLowerCase()}>
+                  <td><i></i>{row.source}</td>
+                  <td><span>⊙ {row.status}</span></td>
+                  <td>{row.records}</td>
+                  <td>{row.time}</td>
+                </tr>
+                {row.error ? (
+                  <tr className="admin-sync-error-row"><td colSpan="4"><div><MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" /><p><strong>{row.error}</strong><span>{row.detail}</span></p></div></td></tr>
+                ) : null}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <footer className="admin-sync-pagination">
+        <span>Showing {rows.length} of 128 runs</span>
+        <div>
+          <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>‹</button>
+          {[1, 2, 3].map((number) => <button type="button" className={page === number ? "active" : ""} onClick={() => setPage(number)} key={number}>{number}</button>)}
+          <button type="button" onClick={() => setPage((value) => Math.min(3, value + 1))}>›</button>
+        </div>
+      </footer>
+    </section>
+  );
+}
+
+function AdminSyncManagementPage() {
+  const [running, setRunning] = React.useState(false);
+
+  const reviewLogs = () => document.getElementById("admin-sync-history")?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  return (
+    <AdminShell activeRoute="/admin-sync-management" current="Sync Management" sectionPage>
+      <div className="admin-sync-content">
+        <header className="admin-sync-page-heading">
+          <div><p>Dashboard <span>/</span> <strong>Sync Management</strong></p><h1>Sync Management</h1></div>
+          <button type="button" className={running ? "running" : ""} onClick={() => setRunning(true)}>▷ {running ? "Manual Sync Running" : "Trigger Manual Sync"}</button>
+        </header>
+
+        <section className="admin-sync-status-grid" aria-label="Sync status">
+          <article className="running-card">
+            <div><span>Currently Running</span><MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" /></div>
+            <strong>{running ? "1" : "0"}<small>jobs</small></strong>
+            <p><i className={running ? "active" : ""}></i>{running ? "Manual Sync Active" : "System Idle"}</p>
+          </article>
+          <article className="success-card">
+            <div><span>Last Successful Sync</span><MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" /></div>
+            <strong>Today, 10:45 AM</strong><p>12,450 records</p><i className="database-shape"></i>
+          </article>
+          <article className="failed-card">
+            <div><span>Failed in Last 24h</span><MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" /></div>
+            <strong>2<small>events</small></strong><button type="button" onClick={reviewLogs}>Review Logs</button>
+          </article>
+        </section>
+
+        <div className="admin-sync-layout">
+          <AdminSyncConfiguration />
+          <AdminSyncHistory />
+        </div>
+      </div>
+    </AdminShell>
+  );
+}
+
+function AdminDashboard() {
+  const exportUserData = () => {
+    const csv = "Month,Users\nJan,9800\nFeb,13600\nMar,12400\nApr,17200\nMay,20800\nJun,24592";
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "scholartrend-admin-user-growth.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <AdminShell activeRoute="/admin-dashboard" current="Overview">
+      <div className="admin-dashboard-content">
+        <section className="admin-stat-grid" aria-label="Administrator metrics">
+          {adminStats.map((stat) => <AdminStatCard stat={stat} key={stat.label} />)}
+        </section>
+
+        <div className="admin-dashboard-grid">
+          <div className="admin-dashboard-left">
+            <section className="admin-chart-card admin-growth-card">
+              <div className="admin-card-heading">
+                <h2>User Growth (6 Months)</h2>
+                <button type="button" onClick={exportUserData}>Export Data</button>
+              </div>
+              <div className="admin-growth-chart"><AdminUserGrowthChart /></div>
+            </section>
+
+            <section className="admin-chart-card admin-role-card">
+              <div className="admin-card-heading"><h2>Role Distribution</h2></div>
+              <div className="admin-role-layout">
+                <div className="admin-role-chart"><AdminRoleDistributionChart /></div>
+                <div className="admin-role-legend">
+                  {[
+                    ["Researcher", "45%", "#5145e5"],
+                    ["Student", "30%", "#45d6aa"],
+                    ["Lecturer", "20%", "#cfe1fb"],
+                    ["Admin", "5%", "#101827"],
+                  ].map(([label, value, color]) => (
+                    <p key={label}><span><i style={{ background: color }}></i>{label}</span><strong>{value}</strong></p>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <aside className="admin-dashboard-right">
+            <section className="admin-sync-alert">
+              <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
+              <div><h2>Failed Syncs Alert</h2><p>2 sources failed during the last automated cycle.</p><button type="button" onClick={navTo("/admin-system-logs")}>Review Logs</button></div>
+            </section>
+            <AdminActivityPanel />
+          </aside>
+        </div>
+      </div>
+    </AdminShell>
+  );
+}
+
+const adminManagedUsers = [
+  {
+    name: "Elena Smith",
+    email: "elena.smith@university.edu",
+    role: "Admin",
+    status: "Active",
+    lastLogin: "2 hrs ago",
+    avatar: "ES",
+    avatarTone: "blue",
+  },
+  {
+    name: "Dr. Marcus Vance",
+    email: "m.vance@institute.org",
+    role: "Researcher",
+    status: "Active",
+    lastLogin: "Oct 12, 2023",
+    avatar: "MV",
+    avatarTone: "photo",
+  },
+  {
+    name: "Sarah Jenkins",
+    email: "s.jenkins@corp.com",
+    role: "Viewer",
+    status: "Inactive",
+    lastLogin: "Sep 05, 2023",
+    avatar: "SJ",
+    avatarTone: "muted",
+  },
+  {
+    name: "Chen Wei",
+    email: "wei.c@scholar.edu",
+    role: "Researcher",
+    status: "Active",
+    lastLogin: "10 mins ago",
+    avatar: "CW",
+    avatarTone: "green",
+  },
+];
+
+const adminUserSummary = [
+  {
+    label: "Total Users",
+    value: "12,458",
+    note: "+4.2% from last month",
+    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
+  },
+  {
+    label: "Active Users (30d)",
+    value: "8,924",
+    note: "+1.8% from last month",
+    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM17 7v6M14 10h6M4 20a6 6 0 0 1 10.5-4",
+  },
+];
+
+function AdminUserManagementPage() {
+  const [query, setQuery] = React.useState("");
+  const [role, setRole] = React.useState("All Roles");
+  const [status, setStatus] = React.useState("All Statuses");
+  const [page, setPage] = React.useState(1);
+
+  const visibleUsers = adminManagedUsers.filter((user) => {
+    const matchesQuery = `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase());
+    const matchesRole = role === "All Roles" || user.role === role;
+    const matchesStatus = status === "All Statuses" || user.status === status;
+    return matchesQuery && matchesRole && matchesStatus;
+  });
+
+  const downloadUsers = () => {
+    const header = "Name,Email,Role,Status,Last Login";
+    const body = visibleUsers
+      .map((user) => `${user.name},${user.email},${user.role},${user.status},${user.lastLogin}`)
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([`${header}\n${body}`], { type: "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "scholartrend-users.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <AdminShell activeRoute="/admin-user-management" current="User Management">
+      <div className="admin-users-content">
+        <header className="admin-users-heading">
+          <div>
+            <p>Dashboard <span>/</span> <strong>User Management</strong></p>
+            <h1>User Management</h1>
+            <small>Manage system access, roles, and user statuses</small>
+          </div>
+          <button type="button" className="admin-invite-button">
+            <MiniIcon path="M12 5v14M5 12h14M16.5 8.5a3 3 0 1 1 0 6" />
+            Invite User
+          </button>
+        </header>
+
+        <section className="admin-users-summary-grid" aria-label="User management metrics">
+          {adminUserSummary.map((item) => (
+            <article className="admin-user-summary-card" key={item.label}>
+              <div>
+                <span>{item.label}</span>
+                <MiniIcon path={item.icon} />
+              </div>
+              <strong>{item.value}</strong>
+              <p>{item.note}</p>
+            </article>
+          ))}
+          <article className="admin-user-summary-card admin-key-roles-card">
+            <div>
+              <span>Key Roles</span>
+              <MiniIcon path="M8 7h8M8 11h8M8 15h5M5 4h14v16H5z" />
+            </div>
+            <p><span>Admin</span><strong>42</strong></p>
+            <i className="admin-role-bar admin-role-bar-admin"></i>
+            <p><span>Researcher</span><strong>4,180</strong></p>
+            <i className="admin-role-bar admin-role-bar-researcher"></i>
+          </article>
+        </section>
+
+        <section className="admin-users-panel">
+          <div className="admin-users-toolbar">
+            <label className="admin-users-search">
+              <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                type="search"
+                placeholder="Search name or email..."
+                aria-label="Search users by name or email"
+              />
+            </label>
+            <select value={role} onChange={(event) => setRole(event.target.value)} aria-label="Filter users by role">
+              <option>All Roles</option>
+              <option>Admin</option>
+              <option>Researcher</option>
+              <option>Viewer</option>
+            </select>
+            <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter users by status">
+              <option>All Statuses</option>
+              <option>Active</option>
+              <option>Inactive</option>
+            </select>
+            <div className="admin-users-toolbar-actions">
+              <button type="button" aria-label="Download users" onClick={downloadUsers}>
+                <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+              </button>
+              <button type="button" aria-label="Refresh users">
+                <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="admin-users-table-wrap">
+            <table className="admin-users-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Last Login</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleUsers.map((user) => (
+                  <tr key={user.email}>
+                    <td>
+                      <span className={`admin-user-avatar ${user.avatarTone}`}>{user.avatar}</span>
+                      <span>
+                        <strong>{user.name}</strong>
+                        <small>{user.email}</small>
+                      </span>
+                    </td>
+                    <td><span className="admin-user-role">{user.role}</span></td>
+                    <td>
+                      <span className={`admin-user-status ${user.status.toLowerCase()}`}>
+                        <i></i>{user.status}
+                      </span>
+                    </td>
+                    <td>{user.lastLogin}</td>
+                    <td>
+                      <button type="button" aria-label={`Edit ${user.name}`}>
+                        <MiniIcon path="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" />
+                      </button>
+                      <button type="button" aria-label={`Delete ${user.name}`}>
+                        <MiniIcon path="M5 7h14M10 11v6M14 11v6M8 7l1-3h6l1 3M7 7l1 13h8l1-13" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <footer className="admin-users-pagination">
+            <span>Showing 1 to {visibleUsers.length} of 12,458 entries</span>
+            <div>
+              <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                <MiniIcon path="M15 18l-6-6 6-6" />
+              </button>
+              {[1, 2, 3].map((number) => (
+                <button type="button" className={page === number ? "active" : ""} onClick={() => setPage(number)} key={number}>{number}</button>
+              ))}
+              <button type="button" onClick={() => setPage((value) => Math.min(3, value + 1))}>
+                <MiniIcon path="M9 18l6-6-6-6" />
+              </button>
+            </div>
+          </footer>
+        </section>
+      </div>
+    </AdminShell>
+  );
+}
+
+const adminSystemLogSummary = [
+  {
+    label: "Total Events",
+    value: "18,742",
+    note: "+326 today",
+    tone: "neutral",
+    icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5",
+  },
+  {
+    label: "Warnings",
+    value: "128",
+    note: "14 unresolved",
+    tone: "warning",
+    icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+  },
+  {
+    label: "Errors",
+    value: "12",
+    note: "2 critical",
+    tone: "danger",
+    icon: "M12 9v4M12 17h.01M5 5l14 14M19 5 5 19",
+  },
+  {
+    label: "Audit Pass Rate",
+    value: "99.2%",
+    note: "+0.4% from last week",
+    tone: "success",
+    icon: "M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9",
+  },
+];
+
+const adminSystemLogs = [
+  {
+    time: "Today, 11:42 AM",
+    event: "Semantic Scholar API rate limit approaching",
+    detail: "Retry window scheduled for the next sync cycle.",
+    module: "Sync",
+    severity: "Warning",
+    actor: "scheduler@system",
+    code: "SYNC-429",
+  },
+  {
+    time: "Today, 11:18 AM",
+    event: "Admin role updated for Elena Smith",
+    detail: "Role changed from Researcher to Admin.",
+    module: "Users",
+    severity: "Info",
+    actor: "admin@scholartrend.io",
+    code: "USER-204",
+  },
+  {
+    time: "Today, 10:45 AM",
+    event: "OpenAlex delta sync completed",
+    detail: "3,201 records indexed successfully.",
+    module: "Sync",
+    severity: "Success",
+    actor: "openalex-worker",
+    code: "SYNC-200",
+  },
+  {
+    time: "Today, 09:36 AM",
+    event: "Failed login threshold exceeded",
+    detail: "Account temporarily locked after repeated attempts.",
+    module: "Auth",
+    severity: "Error",
+    actor: "m.vance@institute.org",
+    code: "AUTH-403",
+  },
+  {
+    time: "Yesterday, 05:12 PM",
+    event: "Publication index rebuilt",
+    detail: "Search cache refreshed across active collections.",
+    module: "Indexing",
+    severity: "Info",
+    actor: "indexer@system",
+    code: "IDX-118",
+  },
+];
+
+function AdminSystemLogsPage() {
+  const [query, setQuery] = React.useState("");
+  const [severity, setSeverity] = React.useState("All Severities");
+  const [module, setModule] = React.useState("All Modules");
+  const [page, setPage] = React.useState(1);
+
+  const visibleLogs = adminSystemLogs.filter((log) => {
+    const matchesQuery = `${log.event} ${log.detail} ${log.actor} ${log.code}`.toLowerCase().includes(query.toLowerCase());
+    const matchesSeverity = severity === "All Severities" || log.severity === severity;
+    const matchesModule = module === "All Modules" || log.module === module;
+    return matchesQuery && matchesSeverity && matchesModule;
+  });
+
+  const exportLogs = () => {
+    const header = "Time,Severity,Module,Event,Actor,Code";
+    const body = visibleLogs
+      .map((log) => `${log.time},${log.severity},${log.module},${log.event},${log.actor},${log.code}`)
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([`${header}\n${body}`], { type: "text/csv" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "scholartrend-system-logs.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <AdminShell activeRoute="/admin-system-logs" current="System Logs">
+      <div className="admin-logs-content">
+        <header className="admin-logs-heading">
+          <div>
+            <p>Dashboard <span>/</span> <strong>System Logs</strong></p>
+            <h1>System Logs</h1>
+            <small>Monitor sync events, access activity, and platform alerts</small>
+          </div>
+          <button type="button" className="admin-log-export-button" onClick={exportLogs}>
+            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+            Export Logs
+          </button>
+        </header>
+
+        <section className="admin-logs-summary-grid" aria-label="System log metrics">
+          {adminSystemLogSummary.map((item) => (
+            <article className={`admin-log-summary-card ${item.tone}`} key={item.label}>
+              <div>
+                <span>{item.label}</span>
+                <MiniIcon path={item.icon} />
+              </div>
+              <strong>{item.value}</strong>
+              <p>{item.note}</p>
+            </article>
+          ))}
+        </section>
+
+        <div className="admin-logs-layout">
+          <section className="admin-logs-panel">
+            <div className="admin-logs-toolbar">
+              <label className="admin-logs-search">
+                <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  type="search"
+                  placeholder="Search event, actor, or code..."
+                  aria-label="Search system logs"
+                />
+              </label>
+              <select value={severity} onChange={(event) => setSeverity(event.target.value)} aria-label="Filter logs by severity">
+                <option>All Severities</option>
+                <option>Info</option>
+                <option>Success</option>
+                <option>Warning</option>
+                <option>Error</option>
+              </select>
+              <select value={module} onChange={(event) => setModule(event.target.value)} aria-label="Filter logs by module">
+                <option>All Modules</option>
+                <option>Auth</option>
+                <option>Indexing</option>
+                <option>Sync</option>
+                <option>Users</option>
+              </select>
+              <button type="button" aria-label="Refresh logs">
+                <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5" />
+              </button>
+            </div>
+
+            <div className="admin-logs-table-wrap">
+              <table className="admin-logs-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Event</th>
+                    <th>Module</th>
+                    <th>Severity</th>
+                    <th>Actor</th>
+                    <th>Code</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleLogs.map((log) => (
+                    <tr key={`${log.code}-${log.time}`}>
+                      <td>{log.time}</td>
+                      <td>
+                        <strong>{log.event}</strong>
+                        <small>{log.detail}</small>
+                      </td>
+                      <td><span className="admin-log-module">{log.module}</span></td>
+                      <td><span className={`admin-log-severity ${log.severity.toLowerCase()}`}>{log.severity}</span></td>
+                      <td>{log.actor}</td>
+                      <td><code>{log.code}</code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <footer className="admin-logs-pagination">
+              <span>Showing 1 to {visibleLogs.length} of 18,742 events</span>
+              <div>
+                <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                  <MiniIcon path="M15 18l-6-6 6-6" />
+                </button>
+                {[1, 2, 3].map((number) => (
+                  <button type="button" className={page === number ? "active" : ""} onClick={() => setPage(number)} key={number}>{number}</button>
+                ))}
+                <button type="button" onClick={() => setPage((value) => Math.min(3, value + 1))}>
+                  <MiniIcon path="M9 18l6-6-6-6" />
+                </button>
+              </div>
+            </footer>
+          </section>
+
+          <aside className="admin-logs-inspector">
+            <section>
+              <h2>Live Health</h2>
+              <p><span>API Gateway</span><strong>Operational</strong></p>
+              <p><span>Sync Workers</span><strong>Degraded</strong></p>
+              <p><span>Search Index</span><strong>Operational</strong></p>
+            </section>
+            <section className="admin-log-alert-card">
+              <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
+              <div>
+                <h2>Attention Needed</h2>
+                <p>2 critical events require admin review before the next scheduled sync.</p>
+                <button type="button">Review Critical</button>
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </AdminShell>
+  );
+}
+
+function AdminSectionPage({ activeRoute, title }) {
+  return (
+    <AdminShell activeRoute={activeRoute} current={title}>
+      <div className="admin-placeholder-content">
+        <span>Administrator</span>
+        <h1>{title}</h1>
+        <p>This Admin module is ready for its detailed workflow.</p>
+      </div>
+    </AdminShell>
+  );
+}
+
 export default function App() {
   const [, forceRender] = React.useReducer((value) => value + 1, 0);
   const path = window.location.pathname;
@@ -6548,6 +8252,27 @@ export default function App() {
 
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
+  if (path === "/admin-dashboard") return <AdminDashboard />;
+  if (path === "/admin-sync-management")
+    return <AdminSyncManagementPage />;
+  if (path === "/admin-user-management") return <AdminUserManagementPage />;
+  if (path === "/admin-system-logs") return <AdminSystemLogsPage />;
+  if (path === "/lecturer-dashboard") return <LecturerDashboard />;
+  if (path === "/lecturer-trend-tracking")
+    return <TrendTrackingDashboardPage />;
+  if (path === "/lecturer-trend-dashboard")
+    return <TrendTrackingDashboardPage />;
+  if (path === "/lecturer-reports") return <ReportsPage />;
+  if (path === "/lecturer-year-comparison") return <YearComparisonPage />;
+  if (path === "/lecturer-sync-management") return <SyncManagementPage />;
+  if (path === "/lecturer-search") return <ResearcherSearchPage />;
+  if (path === "/lecturer-publication")
+    return <StudentPublicationDetailPage role="researcher" />;
+  if (path === "/lecturer-bookmarks")
+    return <BookmarksPage role="researcher" />;
+  if (path === "/lecturer-notifications")
+    return <NotificationsPage role="researcher" />;
+  if (path === "/lecturer-profile") return <ProfilePage role="researcher" />;
   if (path === "/researcher-dashboard") return <ResearcherDashboard />;
   if (path === "/researcher-trend-tracking")
     return <TrendTrackingDashboardPage />;
