@@ -54,10 +54,63 @@ function Brand({ boxed = false, small = false }) {
 }
 
 function LandingPage() {
+  const [activeDataPoint, setActiveDataPoint] = React.useState(5); // Default to 2025 (index 5)
+
+  const chartData = [
+    { year: "2020", value: 5200, publications: "5,200", growth: "baseline" },
+    { year: "2021", value: 12500, publications: "12,500", growth: "+140%" },
+    { year: "2022", value: 23800, publications: "23,800", growth: "+90%" },
+    { year: "2023", value: 42100, publications: "42,100", growth: "+77%" },
+    { year: "2024", value: 60420, publications: "60,420", growth: "+43%" },
+    { year: "2025", value: 96847, publications: "96,847", growth: "+160%" },
+  ];
+
   return (
     <main className="page-shell">
       <header className="site-header" aria-label="Primary navigation">
         <Brand />
+        <nav className="lp-nav-links" aria-label="Main navigation">
+          <a href="/" onClick={navTo("/")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="5" rx="1.5" />
+              <rect x="14" y="12" width="7" height="9" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+            Features
+          </a>
+          <a href="/" onClick={navTo("/")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 3v18h18" />
+              <path d="M18 17l-5-5-4 4-6-6" />
+            </svg>
+            Trends
+          </a>
+          <a href="/" onClick={navTo("/")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="8" width="18" height="12" rx="2" />
+              <path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" />
+              <path d="M12 12v4" />
+              <path d="M10 14h4" />
+            </svg>
+            Pricing
+          </a>
+          <a href="/" onClick={navTo("/")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+            Resources
+          </a>
+          <a href="/" onClick={navTo("/")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4" />
+              <path d="M12 8h.01" />
+            </svg>
+            About
+          </a>
+        </nav>
         <nav className="nav-actions" aria-label="Account">
           <a className="login-link" href="/login" onClick={navTo("/login")}>
             <svg viewBox="0 0 24 24" className="login-icon" aria-hidden="true">
@@ -65,352 +118,1486 @@ function LandingPage() {
               <path d="M19 12H9" />
               <path d="m15 8 4 4-4 4" />
             </svg>
-            <span>Login</span>
+            <span>Log in</span>
           </a>
           <a
             className="primary-button compact"
             href="/register"
             onClick={navTo("/register")}
           >
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              style={{ width: "18px", height: "18px", strokeWidth: 2 }}
+            >
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
             Get Started
           </a>
         </nav>
       </header>
 
-      <section className="hero-section">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3v5M12 16v5M4.2 12H9M15 12h4.8M6.6 6.6l3.1 3.1M14.3 14.3l3.1 3.1M17.4 6.6l-3.1 3.1M9.7 14.3l-3.1 3.1" />
-            </svg>
-            Now powered by AI synthesis
+      {/* Hero Section */}
+      <section className="lp-hero-section">
+        <div className="lp-hero-copy">
+          <div className="lp-eyebrow">
+            <span className="lp-eyebrow-star">★</span>
+            AI-Powered Research Intelligence
           </div>
-          <h1>Track the Pulse of Research</h1>
-          <p>
+          <h1 className="lp-hero-h1">
+            Track the Pulse of <br />
+            <span className="lp-brand-blue">Research</span>
+          </h1>
+          <p className="lp-hero-desc">
             ScholarTrend aggregates, analyzes, and visualizes academic
             publications from trusted scholarly databases to reveal emerging
             research trends with clarity.
           </p>
-          <div className="hero-actions">
+          <div className="lp-search-bar">
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              className="lp-search-icon"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16.5 16.5 4 4" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search publications, authors, topics, or journals..."
+              className="lp-search-input"
+            />
+            <button className="lp-search-btn">
+              Search
+              <svg
+                viewBox="0 0 24 24"
+                className="lp-search-btn-icon"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="m16.5 16.5 4 4" />
+              </svg>
+            </button>
+          </div>
+          <div className="lp-hero-actions">
             <a
-              className="primary-button"
+              className="lp-primary-btn"
               href="/register"
               onClick={navTo("/register")}
             >
-              Get Started <span aria-hidden="true">-&gt;</span>
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                style={{
+                  width: "20px",
+                  height: "20px",
+                  strokeWidth: 2.5,
+                  fill: "none",
+                }}
+              >
+                <path d="M12 2v20M5 12l7-7 7 7" />
+              </svg>
+              Get Started - It's Free
             </a>
-            <a
-              className="secondary-button"
-              href="/login"
-              onClick={navTo("/login")}
-            >
+            <a className="lp-demo-btn" href="/login" onClick={navTo("/login")}>
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                className="lp-demo-play-icon"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <polygon points="10,8 16,12 10,16" fill="currentColor" />
+              </svg>
               View Demo
             </a>
           </div>
+          <div className="lp-trust-row">
+            <div className="lp-avatar-group" aria-hidden="true">
+              <img
+                className="lp-avatar"
+                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80"
+                alt="Researcher 1"
+              />
+              <img
+                className="lp-avatar"
+                src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&h=100&q=80"
+                alt="Researcher 2"
+              />
+              <img
+                className="lp-avatar"
+                src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&h=100&q=80"
+                alt="Researcher 3"
+              />
+              <img
+                className="lp-avatar"
+                src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&h=100&q=80"
+                alt="Researcher 4"
+              />
+            </div>
+            <div className="lp-trust-text">
+              <span className="lp-stars">★★★★★</span>
+              <span>Trusted by 10,000+ researchers worldwide</span>
+            </div>
+          </div>
         </div>
-
         <div
-          className="hero-visual"
-          aria-label="Research trend analytics dashboard preview"
+          className="lp-hero-visual"
+          aria-label="ScholarTrend analytics dashboard"
         >
-          <img
-            src="/assets/hero-dashboard.png"
-            alt="Laptop showing publication trend analytics charts"
-          />
+          <div className="lp-dashboard-mockup">
+            <div className="lp-dash-header">
+              <span className="lp-dash-logo">
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  aria-hidden="true"
+                  style={{ stroke: "#06b6d4", fill: "none" }}
+                >
+                  <path d="M12 3.25 8.5 8.7l3.5 2.15 3.5-2.15L12 3.25Z" />
+                  <path d="M7.2 10.05 4.5 14.2l7.5 4.55 7.5-4.55-2.7-4.15-4.8 2.95-4.8-2.95Z" />
+                </svg>
+                ScholarTrend
+              </span>
+              <div className="lp-dash-search-container">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="lp-dash-search-icon"
+                  aria-hidden="true"
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m16.5 16.5 4 4" />
+                </svg>
+                <input
+                  className="lp-dash-search"
+                  placeholder="Search anything..."
+                  readOnly
+                />
+              </div>
+              <div className="lp-dash-header-actions">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="lp-dash-bell"
+                  aria-hidden="true"
+                >
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                <img
+                  className="lp-dash-avatar"
+                  src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=40&h=40&q=80"
+                  alt="Avatar"
+                />
+              </div>
+            </div>
+            <div className="lp-dash-body">
+              <nav className="lp-dash-sidebar">
+                {[
+                  {
+                    name: "Overview",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Trends",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <path d="M3 17l6-6 4 4 8-8" />
+                        <path d="M21 7v6h-6" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Publications",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <path d="M14 2v6h6" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <line x1="10" y1="9" x2="8" y2="9" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Journals",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Authors",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Alerts",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Saved",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                      </svg>
+                    ),
+                  },
+                  {
+                    name: "Settings",
+                    icon: (
+                      <svg viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.25m5.07 5.07l4.24 4.25M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.07-5.07l4.24-4.25" />
+                      </svg>
+                    ),
+                  },
+                ].map((item) => (
+                  <span
+                    key={item.name}
+                    className={`lp-dash-navitem${item.name === "Overview" ? " active" : ""}`}
+                  >
+                    {item.icon}
+                    <span>{item.name}</span>
+                  </span>
+                ))}
+              </nav>
+              <div className="lp-dash-content">
+                <div className="lp-dash-title">Overview</div>
+                <div className="lp-dash-stats">
+                  <div className="lp-dash-stat">
+                    <div className="lp-dash-stat-left">
+                      <span className="lp-dash-stat-val">2.1M+</span>
+                      <span className="lp-dash-stat-label">Publications</span>
+                    </div>
+                    <div className="lp-dash-stat-icon-wrapper">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="lp-dash-stat-icon"
+                        aria-hidden="true"
+                      >
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="lp-dash-stat">
+                    <div className="lp-dash-stat-left">
+                      <span className="lp-dash-stat-val">150K+</span>
+                      <span className="lp-dash-stat-label">Journals</span>
+                    </div>
+                    <div className="lp-dash-stat-icon-wrapper">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="lp-dash-stat-icon"
+                        aria-hidden="true"
+                      >
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5v-15z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="lp-dash-stat">
+                    <div className="lp-dash-stat-left">
+                      <span className="lp-dash-stat-val">500K+</span>
+                      <span className="lp-dash-stat-label">Researchers</span>
+                    </div>
+                    <div className="lp-dash-stat-icon-wrapper">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="lp-dash-stat-icon"
+                        aria-hidden="true"
+                      >
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="lp-dash-stat">
+                    <div className="lp-dash-stat-left">
+                      <span className="lp-dash-stat-val">98+</span>
+                      <span className="lp-dash-stat-label">Countries</span>
+                    </div>
+                    <div className="lp-dash-stat-icon-wrapper">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="lp-dash-stat-icon"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="2" y1="12" x2="22" y2="12" />
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div className="lp-dash-charts">
+                  <div className="lp-dash-chart-box">
+                    <div className="lp-dash-chart-title">Publication Trend</div>
+                    <svg
+                      viewBox="0 0 180 80"
+                      className="lp-mini-chart"
+                      aria-hidden="true"
+                    >
+                      <defs>
+                        <linearGradient
+                          id="chartFill"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="#3b82f6"
+                            stopOpacity="0.25"
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="#3b82f6"
+                            stopOpacity="0"
+                          />
+                        </linearGradient>
+                      </defs>
+                      <line
+                        x1="20"
+                        y1="15"
+                        x2="170"
+                        y2="15"
+                        stroke="#f1f5f9"
+                        strokeWidth="1"
+                      />
+                      <line
+                        x1="20"
+                        y1="35"
+                        x2="170"
+                        y2="35"
+                        stroke="#f1f5f9"
+                        strokeWidth="1"
+                      />
+                      <line
+                        x1="20"
+                        y1="55"
+                        x2="170"
+                        y2="55"
+                        stroke="#f1f5f9"
+                        strokeWidth="1"
+                      />
+                      <line
+                        x1="20"
+                        y1="70"
+                        x2="170"
+                        y2="70"
+                        stroke="#cbd5e1"
+                        strokeWidth="1"
+                      />
+
+                      <path
+                        d="M20 65 Q 35 62, 50 56 T 80 46 T 110 30 T 140 18 T 170 8"
+                        fill="none"
+                        stroke="#3b82f6"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M20 65 Q 35 62, 50 56 T 80 46 T 110 30 T 140 18 T 170 8 L 170 70 L 20 70 Z"
+                        fill="url(#chartFill)"
+                      />
+
+                      <circle
+                        cx="20"
+                        cy="65"
+                        r="3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        strokeWidth="1.5"
+                      />
+                      <circle
+                        cx="50"
+                        cy="56"
+                        r="3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        strokeWidth="1.5"
+                      />
+                      <circle
+                        cx="80"
+                        cy="46"
+                        r="3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        strokeWidth="1.5"
+                      />
+                      <circle
+                        cx="110"
+                        cy="30"
+                        r="3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        strokeWidth="1.5"
+                      />
+                      <circle
+                        cx="140"
+                        cy="18"
+                        r="3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        strokeWidth="1.5"
+                      />
+                      <circle
+                        cx="170"
+                        cy="8"
+                        r="3"
+                        fill="#ffffff"
+                        stroke="#3b82f6"
+                        strokeWidth="1.5"
+                      />
+
+                      <text x="5" y="18" fill="#94a3b8" fontSize="6">
+                        100K
+                      </text>
+                      <text x="5" y="38" fill="#94a3b8" fontSize="6">
+                        50K
+                      </text>
+                      <text x="5" y="58" fill="#94a3b8" fontSize="6">
+                        25K
+                      </text>
+                      <text x="5" y="73" fill="#94a3b8" fontSize="6">
+                        0
+                      </text>
+
+                      <text
+                        x="20"
+                        y="79"
+                        fill="#94a3b8"
+                        fontSize="6"
+                        textAnchor="middle"
+                      >
+                        2020
+                      </text>
+                      <text
+                        x="50"
+                        y="79"
+                        fill="#94a3b8"
+                        fontSize="6"
+                        textAnchor="middle"
+                      >
+                        2021
+                      </text>
+                      <text
+                        x="80"
+                        y="79"
+                        fill="#94a3b8"
+                        fontSize="6"
+                        textAnchor="middle"
+                      >
+                        2022
+                      </text>
+                      <text
+                        x="110"
+                        y="79"
+                        fill="#94a3b8"
+                        fontSize="6"
+                        textAnchor="middle"
+                      >
+                        2023
+                      </text>
+                      <text
+                        x="140"
+                        y="79"
+                        fill="#94a3b8"
+                        fontSize="6"
+                        textAnchor="middle"
+                      >
+                        2024
+                      </text>
+                    </svg>
+                  </div>
+                  <div className="lp-dash-chart-box donut-box">
+                    <div className="lp-dash-chart-title">
+                      Top Research Areas
+                    </div>
+                    <div className="lp-donut-row">
+                      <svg
+                        viewBox="0 0 60 60"
+                        width="48"
+                        height="48"
+                        aria-hidden="true"
+                        style={{
+                          transform: "rotate(-90deg)",
+                          display: "block",
+                        }}
+                      >
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="20"
+                          fill="none"
+                          stroke="#3b82f6"
+                          strokeWidth="6"
+                          strokeDasharray="44 81.6"
+                          strokeDashoffset="0"
+                        />
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="20"
+                          fill="none"
+                          stroke="#0ea5e9"
+                          strokeWidth="6"
+                          strokeDasharray="27.6 98"
+                          strokeDashoffset="-44"
+                        />
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="20"
+                          fill="none"
+                          stroke="#8b5cf6"
+                          strokeWidth="6"
+                          strokeDasharray="22.6 103"
+                          strokeDashoffset="-71.6"
+                        />
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="20"
+                          fill="none"
+                          stroke="#f97316"
+                          strokeWidth="6"
+                          strokeDasharray="18.8 106.8"
+                          strokeDashoffset="-94.2"
+                        />
+                        <circle
+                          cx="30"
+                          cy="30"
+                          r="20"
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="6"
+                          strokeDasharray="12.6 113"
+                          strokeDashoffset="-113"
+                        />
+                      </svg>
+                      <div className="lp-donut-legend">
+                        <span>
+                          <i style={{ background: "#3b82f6" }}></i>Artificial
+                          Intelligence 35%
+                        </span>
+                        <span>
+                          <i style={{ background: "#0ea5e9" }}></i>Medicine 22%
+                        </span>
+                        <span>
+                          <i style={{ background: "#8b5cf6" }}></i>Computer
+                          Science 18%
+                        </span>
+                        <span>
+                          <i style={{ background: "#f97316" }}></i>Engineering
+                          15%
+                        </span>
+                        <span>
+                          <i style={{ background: "#10b981" }}></i>Others 10%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="lp-dash-bottom-grid">
+                  <div className="lp-dash-emerging">
+                    <div className="lp-dash-chart-title">Emerging Topics</div>
+                    {[
+                      {
+                        label: "Large Language Models",
+                        pct: "+168%",
+                        path: "M 2 15 Q 15 12, 25 14 T 45 6 T 58 2",
+                      },
+                      {
+                        label: "AI in Healthcare",
+                        pct: "+112%",
+                        path: "M 2 14 Q 15 6, 25 11 T 45 4 T 58 2",
+                      },
+                      {
+                        label: "Quantum Computing",
+                        pct: "+95%",
+                        path: "M 2 16 Q 15 13, 25 9 T 45 6 T 58 3",
+                      },
+                      {
+                        label: "Sustainable Energy",
+                        pct: "+74%",
+                        path: "M 2 15 Q 15 9, 25 12 T 45 7 T 58 4",
+                      },
+                    ].map((t) => (
+                      <div key={t.label} className="lp-emerging-row">
+                        <span className="lp-emerging-label">{t.label}</span>
+                        <div className="lp-emerging-sparkline-wrap">
+                          <svg
+                            viewBox="0 0 60 20"
+                            className="lp-sparkline-svg"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d={t.path}
+                              fill="none"
+                              stroke="#3b82f6"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </div>
+                        <span className="lp-emerging-pct">{t.pct}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="lp-dash-journals">
+                    <div className="lp-dash-chart-title">Top Journals</div>
+                    <table className="lp-dash-table">
+                      <thead>
+                        <tr>
+                          <th>Journal</th>
+                          <th>Volume</th>
+                          <th style={{ textAlign: "right" }}>Publications</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="lp-dash-table-name">Nature</td>
+                          <td className="lp-dash-table-bar-col">
+                            <div className="lp-dash-table-bar-wrap">
+                              <div
+                                className="lp-dash-table-bar"
+                                style={{ width: "85%" }}
+                              ></div>
+                            </div>
+                          </td>
+                          <td
+                            style={{ textAlign: "right" }}
+                            className="lp-dash-table-val"
+                          >
+                            28,632
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="lp-dash-table-name">Science</td>
+                          <td className="lp-dash-table-bar-col">
+                            <div className="lp-dash-table-bar-wrap">
+                              <div
+                                className="lp-dash-table-bar"
+                                style={{ width: "68%" }}
+                              ></div>
+                            </div>
+                          </td>
+                          <td
+                            style={{ textAlign: "right" }}
+                            className="lp-dash-table-val"
+                          >
+                            22,401
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="lp-dash-table-name">IEEE/CAA</td>
+                          <td className="lp-dash-table-bar-col">
+                            <div className="lp-dash-table-bar-wrap">
+                              <div
+                                className="lp-dash-table-bar"
+                                style={{ width: "55%" }}
+                              ></div>
+                            </div>
+                          </td>
+                          <td
+                            style={{ textAlign: "right" }}
+                            className="lp-dash-table-val"
+                          >
+                            18,505
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="lp-dash-table-name">The Lancet</td>
+                          <td className="lp-dash-table-bar-col">
+                            <div className="lp-dash-table-bar-wrap">
+                              <div
+                                className="lp-dash-table-bar"
+                                style={{ width: "36%" }}
+                              ></div>
+                            </div>
+                          </td>
+                          <td
+                            style={{ textAlign: "right" }}
+                            className="lp-dash-table-val"
+                          >
+                            12,098
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="source-strip" aria-label="Trusted data sources">
-        <span>Trusted data sources</span>
-        <a href="/" onClick={navTo("/")}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12Z" />
-            <path d="M12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
+      {/* Stats bar */}
+      <section className="lp-stats-bar" aria-label="Platform statistics">
+        <div className="lp-stat-item">
+          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <path d="M14 2v6h6" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <line x1="10" y1="9" x2="8" y2="9" />
           </svg>
-          Semantic Scholar
-        </a>
-        <a href="/" onClick={navTo("/")}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="8.5" />
-            <path d="M3.5 12h17M12 3.5c2.3 2.5 3.4 5.3 3.4 8.5S14.3 18 12 20.5M12 3.5C9.7 6 8.6 8.8 8.6 12S9.7 18 12 20.5" />
+          <div>
+            <strong>2M+</strong>
+            <span>Publications Indexed</span>
+          </div>
+        </div>
+        <div className="lp-stat-divider" aria-hidden="true"></div>
+        <div className="lp-stat-item">
+          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
-          OpenAlex
-        </a>
+          <div>
+            <strong>500K+</strong>
+            <span>Researchers</span>
+          </div>
+        </div>
+        <div className="lp-stat-divider" aria-hidden="true"></div>
+        <div className="lp-stat-item">
+          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+          </svg>
+          <div>
+            <strong>150K+</strong>
+            <span>Journals</span>
+          </div>
+        </div>
+        <div className="lp-stat-divider" aria-hidden="true"></div>
+        <div className="lp-stat-item">
+          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <div>
+            <strong>50+</strong>
+            <span>Countries</span>
+          </div>
+        </div>
       </section>
 
-      <section className="tools-section" aria-labelledby="tools-title">
-        <div className="section-heading">
-          <h2 id="tools-title">Precision Tools for Modern Research</h2>
-          <p>
-            Navigate the complex landscape of global academia with focused,
-            high-density analytics for researchers, lecturers, and students.
-          </p>
-        </div>
-
-        <div className="feature-grid">
-          <article className="feature-card search-card">
-            <div className="icon-tile">
+      {/* Powerful Features Section */}
+      <section className="lp-features-section" aria-labelledby="features-title">
+        <div className="lp-section-label">POWERFUL FEATURES</div>
+        <h2 id="features-title" className="lp-section-h2">
+          Everything you need for
+          <br />
+          smarter research
+        </h2>
+        <p className="lp-section-desc">
+          Advanced tools to help you discover, analyze, and stay ahead in the
+          ever-evolving world of academic research.
+        </p>
+        <div className="lp-feature-grid">
+          <article className="lp-feat-card">
+            <div className="lp-feat-icon blue">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <defs>
-                  <linearGradient
-                    id="searchGrad"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop
-                      offset="0%"
-                      stopColor="currentColor"
-                      stopOpacity="1"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="currentColor"
-                      stopOpacity="0.6"
-                    />
-                  </linearGradient>
-                </defs>
-                <circle
-                  cx="9"
-                  cy="9"
-                  r="5.5"
-                  stroke="url(#searchGrad)"
-                  strokeWidth="1.8"
-                  fill="none"
-                />
-                <path
-                  d="m13.5 13.5 4.5 4.5"
-                  stroke="url(#searchGrad)"
-                  strokeWidth="1.8"
-                />
-                <circle
-                  cx="9"
-                  cy="9"
-                  r="3"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="0.8"
-                  opacity="0.4"
-                />
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
               </svg>
             </div>
-            <h3>Search Publications</h3>
+            <h3>Smart Search</h3>
             <p>
-              Instantly query millions of peer-reviewed articles. Our advanced
-              semantic engine understands context, not just keywords, returning
-              the most relevant academic literature instantly.
-            </p>
-            <div className="search-preview" aria-hidden="true">
-              <div className="preview-search-line"></div>
-              <div className="preview-line strong"></div>
-              <div className="preview-line"></div>
-              <div className="preview-line short"></div>
-            </div>
-          </article>
-
-          <article className="feature-card insight-card">
-            <div className="icon-tile">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <defs>
-                  <linearGradient
-                    id="insightGrad"
-                    x1="0%"
-                    y1="100%"
-                    x2="100%"
-                    y2="0%"
-                  >
-                    <stop
-                      offset="0%"
-                      stopColor="currentColor"
-                      stopOpacity="0.5"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="currentColor"
-                      stopOpacity="1"
-                    />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M12 2C12 2 8 5 8 10c0 2.2 1.8 4 4 4s4-1.8 4-4c0-5-4-8-4-8Z"
-                  fill="none"
-                  stroke="url(#insightGrad)"
-                  strokeWidth="1.8"
-                />
-                <path
-                  d="M7.5 15h9M6 18h12"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  opacity="0.6"
-                />
-                <circle
-                  cx="9"
-                  cy="10"
-                  r="1.5"
-                  fill="currentColor"
-                  opacity="0.5"
-                />
-                <circle
-                  cx="12"
-                  cy="8"
-                  r="1.5"
-                  fill="currentColor"
-                  opacity="0.7"
-                />
-              </svg>
-            </div>
-            <h3>AI-Powered Insights</h3>
-            <p>
-              Automate literature reviews with our synthesis engine. Instantly
-              extract methodologies, results, and limitations from complex
-              papers.
+              Advanced semantic search understands context, not just keywords.
+              Find the most relevant publications instantly.
             </p>
             <a
-              className="card-link"
+              className="lp-feat-link"
               href="/register"
               onClick={navTo("/register")}
             >
-              Explore capabilities <span aria-hidden="true">-&gt;</span>
+              Learn more →
             </a>
           </article>
-
-          <article className="feature-card trend-card">
-            <div className="icon-tile dark">
+          <article className="lp-feat-card">
+            <div className="lp-feat-icon purple">
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <defs>
-                  <linearGradient
-                    id="trendGrad"
-                    x1="0%"
-                    y1="100%"
-                    x2="100%"
-                    y2="0%"
-                  >
-                    <stop
-                      offset="0%"
-                      stopColor="currentColor"
-                      stopOpacity="1"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="currentColor"
-                      stopOpacity="0.4"
-                    />
-                  </linearGradient>
-                </defs>
-                <polyline
-                  points="3 17 7 12 10 14.5 15 8 21 3"
-                  fill="none"
-                  stroke="url(#trendGrad)"
-                  strokeWidth="1.8"
-                />
-                <path
-                  d="M18 3h3v3"
-                  fill="none"
-                  stroke="url(#trendGrad)"
-                  strokeWidth="1.8"
-                />
-                <circle
-                  cx="7"
-                  cy="12"
-                  r="2"
-                  fill="currentColor"
-                  opacity="0.5"
-                />
-                <circle
-                  cx="10"
-                  cy="14.5"
-                  r="1.5"
-                  fill="currentColor"
-                  opacity="0.5"
-                />
+                <path d="M3 3v18h18" />
+                <path d="M18 17l-5-5-4 4-6-6" />
               </svg>
             </div>
-            <h3>Track Global Trends</h3>
+            <h3>Trend Analytics</h3>
             <p>
-              Monitor citation velocity and topic emergence in real-time. Stay
-              ahead of the curve in your specific domain.
+              Visualize research trends over time, identify emerging topics, and
+              track citation velocity in real-time.
             </p>
-            <div className="wave-lines" aria-hidden="true">
-              <span></span>
-              <span></span>
-            </div>
+            <a
+              className="lp-feat-link"
+              href="/register"
+              onClick={navTo("/register")}
+            >
+              Learn more →
+            </a>
           </article>
-
-          <article className="feature-card quality-card">
-            <div>
-              <div className="icon-tile">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <defs>
-                    <linearGradient
-                      id="qualityGrad"
-                      x1="0%"
-                      y1="0%"
-                      x2="100%"
-                      y2="100%"
-                    >
-                      <stop
-                        offset="0%"
-                        stopColor="currentColor"
-                        stopOpacity="1"
-                      />
-                      <stop
-                        offset="100%"
-                        stopColor="currentColor"
-                        stopOpacity="0.6"
-                      />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M12 2l2.8 6.2h6.7l-5.4 4.1 1.8 6.2-5.9-4.1-5.9 4.1 1.8-6.2-5.4-4.1h6.7Z"
-                    fill="url(#qualityGrad)"
-                    stroke="currentColor"
-                    strokeWidth="0.8"
-                  />
-                  <path
-                    d="M12 16.5l2.5 2"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  />
-                  <path
-                    d="M14.5 18.5l2-2.5"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                    opacity="0.6"
-                  />
-                </svg>
-              </div>
-              <h3>Uncompromising Data Quality</h3>
-              <p>
-                We cross-reference every data point against institutional
-                repositories. No hallucinations, just pristine academic facts.
-              </p>
+          <article className="lp-feat-card">
+            <div className="lp-feat-icon green">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                <path d="M2 17l10 5 10-5" />
+                <path d="M2 12l10 5 10-5" />
+              </svg>
             </div>
-            <div className="quality-table" aria-label="Data quality metrics">
-              <div>
-                <span>Data Point</span>
-                <strong>Verified</strong>
-              </div>
-              <div>
-                <span>Citation Accuracy</span>
-                <strong>99.9%</strong>
-              </div>
-              <div>
-                <span>Source Transparency</span>
-                <strong>100%</strong>
-              </div>
+            <h3>AI Insights</h3>
+            <p>
+              AI-powered summaries, research gap analysis, and key findings
+              extraction from complex papers.
+            </p>
+            <a
+              className="lp-feat-link"
+              href="/register"
+              onClick={navTo("/register")}
+            >
+              Learn more →
+            </a>
+          </article>
+          <article className="lp-feat-card">
+            <div className="lp-feat-icon orange">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                <path d="M12 7v5" />
+              </svg>
             </div>
+            <h3>Personal Workspace</h3>
+            <p>
+              Save papers, follow topics, set alerts, and organize your research
+              in one personalized workspace.
+            </p>
+            <a
+              className="lp-feat-link"
+              href="/register"
+              onClick={navTo("/register")}
+            >
+              Learn more →
+            </a>
           </article>
         </div>
       </section>
 
-      <footer className="site-footer">
-        <Brand small />
-        <nav className="footer-links" aria-label="Footer links">
-          <a href="/">Privacy Policy</a>
-          <a href="/">Terms of Service</a>
-          <a href="/">Contact</a>
-        </nav>
+      {/* Dark Trend Visualization Section */}
+      <section className="lp-trend-section" aria-labelledby="trend-title">
+        <div className="lp-trend-container">
+          <div className="lp-trend-left">
+            <div className="lp-trend-label">TREND VISUALIZATION</div>
+            <h2 id="trend-title" className="lp-trend-h2">
+              Discover Emerging
+              <br />
+              Trends Before
+              <br />
+              Everyone Else
+            </h2>
+            <p className="lp-trend-desc">
+              Our real-time analytics engine scans millions of publications to
+              identify emerging research areas and predict future trends.
+            </p>
+            <a
+              className="lp-explore-btn"
+              href="/register"
+              onClick={navTo("/register")}
+            >
+              Explore Trends →
+            </a>
+          </div>
+
+          <div className="lp-trend-middle">
+            <div className="lp-trend-chart-header">
+              <span className="lp-trend-topic">AI in Healthcare</span>
+              <span className="lp-trend-badge">Emerging</span>
+            </div>
+
+            <svg
+              viewBox="0 0 400 180"
+              className="lp-trend-chart"
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+
+              {/* Grid lines */}
+              <line
+                x1="40"
+                y1="20"
+                x2="370"
+                y2="20"
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth="1"
+              />
+              <line
+                x1="40"
+                y1="50"
+                x2="370"
+                y2="50"
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth="1"
+              />
+              <line
+                x1="40"
+                y1="80"
+                x2="370"
+                y2="80"
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth="1"
+              />
+              <line
+                x1="40"
+                y1="110"
+                x2="370"
+                y2="110"
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth="1"
+              />
+              <line
+                x1="40"
+                y1="140"
+                x2="370"
+                y2="140"
+                stroke="rgba(255,255,255,0.1)"
+                strokeWidth="1"
+              />
+
+              {/* Path */}
+              <path
+                d="M40 135 C 75 132, 110 125, 145 118 C 180 110, 215 95, 250 82 C 285 68, 320 48, 370 25"
+                fill="none"
+                stroke="#06b6d4"
+                strokeWidth="3"
+              />
+              <path
+                d="M40 135 C 75 132, 110 125, 145 118 C 180 110, 215 95, 250 82 C 285 68, 320 48, 370 25 L 370 140 L 40 140 Z"
+                fill="url(#trendArea)"
+              />
+
+              {/* Clickable Dots - Single white ring + cyan center */}
+              {[
+                { cx: 40, cy: 135, idx: 0 },
+                { cx: 105, cy: 125, idx: 1 },
+                { cx: 170, cy: 112, idx: 2 },
+                { cx: 235, cy: 92, idx: 3 },
+                { cx: 300, cy: 68, idx: 4 },
+                { cx: 370, cy: 25, idx: 5 },
+              ].map((point) => (
+                <g
+                  key={point.idx}
+                  onClick={() => setActiveDataPoint(point.idx)}
+                  style={{ cursor: "pointer" }}
+                >
+                  {/* Transparent click area */}
+                  <circle
+                    cx={point.cx}
+                    cy={point.cy}
+                    r="10"
+                    fill="transparent"
+                  />
+                  {/* Single white ring */}
+                  <circle
+                    cx={point.cx}
+                    cy={point.cy}
+                    r="2.8"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="1"
+                    style={{ transition: "all 0.2s ease" }}
+                  />
+                  {/* Small cyan center dot */}
+                  <circle
+                    cx={point.cx}
+                    cy={point.cy}
+                    r={activeDataPoint === point.idx ? 1.3 : 1.2}
+                    fill="#06b6d4"
+                    style={{ transition: "all 0.2s ease" }}
+                  />
+                </g>
+              ))}
+
+              {/* Tooltip vertical dashed line */}
+              {activeDataPoint !== null && (
+                <line
+                  x1={[40, 105, 170, 235, 300, 370][activeDataPoint]}
+                  y1="20"
+                  x2={[40, 105, 170, 235, 300, 370][activeDataPoint]}
+                  y2="140"
+                  stroke="rgba(6,182,212,0.3)"
+                  strokeWidth="1"
+                  strokeDasharray="4,4"
+                />
+              )}
+
+              {/* Y axis text */}
+              <text x="32" y="23" fill="#94a3b8" fontSize="8" textAnchor="end">
+                100k
+              </text>
+              <text x="32" y="53" fill="#94a3b8" fontSize="8" textAnchor="end">
+                75k
+              </text>
+              <text x="32" y="83" fill="#94a3b8" fontSize="8" textAnchor="end">
+                50k
+              </text>
+              <text x="32" y="113" fill="#94a3b8" fontSize="8" textAnchor="end">
+                25k
+              </text>
+              <text x="32" y="143" fill="#94a3b8" fontSize="8" textAnchor="end">
+                0
+              </text>
+
+              {/* X axis text */}
+              <text
+                x="40"
+                y="155"
+                fill="#64748b"
+                fontSize="8"
+                textAnchor="middle"
+              >
+                2020
+              </text>
+              <text
+                x="105"
+                y="155"
+                fill="#64748b"
+                fontSize="8"
+                textAnchor="middle"
+              >
+                2021
+              </text>
+              <text
+                x="170"
+                y="155"
+                fill="#64748b"
+                fontSize="8"
+                textAnchor="middle"
+              >
+                2022
+              </text>
+              <text
+                x="235"
+                y="155"
+                fill="#64748b"
+                fontSize="8"
+                textAnchor="middle"
+              >
+                2023
+              </text>
+              <text
+                x="300"
+                y="155"
+                fill="#64748b"
+                fontSize="8"
+                textAnchor="middle"
+              >
+                2024
+              </text>
+              <text
+                x="370"
+                y="155"
+                fill="#64748b"
+                fontSize="8"
+                textAnchor="middle"
+              >
+                2025
+              </text>
+
+              {/* Tooltip box - Dynamic based on activeDataPoint */}
+              {activeDataPoint !== null && (
+                <>
+                  <rect
+                    x={
+                      [40, 105, 170, 235, 300, 370][activeDataPoint] > 250
+                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
+                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10
+                    }
+                    y={
+                      [135, 125, 112, 92, 68, 25][activeDataPoint] > 80
+                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
+                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10
+                    }
+                    width="100"
+                    height="32"
+                    rx="6"
+                    fill="rgba(13, 27, 42, 0.95)"
+                    stroke="rgba(6, 182, 212, 0.4)"
+                    strokeWidth="1.5"
+                  />
+                  <text
+                    x={
+                      ([40, 105, 170, 235, 300, 370][activeDataPoint] > 250
+                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
+                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10) +
+                      6
+                    }
+                    y={
+                      ([135, 125, 112, 92, 68, 25][activeDataPoint] > 80
+                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
+                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10) +
+                      12
+                    }
+                    fill="#ffffff"
+                    fontSize="7"
+                    fontWeight="bold"
+                  >
+                    {chartData[activeDataPoint].year}
+                    {activeDataPoint === 5 ? " (Projected)" : ""}
+                  </text>
+                  <text
+                    x={
+                      ([40, 105, 170, 235, 300, 370][activeDataPoint] > 250
+                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
+                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10) +
+                      6
+                    }
+                    y={
+                      ([135, 125, 112, 92, 68, 25][activeDataPoint] > 80
+                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
+                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10) +
+                      22
+                    }
+                    fill="#06b6d4"
+                    fontSize="7.5"
+                    fontWeight="bold"
+                  >
+                    {chartData[activeDataPoint].publications} publications
+                  </text>
+                  <text
+                    x={
+                      ([40, 105, 170, 235, 300, 370][activeDataPoint] > 250
+                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
+                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10) +
+                      6
+                    }
+                    y={
+                      ([135, 125, 112, 92, 68, 25][activeDataPoint] > 80
+                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
+                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10) +
+                      30
+                    }
+                    fill="rgba(255,255,255,0.65)"
+                    fontSize="6.5"
+                  >
+                    {chartData[activeDataPoint].growth !== "baseline"
+                      ? `${chartData[activeDataPoint].growth} from ${
+                          parseInt(chartData[activeDataPoint].year) - 1
+                        }`
+                      : "Starting year"}
+                  </text>
+                </>
+              )}
+            </svg>
+          </div>
+
+          <div className="lp-trend-right">
+            <div className="lp-top-rising">
+              <div className="lp-top-rising-title">Top Rising Topics</div>
+              {[
+                { label: "Large Language Models", pct: "+149%" },
+                { label: "AI in Healthcare", pct: "+112%" },
+                { label: "Quantum Computing", pct: "+95%" },
+                { label: "Sustainable Energy", pct: "+76%" },
+                { label: "Bioinformatics", pct: "+63%" },
+              ].map((t, i) => (
+                <div key={t.label} className="lp-rising-row">
+                  <span className="lp-rising-rank">{i + 1}</span>
+                  <span className="lp-rising-label">{t.label}</span>
+                  <span className="lp-rising-pct">{t.pct}</span>
+                </div>
+              ))}
+              <a
+                className="lp-view-all-btn"
+                href="/register"
+                onClick={navTo("/register")}
+              >
+                View All Trends
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="lp-how-section" aria-labelledby="how-title">
+        <div className="lp-section-label">HOW IT WORKS</div>
+        <h2 id="how-title" className="lp-section-h2">
+          From Search to Insight in 4 Simple Steps
+        </h2>
+        <div className="lp-steps-row">
+          {[
+            {
+              num: "1",
+              icon: (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m16.5 16.5 4 4" />
+                </svg>
+              ),
+              label: "Search",
+              desc: "Search for topics, keywords, authors, or journals.",
+            },
+            {
+              num: "2",
+              icon: (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <polyline points="3 17 7 12 10 14.5 15 8 21 3" />
+                  <rect x="2" y="18" width="20" height="3" rx="1" />
+                </svg>
+              ),
+              label: "Analyze",
+              desc: "Analyze trends, citations, and research patterns.",
+            },
+            {
+              num: "3",
+              icon: (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6M9 15l2 2 4-4" />
+                </svg>
+              ),
+              label: "Explore",
+              desc: "Explore related papers, authors, and emerging topics.",
+            },
+            {
+              num: "4",
+              icon: (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+                </svg>
+              ),
+              label: "Save & Track",
+              desc: "Save your research and get alerts on new developments.",
+            },
+          ].map((step, i) => (
+            <React.Fragment key={step.num}>
+              <div className="lp-step">
+                <div className={`lp-step-num lp-step-num-${i}`}>{step.num}</div>
+                <div className="lp-step-icon">{step.icon}</div>
+                <div className="lp-step-label">{step.label}</div>
+                <div className="lp-step-desc">{step.desc}</div>
+              </div>
+              {i < 3 && (
+                <div className="lp-step-arrow" aria-hidden="true"></div>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section
+        className="lp-testimonials-section"
+        aria-labelledby="testimonials-title"
+      >
+        <div className="lp-section-label">TRUSTED BY RESEARCHERS</div>
+        <h2 id="testimonials-title" className="lp-section-h2">
+          Loved by Researchers Worldwide
+        </h2>
+        <div className="lp-testimonials-grid">
+          {[
+            {
+              quote:
+                "ScholarTrend has transformed how I discover and track research trends. It saves me hours every week.",
+              name: "Dr. Sarah Chen",
+              org: "University of Stanford",
+              img: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&h=100&q=80",
+            },
+            {
+              quote:
+                "The trend analysis and AI insights are incredibly accurate. Essential tool for any researcher.",
+              name: "Prof. Michael Rodriguez",
+              org: "MIT",
+              img: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=100&h=100&q=80",
+            },
+            {
+              quote:
+                "Finding emerging topics has never been easier. ScholarTrend keeps me ahead of the curve.",
+              name: "Dr. Emily Johnson",
+              org: "Harvard University",
+              img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80",
+            },
+          ].map((t) => (
+            <article key={t.name} className="lp-testimonial-card">
+              <div className="lp-testimonial-quote">"</div>
+              <p className="lp-testimonial-text">{t.quote}</p>
+              <div className="lp-testimonial-author">
+                <img
+                  className="lp-testimonial-avatar"
+                  src={t.img}
+                  alt={t.name}
+                />
+                <div>
+                  <div className="lp-testimonial-name">{t.name}</div>
+                  <div className="lp-testimonial-org">{t.org}</div>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="lp-testimonials-dots" aria-hidden="true">
+          <span className="active"></span>
+          <span></span>
+          <span></span>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="lp-cta-section" aria-label="Call to action">
+        <div className="lp-cta-rocket-container" aria-hidden="true">
+          <div className="lp-cta-rocket-circle">
+            <svg
+              viewBox="0 0 24 24"
+              className="lp-cta-rocket-svg"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M4.5 16.5c-1.5 1.25-2.5 3.5-2.5 3.5s2.25-1 3.5-2.5M12 2C7 2 4 7 4 12c0 2 1.5 4 1.5 4s1.5.5 3 0c3-1 4.5-4 4.5-4S12 11 12 9s-2-2-3-1M12 2c5 0 8 5 8 10 0 2-1.5 4-1.5 4s-1.5.5-3 0c-3-1-4.5-4-4.5-4s1-1 1-3 2-2 3-1" />
+              <path d="M12 9c3 3 6 3 9 1.5M12 9c-3 3-6 3-9 1.5M19 19c-1.5 1.5-3.5 2.5-3.5 2.5s1-2.25 2.5-3.5" />
+            </svg>
+          </div>
+          {/* Sparks */}
+          <div className="lp-cta-spark spark-1"></div>
+          <div className="lp-cta-spark spark-2"></div>
+          <div className="lp-cta-spark spark-3"></div>
+        </div>
+        <div className="lp-cta-text">
+          <h2 className="lp-cta-h2">
+            Ready to Discover the Next Big
+            <br />
+            Research Trend?
+          </h2>
+          <p className="lp-cta-desc">
+            Join thousands of researchers who are already using ScholarTrend to
+            accelerate their research.
+          </p>
+        </div>
+        <div className="lp-cta-actions">
+          <a
+            className="lp-cta-btn"
+            href="/register"
+            onClick={navTo("/register")}
+          >
+            Start Researching Free →
+          </a>
+          <span className="lp-cta-note">no credit card required</span>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="lp-footer">
+        <div className="lp-footer-top">
+          <div className="lp-footer-col brand-col">
+            <Brand small />
+            <p className="lp-footer-tagline">
+              The most advanced research intelligence platform for modern
+              researchers.
+            </p>
+            <div className="lp-footer-socials">
+              <a href="/" className="lp-social-icon" aria-label="X link">
+                𝕏
+              </a>
+              <a href="/" className="lp-social-icon" aria-label="LinkedIn link">
+                in
+              </a>
+              <a href="/" className="lp-social-icon" aria-label="Facebook link">
+                f
+              </a>
+              <a href="/" className="lp-social-icon" aria-label="GitHub link">
+                git
+              </a>
+              <a
+                href="/"
+                className="lp-social-icon"
+                aria-label="Instagram link"
+              >
+                📷
+              </a>
+            </div>
+          </div>
+          <div className="lp-footer-col">
+            <div className="lp-footer-col-title">Product</div>
+            <a href="/">Features</a>
+            <a href="/">Trends</a>
+            <a href="/">Pricing</a>
+            <a href="/">API</a>
+          </div>
+          <div className="lp-footer-col">
+            <div className="lp-footer-col-title">Resources</div>
+            <a href="/">Documentation</a>
+            <a href="/">Blog</a>
+            <a href="/">Guides</a>
+            <a href="/">Support</a>
+          </div>
+          <div className="lp-footer-col">
+            <div className="lp-footer-col-title">Company</div>
+            <a href="/">About Us</a>
+            <a href="/">Careers</a>
+            <a href="/">Contact</a>
+            <a href="/">Privacy Policy</a>
+          </div>
+          <div className="lp-footer-col newsletter-col">
+            <div className="lp-footer-col-title">Newsletter</div>
+            <p className="lp-newsletter-desc">
+              Stay updated with the latest research trends and platform updates.
+            </p>
+            <div className="lp-newsletter-form">
+              <input
+                type="email"
+                placeholder="Enter your email"
+                className="lp-newsletter-input"
+              />
+              <button className="lp-newsletter-btn" aria-label="Subscribe">
+                →
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="lp-footer-bottom">
+          <span>© 2024 ScholarTrend. All rights reserved.</span>
+          <nav className="lp-footer-bottom-links" aria-label="Legal links">
+            <a href="/">Terms of Service</a>
+            <a href="/">Privacy Policy</a>
+            <a href="/">Contact</a>
+          </nav>
+        </div>
       </footer>
     </main>
   );
@@ -692,7 +1879,9 @@ function LoginPage() {
   const [password, setPassword] = React.useState("Scholar2024");
   const [selectedRole, setSelectedRole] = React.useState("Researcher");
   const [rememberMe, setRememberMe] = React.useState(() => {
-    return window.localStorage.getItem("scholartrend.login.remember") === "true";
+    return (
+      window.localStorage.getItem("scholartrend.login.remember") === "true"
+    );
   });
   const [feedback, setFeedback] = React.useState(null);
 
@@ -743,7 +1932,10 @@ function LoginPage() {
 
     setSelectedRole(nextRole);
 
-    if (!normalizedEmail || Object.values(roleEmails).includes(normalizedEmail)) {
+    if (
+      !normalizedEmail ||
+      Object.values(roleEmails).includes(normalizedEmail)
+    ) {
       setEmail(roleEmails[nextRole]);
     }
   };
@@ -761,7 +1953,11 @@ function LoginPage() {
       return;
     }
 
-    if (!account || account.password !== password || account.role !== selectedRole) {
+    if (
+      !account ||
+      account.password !== password ||
+      account.role !== selectedRole
+    ) {
       setFeedback({
         type: "error",
         text: "We could not verify this ScholarTrend role. Try researcher, lecturer, student, or admin @university.edu with Scholar2024 and the matching role.",
@@ -927,7 +2123,11 @@ function LoginPage() {
 
           <div className="field login-field role-field">
             <span>Academic Role</span>
-            <div className="role-picker" role="radiogroup" aria-label="Academic Role">
+            <div
+              className="role-picker"
+              role="radiogroup"
+              aria-label="Academic Role"
+            >
               {["Researcher", "Lecturer", "Student", "Administrator"].map(
                 (role) => (
                   <button
@@ -1280,7 +2480,7 @@ const publications = [
       "Neural Network Architectures for Predictive Data Synthesis in High-Noise Environments",
     excerpt:
       "This paper explores novel approaches to structural adjustments within deep learning models when exposed to datasets characterized by extreme signal noise.",
-    meta: "Oct 2023  ·  128 Citations  ·  IF: 4.2",
+    meta: "Oct 2023  Â·  128 Citations  Â·  IF: 4.2",
   },
   {
     tags: ["Environmental Science"],
@@ -1288,7 +2488,7 @@ const publications = [
       "Longitudinal Analysis of Urban Heat Island Mitigation Strategies in Coastal Metropolises",
     excerpt:
       "A comprehensive ten-year study evaluating the efficacy of green roof implementations and reflective surface treatments across five major coastal cities.",
-    meta: "Sep 2023  ·  54 Citations  ·  IF: 3.8",
+    meta: "Sep 2023  Â·  54 Citations  Â·  IF: 3.8",
   },
 ];
 
@@ -3189,14 +4389,14 @@ const lecturerStats = [
   {
     label: "My Bookmarks",
     value: "1,284",
-    badge: "↑ 12%",
+    badge: "â†‘ 12%",
     tone: "blue",
     icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
   },
   {
     label: "Followed Keywords",
     value: "42",
-    badge: "↑ 4%",
+    badge: "â†‘ 4%",
     tone: "purple",
     icon: "M12 4a8 8 0 1 0 8 8M12 7a5 5 0 1 0 5 5M12 10a2 2 0 1 0 2 2",
   },
@@ -3315,12 +4515,12 @@ function LecturerPublicationsCard() {
             <span className="lecturer-publication-copy">
               <strong>{publication.title}</strong>
               <small>
-                {publication.authors} <i>•</i> {publication.journal}
+                {publication.authors} <i>â€¢</i> {publication.journal}
               </small>
               {publication.date ? (
                 <em>
-                  <span>▣ {publication.date}</span>
-                  <span>⌁ {publication.citations} Citations</span>
+                  <span>â–£ {publication.date}</span>
+                  <span>âŒ {publication.citations} Citations</span>
                 </em>
               ) : null}
             </span>
@@ -3944,7 +5144,7 @@ function ReportsPage() {
                   (2018-2023)
                 </h3>
                 <p>
-                  Generated on: [Current Date] • Scope: 2 Keywords, 2 Journals
+                  Generated on: [Current Date] â€¢ Scope: 2 Keywords, 2 Journals
                 </p>
                 <div className="report-preview-metrics">
                   <div>
@@ -4353,7 +5553,8 @@ function SyncManagementPage() {
           <section className="sync-panel sync-pipeline-panel">
             <div className="sync-panel-heading">
               <h2>
-                <MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" /> Metadata Pipeline
+                <MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" />{" "}
+                Metadata Pipeline
               </h2>
               <span>Current batch: #SS-2026-0618</span>
             </div>
@@ -4374,8 +5575,8 @@ function SyncManagementPage() {
           <section className="sync-panel sync-schedule-panel">
             <div className="sync-panel-heading">
               <h2>
-                <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6zM9 13h2M13 13h2M9 16h2" /> Hangfire
-                Schedule
+                <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6zM9 13h2M13 13h2M9 16h2" />{" "}
+                Hangfire Schedule
               </h2>
               <button type="button">Configure</button>
             </div>
@@ -4441,8 +5642,8 @@ function SyncManagementPage() {
           <section className="sync-panel sync-log-panel">
             <div className="sync-panel-heading">
               <h2>
-                <MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5M18 4l2-2M20 6l2-2" /> Sync Logs
-                & Errors
+                <MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5M18 4l2-2M20 6l2-2" />{" "}
+                Sync Logs & Errors
               </h2>
               <span>Live logging</span>
             </div>
@@ -5088,7 +6289,8 @@ const listViewPapers = [
   },
   {
     id: "fruit-classification",
-    title: "Automatic Fruits Classification System Based on Deep Neural Networks",
+    title:
+      "Automatic Fruits Classification System Based on Deep Neural Networks",
     authors: "Khadija Munir, A. I. Umar, Waqas Yousaf",
     year: 2020,
     citations: 7,
@@ -5097,7 +6299,8 @@ const listViewPapers = [
   },
   {
     id: "cnn-fruit",
-    title: "Convolutional Neural Networks (CNN) for Detecting Fruit in Orchards",
+    title:
+      "Convolutional Neural Networks (CNN) for Detecting Fruit in Orchards",
     authors: "Fouzia Risdin, P. Mondal, Kazi Mahmudul Hassan",
     year: 2020,
     citations: 21,
@@ -5175,7 +6378,7 @@ function ResearcherListTopbar({ onMenuClick }) {
           <MiniIcon path="M7 7h12M7 12h12M7 17h12M4 7h.01M4 12h.01M4 17h.01" />
           List view
         </button>
-        <button type="button" onClick={navTo("/researcher-search")}> 
+        <button type="button" onClick={navTo("/researcher-search")}>
           <MiniIcon path="M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10" />
           Graph view
         </button>
@@ -5203,7 +6406,11 @@ function ResearcherListDetail({ paper }) {
   const summary =
     paper.summary ||
     `This publication explores ${paper.title.toLowerCase()} through a practical computer vision workflow, connecting detection accuracy with reliable deployment in field conditions.`;
-  const tags = paper.tags || ["Computer Vision", "Deep Learning", "Fruit Detection"];
+  const tags = paper.tags || [
+    "Computer Vision",
+    "Deep Learning",
+    "Fruit Detection",
+  ];
 
   React.useEffect(() => {
     setOriginAdded(false);
@@ -5211,7 +6418,10 @@ function ResearcherListDetail({ paper }) {
   }, [paper.id]);
 
   return (
-    <aside className="researcher-list-detail" aria-label="Selected paper details">
+    <aside
+      className="researcher-list-detail"
+      aria-label="Selected paper details"
+    >
       <div className="researcher-list-detail-flags">
         <span>Top Similarity</span>
         <span>Highly Cited</span>
@@ -5224,8 +6434,8 @@ function ResearcherListDetail({ paper }) {
       <p className="researcher-list-detail-authors">{paper.authors}</p>
       <div className="researcher-list-detail-meta">
         <span>{paper.year}</span>
-        <span>•</span>
-        <span>⌁ {paper.citations} Citations</span>
+        <span>â€¢</span>
+        <span>âŒ {paper.citations} Citations</span>
       </div>
 
       <div className="researcher-list-primary-actions">
@@ -5234,7 +6444,9 @@ function ResearcherListDetail({ paper }) {
           Open graph
         </button>
         <button type="button" onClick={() => setOriginAdded((value) => !value)}>
-          <MiniIcon path={originAdded ? "M5 12.5 9.5 17 19 7" : "M12 5v14M5 12h14"} />
+          <MiniIcon
+            path={originAdded ? "M5 12.5 9.5 17 19 7" : "M12 5v14M5 12h14"}
+          />
           {originAdded ? "Origin added" : "Add origin"}
         </button>
       </div>
@@ -5252,7 +6464,7 @@ function ResearcherListDetail({ paper }) {
         <h3>Open in</h3>
         <div>
           <a href="https://scholar.google.com" target="_blank" rel="noreferrer">
-            ▱ Google Scholar
+            â–± Google Scholar
           </a>
           <a href="https://doi.org" target="_blank" rel="noreferrer">
             <MiniIcon path="M7 4h8l3 3v13H7zM15 4v4h3M10 12h5M10 15h4" />
@@ -5266,7 +6478,7 @@ function ResearcherListDetail({ paper }) {
           <MiniIcon path="M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5" />
           S2 TL;DR
         </h3>
-        <p>“{summary}”</p>
+        <p>â€œ{summary}â€</p>
       </section>
 
       <section className="researcher-list-tags">
@@ -5278,7 +6490,10 @@ function ResearcherListDetail({ paper }) {
         </div>
       </section>
 
-      <div className="researcher-vision-preview" aria-label="Vision processing simulation preview">
+      <div
+        className="researcher-vision-preview"
+        aria-label="Vision processing simulation preview"
+      >
         <div className="researcher-vision-arm">
           <i></i>
           <i></i>
@@ -5309,7 +6524,9 @@ function ResearcherListViewPage() {
       ]),
     ];
     const csv = rows
-      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .map((row) =>
+        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","),
+      )
       .join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const anchor = document.createElement("a");
@@ -5332,7 +6549,7 @@ function ResearcherListViewPage() {
             <div>
               <h1>DeepFruits: A Fruit Detection System</h1>
               <p>
-                Knowledge Graph <span>›</span> <strong>List View</strong>
+                Knowledge Graph <span>â€º</span> <strong>List View</strong>
               </p>
             </div>
             <div>
@@ -5354,12 +6571,12 @@ function ResearcherListViewPage() {
             <table className="researcher-list-table">
               <thead>
                 <tr>
-                  <th>Title ↕</th>
-                  <th>Authors ↕</th>
-                  <th>Year ↕</th>
-                  <th>Citations ↕</th>
-                  <th>References ↕</th>
-                  <th>Similarity ↕</th>
+                  <th>Title â†•</th>
+                  <th>Authors â†•</th>
+                  <th>Year â†•</th>
+                  <th>Citations â†•</th>
+                  <th>References â†•</th>
+                  <th>Similarity â†•</th>
                 </tr>
               </thead>
               <tbody>
@@ -6262,7 +7479,9 @@ function ProfilePage({ role = "student" }) {
               </div>
               <button
                 type="button"
-                className={autoSync ? "identity-toggle active" : "identity-toggle"}
+                className={
+                  autoSync ? "identity-toggle active" : "identity-toggle"
+                }
                 aria-pressed={autoSync}
                 onClick={() => {
                   setAutoSync((enabled) => !enabled);
@@ -6297,7 +7516,8 @@ function ProfilePage({ role = "student" }) {
                 {
                   key: "semantic",
                   name: "Semantic Scholar",
-                  detail: "Match papers by author ID, DOI, and title similarity",
+                  detail:
+                    "Match papers by author ID, DOI, and title similarity",
                   icon: "SS",
                   tone: "purple",
                 },
@@ -6349,7 +7569,7 @@ function ProfilePage({ role = "student" }) {
                 <span className="profile-input">
                   <input
                     type="password"
-                    placeholder="••••••••"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                     style={{ maxWidth: "45%" }}
                   />
                 </span>
@@ -6357,13 +7577,19 @@ function ProfilePage({ role = "student" }) {
               <label className="profile-field">
                 <span>New Password</span>
                 <span className="profile-input">
-                  <input type="password" placeholder="••••••••" />
+                  <input
+                    type="password"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  />
                 </span>
               </label>
               <label className="profile-field">
                 <span>Confirm New Password</span>
                 <span className="profile-input">
-                  <input type="password" placeholder="••••••••" />
+                  <input
+                    type="password"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                  />
                 </span>
               </label>
             </div>
@@ -6932,7 +8158,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                           color: "#94a3b8",
                         }}
                       >
-                        Institute of Advanced Analytics · Computational Biology
+                        Institute of Advanced Analytics Â· Computational Biology
                       </p>
                       <span
                         style={{
@@ -6991,7 +8217,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                           color: "#94a3b8",
                         }}
                       >
-                        University of Applied Sciences · Deep Learning Lab
+                        University of Applied Sciences Â· Deep Learning Lab
                       </p>
                     </div>
                   </div>
@@ -7038,7 +8264,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                           color: "#94a3b8",
                         }}
                       >
-                        Seoul Institute of Technology · Bioinformatics Research
+                        Seoul Institute of Technology Â· Bioinformatics Research
                         Division
                       </p>
                     </div>
@@ -7103,7 +8329,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                   <div>
                     <h3>{paper.title}</h3>
                     <p>
-                      {paper.authors} • {paper.meta}
+                      {paper.authors} â€¢ {paper.meta}
                     </p>
                     <span>{paper.stats}</span>
                   </div>
@@ -7175,7 +8401,7 @@ const adminStats = [
   {
     label: "Total Users",
     value: "24,592",
-    note: "↗ +12% from last month",
+    note: "â†— +12% from last month",
     tone: "users",
     icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
   },
@@ -7248,7 +8474,11 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
           <strong>ScholarTrend</strong>
           <b>Analytical Intelligence</b>
         </div>
-        <button type="button" aria-label="Close Admin navigation" onClick={onClose}>
+        <button
+          type="button"
+          aria-label="Close Admin navigation"
+          onClick={onClose}
+        >
           <MiniIcon path="M6 6l12 12M18 6 6 18" />
         </button>
       </div>
@@ -7268,7 +8498,9 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
       </nav>
 
       <div className="admin-sidebar-footer">
-        <p><i></i> System Status: Healthy</p>
+        <p>
+          <i></i> System Status: Healthy
+        </p>
         <button type="button">
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
           Settings
@@ -7282,32 +8514,67 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
   );
 }
 
-function AdminTopbar({ current = "Overview", onMenuClick, sectionPage = false }) {
+function AdminTopbar({
+  current = "Overview",
+  onMenuClick,
+  sectionPage = false,
+}) {
   return (
-    <header className={`admin-topbar ${sectionPage ? "admin-section-topbar" : ""}`}>
-      <button type="button" className="admin-menu-button" aria-label="Open Admin navigation" onClick={onMenuClick}>
+    <header
+      className={`admin-topbar ${sectionPage ? "admin-section-topbar" : ""}`}
+    >
+      <button
+        type="button"
+        className="admin-menu-button"
+        aria-label="Open Admin navigation"
+        onClick={onMenuClick}
+      >
         <MiniIcon path="M4 6h16M4 12h16M4 18h16" />
       </button>
-      <h1>{sectionPage ? "ScholarTrend Admin" : <>ScholarTrend<br />Admin</>}</h1>
+      <h1>
+        {sectionPage ? (
+          "ScholarTrend Admin"
+        ) : (
+          <>
+            ScholarTrend
+            <br />
+            Admin
+          </>
+        )}
+      </h1>
       {!sectionPage ? (
         <>
           <nav aria-label="Admin breadcrumb">
-            <span>Dashboard</span><b>›</b><strong>{current}</strong>
+            <span>Dashboard</span>
+            <b>â€º</b>
+            <strong>{current}</strong>
           </nav>
           <form onSubmit={(event) => event.preventDefault()}>
             <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
-            <input type="search" placeholder="Search..." aria-label="Search Admin workspace" />
+            <input
+              type="search"
+              placeholder="Search..."
+              aria-label="Search Admin workspace"
+            />
           </form>
         </>
       ) : null}
       <div className="admin-top-actions">
-        <button type="button" className="alert" aria-label="Admin notifications">
+        <button
+          type="button"
+          className="alert"
+          aria-label="Admin notifications"
+        >
           <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
         </button>
         <button type="button" aria-label="Admin settings">
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
         </button>
-        <span className="admin-mode">Admin<br />Mode</span>
+        <span className="admin-mode">
+          Admin
+          <br />
+          Mode
+        </span>
         <span className="admin-avatar">AD</span>
       </div>
     </header>
@@ -7324,9 +8591,20 @@ function AdminShell({
   const routeClass = activeRoute.replace(/^\//, "").replaceAll("-", "-");
 
   return (
-    <main className={`admin-app ${routeClass}-app ${mobileOpen ? "sidebar-mobile-open" : ""}`}>
-      <button type="button" className="admin-sidebar-backdrop" aria-label="Close Admin navigation" onClick={() => setMobileOpen(false)}></button>
-      <AdminSidebar activeRoute={activeRoute} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
+    <main
+      className={`admin-app ${routeClass}-app ${mobileOpen ? "sidebar-mobile-open" : ""}`}
+    >
+      <button
+        type="button"
+        className="admin-sidebar-backdrop"
+        aria-label="Close Admin navigation"
+        onClick={() => setMobileOpen(false)}
+      ></button>
+      <AdminSidebar
+        activeRoute={activeRoute}
+        mobileOpen={mobileOpen}
+        onClose={() => setMobileOpen(false)}
+      />
       <section className="admin-main">
         <AdminTopbar
           current={current}
@@ -7349,7 +8627,10 @@ function AdminStatCard({ stat }) {
       {stat.values ? (
         <div className="admin-api-values">
           {stat.values.map(([label, value]) => (
-            <p key={label}><span>{label}</span><strong>{value}</strong></p>
+            <p key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </p>
           ))}
         </div>
       ) : (
@@ -7403,7 +8684,8 @@ function AdminUserGrowthChart() {
             padding: 10,
             displayColors: false,
             callbacks: {
-              label: (item) => `${new Intl.NumberFormat("en-US").format(item.raw)} users`,
+              label: (item) =>
+                `${new Intl.NumberFormat("en-US").format(item.raw)} users`,
             },
           },
         },
@@ -7432,7 +8714,13 @@ function AdminUserGrowthChart() {
     return () => chart.destroy();
   }, []);
 
-  return <canvas ref={canvasRef} aria-label="User growth over six months" role="img"></canvas>;
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-label="User growth over six months"
+      role="img"
+    ></canvas>
+  );
 }
 
 function AdminRoleDistributionChart() {
@@ -7480,7 +8768,9 @@ function AdminRoleDistributionChart() {
         rotation: -88,
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (item) => `${item.label}: ${item.raw}%` } },
+          tooltip: {
+            callbacks: { label: (item) => `${item.label}: ${item.raw}%` },
+          },
         },
       },
       plugins: [centerLabel],
@@ -7489,7 +8779,9 @@ function AdminRoleDistributionChart() {
     return () => chart.destroy();
   }, []);
 
-  return <canvas ref={canvasRef} aria-label="Role distribution" role="img"></canvas>;
+  return (
+    <canvas ref={canvasRef} aria-label="Role distribution" role="img"></canvas>
+  );
 }
 
 function AdminActivityPanel() {
@@ -7499,12 +8791,19 @@ function AdminActivityPanel() {
       <div>
         {adminActivity.map((activity) => (
           <article key={`${activity.text}-${activity.time}`}>
-            <span className={activity.tone}><MiniIcon path={activity.icon} /></span>
-            <p><strong>{activity.text}</strong><small>{activity.time}</small></p>
+            <span className={activity.tone}>
+              <MiniIcon path={activity.icon} />
+            </span>
+            <p>
+              <strong>{activity.text}</strong>
+              <small>{activity.time}</small>
+            </p>
           </article>
         ))}
       </div>
-      <button type="button" onClick={navTo("/admin-system-logs")}>View All Logs</button>
+      <button type="button" onClick={navTo("/admin-system-logs")}>
+        View All Logs
+      </button>
     </section>
   );
 }
@@ -7516,7 +8815,8 @@ const adminSyncHistory = [
     records: "4,102",
     time: "Today, 11:30 AM",
     error: "429 Rate Limit Exceeded",
-    detail: "The API rejected requests due to high volume. Retry scheduled at next run.",
+    detail:
+      "The API rejected requests due to high volume. Retry scheduled at next run.",
   },
   {
     source: "Semantic Scholar",
@@ -7541,7 +8841,10 @@ const adminSyncHistory = [
 function AdminSourceToggle({ enabled, onToggle, label, detail }) {
   return (
     <div className="admin-source-toggle">
-      <div><strong>{label}</strong><span>{detail}</span></div>
+      <div>
+        <strong>{label}</strong>
+        <span>{detail}</span>
+      </div>
       <button
         type="button"
         className={enabled ? "enabled" : ""}
@@ -7549,13 +8852,18 @@ function AdminSourceToggle({ enabled, onToggle, label, detail }) {
         aria-checked={enabled}
         aria-label={`${enabled ? "Disable" : "Enable"} ${label}`}
         onClick={onToggle}
-      ><i></i></button>
+      >
+        <i></i>
+      </button>
     </div>
   );
 }
 
 function AdminSyncConfiguration() {
-  const [sources, setSources] = React.useState({ semantic: true, openAlex: false });
+  const [sources, setSources] = React.useState({
+    semantic: true,
+    openAlex: false,
+  });
   const [keywords, setKeywords] = React.useState(["Machine Learning", "NLP"]);
   const [addingKeyword, setAddingKeyword] = React.useState(false);
   const [newKeyword, setNewKeyword] = React.useState("");
@@ -7566,7 +8874,8 @@ function AdminSyncConfiguration() {
   const addKeyword = (event) => {
     event.preventDefault();
     const value = newKeyword.trim();
-    if (value && !keywords.includes(value)) setKeywords((items) => [...items, value]);
+    if (value && !keywords.includes(value))
+      setKeywords((items) => [...items, value]);
     setNewKeyword("");
     setAddingKeyword(false);
     setSaved(false);
@@ -7574,17 +8883,26 @@ function AdminSyncConfiguration() {
 
   return (
     <section className="admin-sync-config-card">
-      <h2><MiniIcon path="M6 4v4M6 12v8M12 4v9M12 17v3M18 4v2M18 10v10M4 8h4M10 13h4M16 6h4" />Configuration</h2>
+      <h2>
+        <MiniIcon path="M6 4v4M6 12v8M12 4v9M12 17v3M18 4v2M18 10v10M4 8h4M10 13h4M16 6h4" />
+        Configuration
+      </h2>
       <div className="admin-config-body">
         <AdminSourceToggle
           enabled={sources.semantic}
-          onToggle={() => { setSources((value) => ({ ...value, semantic: !value.semantic })); setSaved(false); }}
+          onToggle={() => {
+            setSources((value) => ({ ...value, semantic: !value.semantic }));
+            setSaved(false);
+          }}
           label="Semantic Scholar"
           detail="Primary Source"
         />
         <AdminSourceToggle
           enabled={sources.openAlex}
-          onToggle={() => { setSources((value) => ({ ...value, openAlex: !value.openAlex })); setSaved(false); }}
+          onToggle={() => {
+            setSources((value) => ({ ...value, openAlex: !value.openAlex }));
+            setSaved(false);
+          }}
           label="OpenAlex"
           detail="Secondary Source"
         />
@@ -7593,31 +8911,85 @@ function AdminSyncConfiguration() {
           <label>Keyword Filters</label>
           <div>
             {keywords.map((keyword) => (
-              <span key={keyword}>{keyword}<button type="button" aria-label={`Remove ${keyword}`} onClick={() => { setKeywords((items) => items.filter((item) => item !== keyword)); setSaved(false); }}>×</button></span>
+              <span key={keyword}>
+                {keyword}
+                <button
+                  type="button"
+                  aria-label={`Remove ${keyword}`}
+                  onClick={() => {
+                    setKeywords((items) =>
+                      items.filter((item) => item !== keyword),
+                    );
+                    setSaved(false);
+                  }}
+                >
+                  Ă—
+                </button>
+              </span>
             ))}
             {addingKeyword ? (
               <form onSubmit={addKeyword}>
-                <input autoFocus value={newKeyword} onChange={(event) => setNewKeyword(event.target.value)} onBlur={() => !newKeyword && setAddingKeyword(false)} aria-label="New keyword" />
+                <input
+                  autoFocus
+                  value={newKeyword}
+                  onChange={(event) => setNewKeyword(event.target.value)}
+                  onBlur={() => !newKeyword && setAddingKeyword(false)}
+                  aria-label="New keyword"
+                />
               </form>
             ) : (
-              <button type="button" className="admin-add-keyword" aria-label="Add keyword" onClick={() => setAddingKeyword(true)}>+</button>
+              <button
+                type="button"
+                className="admin-add-keyword"
+                aria-label="Add keyword"
+                onClick={() => setAddingKeyword(true)}
+              >
+                +
+              </button>
             )}
           </div>
         </div>
 
         <div className="admin-config-field admin-cron-field">
           <label htmlFor="admin-cron">Cron Schedule</label>
-          <div><input id="admin-cron" value={cron} onChange={(event) => { setCron(event.target.value); setSaved(false); }} /><span>Daily at midnight</span></div>
+          <div>
+            <input
+              id="admin-cron"
+              value={cron}
+              onChange={(event) => {
+                setCron(event.target.value);
+                setSaved(false);
+              }}
+            />
+            <span>Daily at midnight</span>
+          </div>
         </div>
 
         <div className="admin-config-field admin-rate-field">
-          <label htmlFor="admin-rate">Rate Limit (req/min)<strong>{rateLimit}</strong></label>
-          <input id="admin-rate" type="range" min="10" max="500" value={rateLimit} onChange={(event) => { setRateLimit(Number(event.target.value)); setSaved(false); }} />
-          <div><span>10</span><span>500</span></div>
+          <label htmlFor="admin-rate">
+            Rate Limit (req/min)<strong>{rateLimit}</strong>
+          </label>
+          <input
+            id="admin-rate"
+            type="range"
+            min="10"
+            max="500"
+            value={rateLimit}
+            onChange={(event) => {
+              setRateLimit(Number(event.target.value));
+              setSaved(false);
+            }}
+          />
+          <div>
+            <span>10</span>
+            <span>500</span>
+          </div>
         </div>
       </div>
       <div className="admin-config-save">
-        <button type="button" onClick={() => setSaved(true)}>{saved ? "Configuration Saved" : "Save Configuration"}</button>
+        <button type="button" onClick={() => setSaved(true)}>
+          {saved ? "Configuration Saved" : "Save Configuration"}
+        </button>
       </div>
     </section>
   );
@@ -7632,8 +9004,15 @@ function AdminSyncHistory() {
 
   const downloadLogs = () => {
     const header = "Source API,Status,Records Synced,Start Time";
-    const body = adminSyncHistory.map((row) => `${row.source},${row.status},${row.records.replace(",", "")},${row.time}`).join("\n");
-    const url = URL.createObjectURL(new Blob([`${header}\n${body}`], { type: "text/csv" }));
+    const body = adminSyncHistory
+      .map(
+        (row) =>
+          `${row.source},${row.status},${row.records.replace(",", "")},${row.time}`,
+      )
+      .join("\n");
+    const url = URL.createObjectURL(
+      new Blob([`${header}\n${body}`], { type: "text/csv" }),
+    );
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "scholartrend-sync-history.csv";
@@ -7644,26 +9023,64 @@ function AdminSyncHistory() {
   return (
     <section className="admin-sync-history-card" id="admin-sync-history">
       <div className="admin-sync-history-heading">
-        <h2><MiniIcon path="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5M12 8v5l3 2" />Sync History / Logs</h2>
+        <h2>
+          <MiniIcon path="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5M12 8v5l3 2" />
+          Sync History / Logs
+        </h2>
         <div>
-          <button type="button" className={failedOnly ? "active" : ""} aria-label="Filter failed logs" onClick={() => setFailedOnly((value) => !value)}><MiniIcon path="M5 7h14M8 12h8M10 17h4" /></button>
-          <button type="button" aria-label="Download sync logs" onClick={downloadLogs}><MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" /></button>
+          <button
+            type="button"
+            className={failedOnly ? "active" : ""}
+            aria-label="Filter failed logs"
+            onClick={() => setFailedOnly((value) => !value)}
+          >
+            <MiniIcon path="M5 7h14M8 12h8M10 17h4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Download sync logs"
+            onClick={downloadLogs}
+          >
+            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+          </button>
         </div>
       </div>
       <div className="admin-sync-table-wrap">
         <table className="admin-sync-table">
-          <thead><tr><th>Source API</th><th>Status</th><th>Records Synced</th><th>Start Time</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Source API</th>
+              <th>Status</th>
+              <th>Records Synced</th>
+              <th>Start Time</th>
+            </tr>
+          </thead>
           <tbody>
             {rows.map((row) => (
               <React.Fragment key={`${row.source}-${row.time}`}>
                 <tr className={row.status.toLowerCase()}>
-                  <td><i></i>{row.source}</td>
-                  <td><span>⊙ {row.status}</span></td>
+                  <td>
+                    <i></i>
+                    {row.source}
+                  </td>
+                  <td>
+                    <span>â™ {row.status}</span>
+                  </td>
                   <td>{row.records}</td>
                   <td>{row.time}</td>
                 </tr>
                 {row.error ? (
-                  <tr className="admin-sync-error-row"><td colSpan="4"><div><MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" /><p><strong>{row.error}</strong><span>{row.detail}</span></p></div></td></tr>
+                  <tr className="admin-sync-error-row">
+                    <td colSpan="4">
+                      <div>
+                        <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
+                        <p>
+                          <strong>{row.error}</strong>
+                          <span>{row.detail}</span>
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
                 ) : null}
               </React.Fragment>
             ))}
@@ -7673,9 +9090,29 @@ function AdminSyncHistory() {
       <footer className="admin-sync-pagination">
         <span>Showing {rows.length} of 128 runs</span>
         <div>
-          <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>‹</button>
-          {[1, 2, 3].map((number) => <button type="button" className={page === number ? "active" : ""} onClick={() => setPage(number)} key={number}>{number}</button>)}
-          <button type="button" onClick={() => setPage((value) => Math.min(3, value + 1))}>›</button>
+          <button
+            type="button"
+            disabled={page === 1}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            â€¹
+          </button>
+          {[1, 2, 3].map((number) => (
+            <button
+              type="button"
+              className={page === number ? "active" : ""}
+              onClick={() => setPage(number)}
+              key={number}
+            >
+              {number}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPage((value) => Math.min(3, value + 1))}
+          >
+            â€º
+          </button>
         </div>
       </footer>
     </section>
@@ -7685,29 +9122,69 @@ function AdminSyncHistory() {
 function AdminSyncManagementPage() {
   const [running, setRunning] = React.useState(false);
 
-  const reviewLogs = () => document.getElementById("admin-sync-history")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const reviewLogs = () =>
+    document
+      .getElementById("admin-sync-history")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <AdminShell activeRoute="/admin-sync-management" current="Sync Management" sectionPage>
+    <AdminShell
+      activeRoute="/admin-sync-management"
+      current="Sync Management"
+      sectionPage
+    >
       <div className="admin-sync-content">
         <header className="admin-sync-page-heading">
-          <div><p>Dashboard <span>/</span> <strong>Sync Management</strong></p><h1>Sync Management</h1></div>
-          <button type="button" className={running ? "running" : ""} onClick={() => setRunning(true)}>▷ {running ? "Manual Sync Running" : "Trigger Manual Sync"}</button>
+          <div>
+            <p>
+              Dashboard <span>/</span> <strong>Sync Management</strong>
+            </p>
+            <h1>Sync Management</h1>
+          </div>
+          <button
+            type="button"
+            className={running ? "running" : ""}
+            onClick={() => setRunning(true)}
+          >
+            â–· {running ? "Manual Sync Running" : "Trigger Manual Sync"}
+          </button>
         </header>
 
         <section className="admin-sync-status-grid" aria-label="Sync status">
           <article className="running-card">
-            <div><span>Currently Running</span><MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" /></div>
-            <strong>{running ? "1" : "0"}<small>jobs</small></strong>
-            <p><i className={running ? "active" : ""}></i>{running ? "Manual Sync Active" : "System Idle"}</p>
+            <div>
+              <span>Currently Running</span>
+              <MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" />
+            </div>
+            <strong>
+              {running ? "1" : "0"}
+              <small>jobs</small>
+            </strong>
+            <p>
+              <i className={running ? "active" : ""}></i>
+              {running ? "Manual Sync Active" : "System Idle"}
+            </p>
           </article>
           <article className="success-card">
-            <div><span>Last Successful Sync</span><MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" /></div>
-            <strong>Today, 10:45 AM</strong><p>12,450 records</p><i className="database-shape"></i>
+            <div>
+              <span>Last Successful Sync</span>
+              <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
+            </div>
+            <strong>Today, 10:45 AM</strong>
+            <p>12,450 records</p>
+            <i className="database-shape"></i>
           </article>
           <article className="failed-card">
-            <div><span>Failed in Last 24h</span><MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" /></div>
-            <strong>2<small>events</small></strong><button type="button" onClick={reviewLogs}>Review Logs</button>
+            <div>
+              <span>Failed in Last 24h</span>
+              <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
+            </div>
+            <strong>
+              2<small>events</small>
+            </strong>
+            <button type="button" onClick={reviewLogs}>
+              Review Logs
+            </button>
           </article>
         </section>
 
@@ -7722,7 +9199,8 @@ function AdminSyncManagementPage() {
 
 function AdminDashboard() {
   const exportUserData = () => {
-    const csv = "Month,Users\nJan,9800\nFeb,13600\nMar,12400\nApr,17200\nMay,20800\nJun,24592";
+    const csv =
+      "Month,Users\nJan,9800\nFeb,13600\nMar,12400\nApr,17200\nMay,20800\nJun,24592";
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -7735,7 +9213,9 @@ function AdminDashboard() {
     <AdminShell activeRoute="/admin-dashboard" current="Overview">
       <div className="admin-dashboard-content">
         <section className="admin-stat-grid" aria-label="Administrator metrics">
-          {adminStats.map((stat) => <AdminStatCard stat={stat} key={stat.label} />)}
+          {adminStats.map((stat) => (
+            <AdminStatCard stat={stat} key={stat.label} />
+          ))}
         </section>
 
         <div className="admin-dashboard-grid">
@@ -7743,15 +9223,23 @@ function AdminDashboard() {
             <section className="admin-chart-card admin-growth-card">
               <div className="admin-card-heading">
                 <h2>User Growth (6 Months)</h2>
-                <button type="button" onClick={exportUserData}>Export Data</button>
+                <button type="button" onClick={exportUserData}>
+                  Export Data
+                </button>
               </div>
-              <div className="admin-growth-chart"><AdminUserGrowthChart /></div>
+              <div className="admin-growth-chart">
+                <AdminUserGrowthChart />
+              </div>
             </section>
 
             <section className="admin-chart-card admin-role-card">
-              <div className="admin-card-heading"><h2>Role Distribution</h2></div>
+              <div className="admin-card-heading">
+                <h2>Role Distribution</h2>
+              </div>
               <div className="admin-role-layout">
-                <div className="admin-role-chart"><AdminRoleDistributionChart /></div>
+                <div className="admin-role-chart">
+                  <AdminRoleDistributionChart />
+                </div>
                 <div className="admin-role-legend">
                   {[
                     ["Researcher", "45%", "#5145e5"],
@@ -7759,7 +9247,13 @@ function AdminDashboard() {
                     ["Lecturer", "20%", "#cfe1fb"],
                     ["Admin", "5%", "#101827"],
                   ].map(([label, value, color]) => (
-                    <p key={label}><span><i style={{ background: color }}></i>{label}</span><strong>{value}</strong></p>
+                    <p key={label}>
+                      <span>
+                        <i style={{ background: color }}></i>
+                        {label}
+                      </span>
+                      <strong>{value}</strong>
+                    </p>
                   ))}
                 </div>
               </div>
@@ -7769,7 +9263,13 @@ function AdminDashboard() {
           <aside className="admin-dashboard-right">
             <section className="admin-sync-alert">
               <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
-              <div><h2>Failed Syncs Alert</h2><p>2 sources failed during the last automated cycle.</p><button type="button" onClick={navTo("/admin-system-logs")}>Review Logs</button></div>
+              <div>
+                <h2>Failed Syncs Alert</h2>
+                <p>2 sources failed during the last automated cycle.</p>
+                <button type="button" onClick={navTo("/admin-system-logs")}>
+                  Review Logs
+                </button>
+              </div>
             </section>
             <AdminActivityPanel />
           </aside>
@@ -7840,7 +9340,9 @@ function AdminUserManagementPage() {
   const [page, setPage] = React.useState(1);
 
   const visibleUsers = adminManagedUsers.filter((user) => {
-    const matchesQuery = `${user.name} ${user.email}`.toLowerCase().includes(query.toLowerCase());
+    const matchesQuery = `${user.name} ${user.email}`
+      .toLowerCase()
+      .includes(query.toLowerCase());
     const matchesRole = role === "All Roles" || user.role === role;
     const matchesStatus = status === "All Statuses" || user.status === status;
     return matchesQuery && matchesRole && matchesStatus;
@@ -7849,9 +9351,14 @@ function AdminUserManagementPage() {
   const downloadUsers = () => {
     const header = "Name,Email,Role,Status,Last Login";
     const body = visibleUsers
-      .map((user) => `${user.name},${user.email},${user.role},${user.status},${user.lastLogin}`)
+      .map(
+        (user) =>
+          `${user.name},${user.email},${user.role},${user.status},${user.lastLogin}`,
+      )
       .join("\n");
-    const url = URL.createObjectURL(new Blob([`${header}\n${body}`], { type: "text/csv" }));
+    const url = URL.createObjectURL(
+      new Blob([`${header}\n${body}`], { type: "text/csv" }),
+    );
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "scholartrend-users.csv";
@@ -7864,7 +9371,9 @@ function AdminUserManagementPage() {
       <div className="admin-users-content">
         <header className="admin-users-heading">
           <div>
-            <p>Dashboard <span>/</span> <strong>User Management</strong></p>
+            <p>
+              Dashboard <span>/</span> <strong>User Management</strong>
+            </p>
             <h1>User Management</h1>
             <small>Manage system access, roles, and user statuses</small>
           </div>
@@ -7874,7 +9383,10 @@ function AdminUserManagementPage() {
           </button>
         </header>
 
-        <section className="admin-users-summary-grid" aria-label="User management metrics">
+        <section
+          className="admin-users-summary-grid"
+          aria-label="User management metrics"
+        >
           {adminUserSummary.map((item) => (
             <article className="admin-user-summary-card" key={item.label}>
               <div>
@@ -7890,9 +9402,15 @@ function AdminUserManagementPage() {
               <span>Key Roles</span>
               <MiniIcon path="M8 7h8M8 11h8M8 15h5M5 4h14v16H5z" />
             </div>
-            <p><span>Admin</span><strong>42</strong></p>
+            <p>
+              <span>Admin</span>
+              <strong>42</strong>
+            </p>
             <i className="admin-role-bar admin-role-bar-admin"></i>
-            <p><span>Researcher</span><strong>4,180</strong></p>
+            <p>
+              <span>Researcher</span>
+              <strong>4,180</strong>
+            </p>
             <i className="admin-role-bar admin-role-bar-researcher"></i>
           </article>
         </section>
@@ -7909,19 +9427,31 @@ function AdminUserManagementPage() {
                 aria-label="Search users by name or email"
               />
             </label>
-            <select value={role} onChange={(event) => setRole(event.target.value)} aria-label="Filter users by role">
+            <select
+              value={role}
+              onChange={(event) => setRole(event.target.value)}
+              aria-label="Filter users by role"
+            >
               <option>All Roles</option>
               <option>Admin</option>
               <option>Researcher</option>
               <option>Viewer</option>
             </select>
-            <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter users by status">
+            <select
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              aria-label="Filter users by status"
+            >
               <option>All Statuses</option>
               <option>Active</option>
               <option>Inactive</option>
             </select>
             <div className="admin-users-toolbar-actions">
-              <button type="button" aria-label="Download users" onClick={downloadUsers}>
+              <button
+                type="button"
+                aria-label="Download users"
+                onClick={downloadUsers}
+              >
                 <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
               </button>
               <button type="button" aria-label="Refresh users">
@@ -7945,16 +9475,23 @@ function AdminUserManagementPage() {
                 {visibleUsers.map((user) => (
                   <tr key={user.email}>
                     <td>
-                      <span className={`admin-user-avatar ${user.avatarTone}`}>{user.avatar}</span>
+                      <span className={`admin-user-avatar ${user.avatarTone}`}>
+                        {user.avatar}
+                      </span>
                       <span>
                         <strong>{user.name}</strong>
                         <small>{user.email}</small>
                       </span>
                     </td>
-                    <td><span className="admin-user-role">{user.role}</span></td>
                     <td>
-                      <span className={`admin-user-status ${user.status.toLowerCase()}`}>
-                        <i></i>{user.status}
+                      <span className="admin-user-role">{user.role}</span>
+                    </td>
+                    <td>
+                      <span
+                        className={`admin-user-status ${user.status.toLowerCase()}`}
+                      >
+                        <i></i>
+                        {user.status}
                       </span>
                     </td>
                     <td>{user.lastLogin}</td>
@@ -7975,13 +9512,27 @@ function AdminUserManagementPage() {
           <footer className="admin-users-pagination">
             <span>Showing 1 to {visibleUsers.length} of 12,458 entries</span>
             <div>
-              <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              <button
+                type="button"
+                disabled={page === 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
                 <MiniIcon path="M15 18l-6-6 6-6" />
               </button>
               {[1, 2, 3].map((number) => (
-                <button type="button" className={page === number ? "active" : ""} onClick={() => setPage(number)} key={number}>{number}</button>
+                <button
+                  type="button"
+                  className={page === number ? "active" : ""}
+                  onClick={() => setPage(number)}
+                  key={number}
+                >
+                  {number}
+                </button>
               ))}
-              <button type="button" onClick={() => setPage((value) => Math.min(3, value + 1))}>
+              <button
+                type="button"
+                onClick={() => setPage((value) => Math.min(3, value + 1))}
+              >
                 <MiniIcon path="M9 18l6-6-6-6" />
               </button>
             </div>
@@ -8078,8 +9629,11 @@ function AdminSystemLogsPage() {
   const [page, setPage] = React.useState(1);
 
   const visibleLogs = adminSystemLogs.filter((log) => {
-    const matchesQuery = `${log.event} ${log.detail} ${log.actor} ${log.code}`.toLowerCase().includes(query.toLowerCase());
-    const matchesSeverity = severity === "All Severities" || log.severity === severity;
+    const matchesQuery = `${log.event} ${log.detail} ${log.actor} ${log.code}`
+      .toLowerCase()
+      .includes(query.toLowerCase());
+    const matchesSeverity =
+      severity === "All Severities" || log.severity === severity;
     const matchesModule = module === "All Modules" || log.module === module;
     return matchesQuery && matchesSeverity && matchesModule;
   });
@@ -8087,9 +9641,14 @@ function AdminSystemLogsPage() {
   const exportLogs = () => {
     const header = "Time,Severity,Module,Event,Actor,Code";
     const body = visibleLogs
-      .map((log) => `${log.time},${log.severity},${log.module},${log.event},${log.actor},${log.code}`)
+      .map(
+        (log) =>
+          `${log.time},${log.severity},${log.module},${log.event},${log.actor},${log.code}`,
+      )
       .join("\n");
-    const url = URL.createObjectURL(new Blob([`${header}\n${body}`], { type: "text/csv" }));
+    const url = URL.createObjectURL(
+      new Blob([`${header}\n${body}`], { type: "text/csv" }),
+    );
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "scholartrend-system-logs.csv";
@@ -8102,19 +9661,33 @@ function AdminSystemLogsPage() {
       <div className="admin-logs-content">
         <header className="admin-logs-heading">
           <div>
-            <p>Dashboard <span>/</span> <strong>System Logs</strong></p>
+            <p>
+              Dashboard <span>/</span> <strong>System Logs</strong>
+            </p>
             <h1>System Logs</h1>
-            <small>Monitor sync events, access activity, and platform alerts</small>
+            <small>
+              Monitor sync events, access activity, and platform alerts
+            </small>
           </div>
-          <button type="button" className="admin-log-export-button" onClick={exportLogs}>
+          <button
+            type="button"
+            className="admin-log-export-button"
+            onClick={exportLogs}
+          >
             <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
             Export Logs
           </button>
         </header>
 
-        <section className="admin-logs-summary-grid" aria-label="System log metrics">
+        <section
+          className="admin-logs-summary-grid"
+          aria-label="System log metrics"
+        >
           {adminSystemLogSummary.map((item) => (
-            <article className={`admin-log-summary-card ${item.tone}`} key={item.label}>
+            <article
+              className={`admin-log-summary-card ${item.tone}`}
+              key={item.label}
+            >
               <div>
                 <span>{item.label}</span>
                 <MiniIcon path={item.icon} />
@@ -8138,14 +9711,22 @@ function AdminSystemLogsPage() {
                   aria-label="Search system logs"
                 />
               </label>
-              <select value={severity} onChange={(event) => setSeverity(event.target.value)} aria-label="Filter logs by severity">
+              <select
+                value={severity}
+                onChange={(event) => setSeverity(event.target.value)}
+                aria-label="Filter logs by severity"
+              >
                 <option>All Severities</option>
                 <option>Info</option>
                 <option>Success</option>
                 <option>Warning</option>
                 <option>Error</option>
               </select>
-              <select value={module} onChange={(event) => setModule(event.target.value)} aria-label="Filter logs by module">
+              <select
+                value={module}
+                onChange={(event) => setModule(event.target.value)}
+                aria-label="Filter logs by module"
+              >
                 <option>All Modules</option>
                 <option>Auth</option>
                 <option>Indexing</option>
@@ -8177,10 +9758,20 @@ function AdminSystemLogsPage() {
                         <strong>{log.event}</strong>
                         <small>{log.detail}</small>
                       </td>
-                      <td><span className="admin-log-module">{log.module}</span></td>
-                      <td><span className={`admin-log-severity ${log.severity.toLowerCase()}`}>{log.severity}</span></td>
+                      <td>
+                        <span className="admin-log-module">{log.module}</span>
+                      </td>
+                      <td>
+                        <span
+                          className={`admin-log-severity ${log.severity.toLowerCase()}`}
+                        >
+                          {log.severity}
+                        </span>
+                      </td>
                       <td>{log.actor}</td>
-                      <td><code>{log.code}</code></td>
+                      <td>
+                        <code>{log.code}</code>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -8190,13 +9781,27 @@ function AdminSystemLogsPage() {
             <footer className="admin-logs-pagination">
               <span>Showing 1 to {visibleLogs.length} of 18,742 events</span>
               <div>
-                <button type="button" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+                <button
+                  type="button"
+                  disabled={page === 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
                   <MiniIcon path="M15 18l-6-6 6-6" />
                 </button>
                 {[1, 2, 3].map((number) => (
-                  <button type="button" className={page === number ? "active" : ""} onClick={() => setPage(number)} key={number}>{number}</button>
+                  <button
+                    type="button"
+                    className={page === number ? "active" : ""}
+                    onClick={() => setPage(number)}
+                    key={number}
+                  >
+                    {number}
+                  </button>
                 ))}
-                <button type="button" onClick={() => setPage((value) => Math.min(3, value + 1))}>
+                <button
+                  type="button"
+                  onClick={() => setPage((value) => Math.min(3, value + 1))}
+                >
                   <MiniIcon path="M9 18l6-6-6-6" />
                 </button>
               </div>
@@ -8206,15 +9811,27 @@ function AdminSystemLogsPage() {
           <aside className="admin-logs-inspector">
             <section>
               <h2>Live Health</h2>
-              <p><span>API Gateway</span><strong>Operational</strong></p>
-              <p><span>Sync Workers</span><strong>Degraded</strong></p>
-              <p><span>Search Index</span><strong>Operational</strong></p>
+              <p>
+                <span>API Gateway</span>
+                <strong>Operational</strong>
+              </p>
+              <p>
+                <span>Sync Workers</span>
+                <strong>Degraded</strong>
+              </p>
+              <p>
+                <span>Search Index</span>
+                <strong>Operational</strong>
+              </p>
             </section>
             <section className="admin-log-alert-card">
               <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
               <div>
                 <h2>Attention Needed</h2>
-                <p>2 critical events require admin review before the next scheduled sync.</p>
+                <p>
+                  2 critical events require admin review before the next
+                  scheduled sync.
+                </p>
                 <button type="button">Review Critical</button>
               </div>
             </section>
@@ -8253,8 +9870,7 @@ export default function App() {
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/admin-dashboard") return <AdminDashboard />;
-  if (path === "/admin-sync-management")
-    return <AdminSyncManagementPage />;
+  if (path === "/admin-sync-management") return <AdminSyncManagementPage />;
   if (path === "/admin-user-management") return <AdminUserManagementPage />;
   if (path === "/admin-system-logs") return <AdminSystemLogsPage />;
   if (path === "/lecturer-dashboard") return <LecturerDashboard />;
