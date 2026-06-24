@@ -9,4 +9,5 @@ public interface ITrendingService
 {
     Task<IEnumerable<TrendingMetricDto>> GetTrendingScoreAsync(TrendQueryRequestDto request);
     Task<IEnumerable<TopKeywordDto>> GetTopKeywordsAsync(int count);
+    Task RecalculateTrendingMetricsAsync();
 }

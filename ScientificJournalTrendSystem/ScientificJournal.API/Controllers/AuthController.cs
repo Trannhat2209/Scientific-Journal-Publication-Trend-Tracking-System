@@ -1,4 +1,5 @@
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.DTOs.Request.Auth;
@@ -17,6 +18,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto request)
     {
         var result = await _authService.RegisterAsync(request);
@@ -24,9 +26,47 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto request)
     {
         var result = await _authService.LoginAsync(request);
         return Ok(result);
+    }
+
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto request)
+    {
+        await _authService.ForgotPasswordAsync(request);
+        return Ok(new { message = "Password reset request received." });
+    }
+
+    [HttpPost("refresh-token")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequestDto request)
+    {
+        var result = await _authService.RefreshTokenAsync(request.RefreshToken);
+        return Ok(result);
+    }
+
+    [HttpPost("logout")]
+    [Authorize]
+    public async Task<IActionResult> Logout()
+    {
+        await _authService.LogoutAsync();
+        return Ok(new { message = "Logged out successfully." });
+    }
+
+    [HttpGet("me")]
+    [Authorize]
+    public IActionResult Me()
+    {
+        return Ok(new
+        {
+            id = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value,
+            name = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value,
+            role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+        });
     }
 }

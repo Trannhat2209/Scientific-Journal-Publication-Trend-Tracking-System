@@ -1,10 +1,12 @@
 using Hangfire;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ScientificJournal.Business.Services.Implementations;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.Constants;
+using ScientificJournal.Business.Validators;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Mongo;
 using ScientificJournal.DataAccess.Repositories.Implementations;
@@ -46,6 +48,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicationService, PublicationService>();
         services.AddScoped<ISyncService, SyncService>();
         services.AddScoped<ITrendingService, TrendingService>();
+
+        // 4a. FluentValidation validators
+        services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
         // Core Refactoring Services
         services.AddScoped<ISimilarityService, SimilarityService>();
