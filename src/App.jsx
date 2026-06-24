@@ -2,6 +2,7 @@ import React from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import Chart from "chart.js/auto";
+import { Bar, Line } from "react-chartjs-2";
 
 const getAcademicRole = () =>
   window.location.pathname.startsWith("/lecturer-") ? "lecturer" : "researcher";
@@ -70,7 +71,15 @@ function LandingPage() {
       <header className="site-header" aria-label="Primary navigation">
         <Brand />
         <nav className="lp-nav-links" aria-label="Main navigation">
-          <a href="/" onClick={navTo("/")}>
+          <a
+            href="#features"
+            onClick={(e) => {
+              e.preventDefault();
+              document
+                .getElementById("features")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="3" width="7" height="7" rx="1.5" />
               <rect x="14" y="3" width="7" height="5" rx="1.5" />
@@ -79,14 +88,30 @@ function LandingPage() {
             </svg>
             Features
           </a>
-          <a href="/" onClick={navTo("/")}>
+          <a
+            href="#trends"
+            onClick={(e) => {
+              e.preventDefault();
+              document
+                .getElementById("trends")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 3v18h18" />
               <path d="M18 17l-5-5-4 4-6-6" />
             </svg>
             Trends
           </a>
-          <a href="/" onClick={navTo("/")}>
+          <a
+            href="#pricing"
+            onClick={(e) => {
+              e.preventDefault();
+              document
+                .getElementById("pricing")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="8" width="18" height="12" rx="2" />
               <path d="M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2" />
@@ -95,14 +120,30 @@ function LandingPage() {
             </svg>
             Pricing
           </a>
-          <a href="/" onClick={navTo("/")}>
+          <a
+            href="#resources"
+            onClick={(e) => {
+              e.preventDefault();
+              document
+                .getElementById("resources")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
             </svg>
             Resources
           </a>
-          <a href="/" onClick={navTo("/")}>
+          <a
+            href="#about"
+            onClick={(e) => {
+              e.preventDefault();
+              document
+                .getElementById("about")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 16v-4" />
@@ -918,7 +959,11 @@ function LandingPage() {
       </section>
 
       {/* Powerful Features Section */}
-      <section className="lp-features-section" aria-labelledby="features-title">
+      <section
+        id="features"
+        className="lp-features-section"
+        aria-labelledby="features-title"
+      >
         <div className="lp-section-label">POWERFUL FEATURES</div>
         <h2 id="features-title" className="lp-section-h2">
           Everything you need for
@@ -1015,7 +1060,11 @@ function LandingPage() {
       </section>
 
       {/* Dark Trend Visualization Section */}
-      <section className="lp-trend-section" aria-labelledby="trend-title">
+      <section
+        id="trends"
+        className="lp-trend-section"
+        aria-labelledby="trend-title"
+      >
         <div className="lp-trend-container">
           <div className="lp-trend-left">
             <div className="lp-trend-label">TREND VISUALIZATION</div>
@@ -1423,6 +1472,7 @@ function LandingPage() {
 
       {/* Testimonials */}
       <section
+        id="resources"
         className="lp-testimonials-section"
         aria-labelledby="testimonials-title"
       >
@@ -1479,7 +1529,11 @@ function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="lp-cta-section" aria-label="Call to action">
+      <section
+        id="pricing"
+        className="lp-cta-section"
+        aria-label="Call to action"
+      >
         <div className="lp-cta-rocket-container" aria-hidden="true">
           <div className="lp-cta-rocket-circle">
             <svg
@@ -1522,7 +1576,7 @@ function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="lp-footer">
+      <footer id="about" className="lp-footer">
         <div className="lp-footer-top">
           <div className="lp-footer-col brand-col">
             <Brand small />
@@ -1784,6 +1838,8 @@ function RegisterPage() {
               <button
                 className="google-login-button google-auth-button"
                 type="button"
+                disabled
+                title="Coming soon - Backend integration in progress"
               >
                 <svg
                   className="google-mark"
@@ -1797,7 +1853,12 @@ function RegisterPage() {
                 </svg>
                 Continue with Google
               </button>
-              <button className="institution-login-button" type="button">
+              <button
+                className="institution-login-button"
+                type="button"
+                disabled
+                title="Coming soon - Backend integration in progress"
+              >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M3.5 9.2 12 4.5l8.5 4.7" />
                   <path d="M5.5 10.6h13" />
@@ -1807,7 +1868,12 @@ function RegisterPage() {
                 </svg>
                 Institutional ID
               </button>
-              <button className="orcid-login-button" type="button">
+              <button
+                className="orcid-login-button"
+                type="button"
+                disabled
+                title="Coming soon - Backend integration in progress"
+              >
                 <span className="orcid-mark" aria-hidden="true">
                   iD
                 </span>
@@ -2367,6 +2433,8 @@ function LoginPage() {
               className="google-login-button"
               type="button"
               onClick={handleGoogleLogin}
+              disabled
+              title="Coming soon - Backend integration in progress"
             >
               <svg
                 className="google-mark"
@@ -2384,6 +2452,8 @@ function LoginPage() {
               className="orcid-login-button"
               type="button"
               onClick={() => handleAcademicProviderLogin("ORCID")}
+              disabled
+              title="Coming soon - Backend integration in progress"
             >
               <span className="orcid-mark" aria-hidden="true">
                 iD
@@ -2394,6 +2464,8 @@ function LoginPage() {
               className="institution-login-button"
               type="button"
               onClick={() => handleAcademicProviderLogin("Institution SSO")}
+              disabled
+              title="Coming soon - Backend integration in progress"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M3.5 9.2 12 4.5l8.5 4.7" />
@@ -4761,57 +4833,127 @@ function TrendMainChart() {
         </button>
         <button type="button">Distribution by Journal</button>
       </div>
-      <div className="trend-chart-wrap">
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Publications over time from 2019 to 2023"
-        >
-          <g className="trend-grid">
-            {[0, 1, 2, 3].map((tick) => (
-              <path
-                key={tick}
-                d={`M${padding.left} ${padding.top + tick * (plotHeight / 3)}H${width - padding.right}`}
-              />
-            ))}
-          </g>
-          <path
-            className="trend-axis"
-            d={`M${padding.left} ${height - padding.bottom}H${width - padding.right}`}
-          />
-          <path
-            className="trend-axis"
-            d={`M${padding.left} ${padding.top}V${height - padding.bottom}`}
-          />
-          <path className="trend-line-primary" d={path} />
-          <path className="trend-line-secondary" d={ghostPath} />
-          {points.map((point) => (
-            <g key={point.year}>
-              <circle
-                className="trend-point"
-                cx={point.x}
-                cy={point.y}
-                r="4.5"
-              />
-              <text x={point.x} y={height - 9} textAnchor="middle">
-                {point.year}
-              </text>
-            </g>
-          ))}
-          <circle
-            className="trend-point emphasis"
-            cx={points[4].x - 30}
-            cy={getY(56000)}
-            r="4.5"
-          />
-          <circle
-            className="trend-point emphasis"
-            cx={points[4].x}
-            cy={getY(62700)}
-            r="4.5"
-          />
-        </svg>
+      <div
+        className="trend-chart-wrap"
+        style={{ height: "400px", padding: "20px" }}
+      >
+        <Line
+          data={{
+            labels: ["2019", "2020", "2021", "2022", "2023"],
+            datasets: [
+              {
+                label: "Publications Over Time",
+                data: [34200, 38900, 45100, 52800, 62700],
+                borderColor: "rgba(99, 102, 241, 1)",
+                backgroundColor: "rgba(99, 102, 241, 0.1)",
+                tension: 0.4,
+                fill: true,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                pointBackgroundColor: "rgba(99, 102, 241, 1)",
+                pointBorderColor: "#fff",
+                pointBorderWidth: 2,
+                pointHoverBackgroundColor: "rgba(99, 102, 241, 1)",
+                pointHoverBorderColor: "#fff",
+                borderWidth: 3,
+              },
+              {
+                label: "Previous Year",
+                data: [32100, 36500, 42300, 49600, 56000],
+                borderColor: "rgba(156, 163, 175, 0.5)",
+                backgroundColor: "rgba(156, 163, 175, 0.05)",
+                tension: 0.4,
+                fill: true,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: "rgba(156, 163, 175, 0.5)",
+                pointBorderColor: "#fff",
+                pointBorderWidth: 2,
+                borderWidth: 2,
+                borderDash: [5, 5],
+              },
+            ],
+          }}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              mode: "index",
+              intersect: false,
+            },
+            plugins: {
+              legend: {
+                display: true,
+                position: "top",
+                align: "end",
+                labels: {
+                  usePointStyle: true,
+                  padding: 15,
+                  font: {
+                    size: 12,
+                  },
+                },
+              },
+              tooltip: {
+                backgroundColor: "rgba(0, 0, 0, 0.8)",
+                padding: 12,
+                titleFont: {
+                  size: 14,
+                  weight: "bold",
+                },
+                bodyFont: {
+                  size: 13,
+                },
+                callbacks: {
+                  label: function (context) {
+                    return (
+                      context.dataset.label +
+                      ": " +
+                      context.parsed.y.toLocaleString() +
+                      " publications"
+                    );
+                  },
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: false,
+                min: 30000,
+                max: 70000,
+                grid: {
+                  color: "rgba(0, 0, 0, 0.06)",
+                  drawBorder: false,
+                },
+                ticks: {
+                  font: {
+                    size: 11,
+                  },
+                  callback: function (value) {
+                    return value / 1000 + "k";
+                  },
+                },
+                border: {
+                  display: false,
+                },
+              },
+              x: {
+                grid: {
+                  display: false,
+                  drawBorder: false,
+                },
+                ticks: {
+                  font: {
+                    size: 12,
+                  },
+                },
+                border: {
+                  display: false,
+                },
+              },
+            },
+          }}
+        />
       </div>
     </section>
   );
@@ -5166,11 +5308,82 @@ function ReportsPage() {
                 <div
                   className="report-bar-chart"
                   aria-label="Publication bar chart"
+                  style={{ height: "250px", padding: "20px 0" }}
                 >
-                  {[35, 48, 58, 74, 86].map((height, index) => (
-                    <i style={{ height: `${height}%` }} key={index}></i>
-                  ))}
-                  <span></span>
+                  <Bar
+                    data={{
+                      labels: ["2019", "2020", "2021", "2022", "2023"],
+                      datasets: [
+                        {
+                          label: "Publications",
+                          data: [218, 299, 361, 461, 535],
+                          backgroundColor: [
+                            "rgba(139, 92, 246, 0.6)",
+                            "rgba(139, 92, 246, 0.7)",
+                            "rgba(139, 92, 246, 0.75)",
+                            "rgba(124, 58, 237, 0.85)",
+                            "rgba(109, 40, 217, 0.95)",
+                          ],
+                          borderColor: [
+                            "rgba(139, 92, 246, 1)",
+                            "rgba(139, 92, 246, 1)",
+                            "rgba(139, 92, 246, 1)",
+                            "rgba(124, 58, 237, 1)",
+                            "rgba(109, 40, 217, 1)",
+                          ],
+                          borderWidth: 1,
+                          borderRadius: 4,
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          display: false,
+                        },
+                        tooltip: {
+                          backgroundColor: "rgba(0, 0, 0, 0.8)",
+                          padding: 12,
+                          titleFont: {
+                            size: 14,
+                          },
+                          bodyFont: {
+                            size: 13,
+                          },
+                          callbacks: {
+                            label: function (context) {
+                              return "Publications: " + context.parsed.y;
+                            },
+                          },
+                        },
+                      },
+                      scales: {
+                        y: {
+                          beginAtZero: true,
+                          grid: {
+                            color: "rgba(0, 0, 0, 0.05)",
+                          },
+                          ticks: {
+                            font: {
+                              size: 11,
+                            },
+                          },
+                        },
+                        x: {
+                          grid: {
+                            display: false,
+                          },
+                          ticks: {
+                            font: {
+                              size: 11,
+                            },
+                          },
+                        },
+                      },
+                    }}
+                  />
                 </div>
                 <table className="report-author-table">
                   <thead>
@@ -5340,56 +5553,126 @@ function YearTrajectoryChart() {
           </span>
         </div>
       </div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Publication volume trajectory comparing 2024 and 2025"
-      >
-        <g className="year-grid">
-          {[0, 500, 1000, 1500].map((tick) => (
-            <path
-              key={tick}
-              d={`M${padding.left} ${getY(tick)}H${width - padding.right}`}
-            />
-          ))}
-        </g>
-        <g className="year-y-labels">
-          {[0, 500, 1000, 1500].map((tick) => (
-            <text
-              key={tick}
-              x={padding.left - 16}
-              y={getY(tick) + 4}
-              textAnchor="end"
-            >
-              {tick === 0
-                ? "0"
-                : `${(tick / 1000).toFixed(tick === 1000 ? 1 : 1)}k`}
-            </text>
-          ))}
-        </g>
-        <path
-          className="year-axis"
-          d={`M${padding.left} ${height - padding.bottom}H${width - padding.right}`}
+      <div style={{ height: "400px", padding: "20px" }}>
+        <Line
+          data={{
+            labels: ["Q1", "Q2", "Q3", "Q4"],
+            datasets: [
+              {
+                label: "2024 (Baseline)",
+                data: [320, 430, 520, 780],
+                borderColor: "rgba(156, 163, 175, 1)",
+                backgroundColor: "rgba(156, 163, 175, 0.1)",
+                tension: 0.4,
+                fill: true,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: "rgba(156, 163, 175, 1)",
+                pointBorderColor: "#fff",
+                pointBorderWidth: 2,
+                pointHoverBackgroundColor: "rgba(156, 163, 175, 1)",
+                pointHoverBorderColor: "#fff",
+                borderWidth: 3,
+                borderDash: [8, 4],
+              },
+              {
+                label: "2025 (Comparison)",
+                data: [280, 730, 1100, 1480],
+                borderColor: "rgba(99, 102, 241, 1)",
+                backgroundColor: "rgba(99, 102, 241, 0.15)",
+                tension: 0.4,
+                fill: true,
+                pointRadius: 7,
+                pointHoverRadius: 10,
+                pointBackgroundColor: "rgba(99, 102, 241, 1)",
+                pointBorderColor: "#fff",
+                pointBorderWidth: 3,
+                pointHoverBackgroundColor: "rgba(99, 102, 241, 1)",
+                pointHoverBorderColor: "#fff",
+                borderWidth: 4,
+              },
+            ],
+          }}
+          options={{
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+              mode: "index",
+              intersect: false,
+            },
+            plugins: {
+              legend: {
+                display: false, // Using custom legend above
+              },
+              tooltip: {
+                backgroundColor: "rgba(0, 0, 0, 0.85)",
+                padding: 14,
+                titleFont: {
+                  size: 14,
+                  weight: "bold",
+                },
+                bodyFont: {
+                  size: 13,
+                },
+                bodySpacing: 6,
+                callbacks: {
+                  title: function (context) {
+                    return "Quarter " + context[0].label;
+                  },
+                  label: function (context) {
+                    const value = context.parsed.y;
+                    const formatted =
+                      value >= 1000
+                        ? (value / 1000).toFixed(1) + "k"
+                        : value.toString();
+                    return (
+                      context.dataset.label + ": " + formatted + " publications"
+                    );
+                  },
+                },
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 1600,
+                grid: {
+                  color: "rgba(0, 0, 0, 0.06)",
+                  drawBorder: false,
+                },
+                ticks: {
+                  font: {
+                    size: 11,
+                  },
+                  callback: function (value) {
+                    if (value === 0) return "0";
+                    return (value / 1000).toFixed(1) + "k";
+                  },
+                  stepSize: 500,
+                },
+                border: {
+                  display: false,
+                },
+              },
+              x: {
+                grid: {
+                  display: false,
+                  drawBorder: false,
+                },
+                ticks: {
+                  font: {
+                    size: 12,
+                    weight: "500",
+                  },
+                },
+                border: {
+                  display: false,
+                },
+              },
+            },
+          }}
         />
-        <path className="year-baseline-line" d={baselinePath} />
-        <path className="year-comparison-line" d={comparisonPath} />
-        {points.map((point, index) => (
-          <g key={`${point.quarter}-${index}`}>
-            <circle
-              className="year-comparison-point"
-              cx={point.x}
-              cy={point.yComp}
-              r={index === points.length - 1 ? "9" : "8"}
-            />
-            {index < 4 ? (
-              <text x={point.x} y={height - 12} textAnchor="middle">
-                {point.quarter}
-              </text>
-            ) : null}
-          </g>
-        ))}
-      </svg>
+      </div>
     </section>
   );
 }
