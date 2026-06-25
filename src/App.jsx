@@ -21,34 +21,337 @@ const navTo = (path) => (event) => {
   window.dispatchEvent(new Event("scholartrend:navigate"));
 };
 
+function DonutChartInteractive() {
+  const [selectedSegment, setSelectedSegment] = React.useState(null);
+  const [hoveredSegment, setHoveredSegment] = React.useState(null);
+
+  const segments = [
+    {
+      id: "ai",
+      label: "Artificial Intelligence",
+      percent: 35,
+      publications: "840K",
+      color: "#3b82f6",
+      dasharray: "44 81.6",
+      dashoffset: "0",
+    },
+    {
+      id: "medicine",
+      label: "Medicine",
+      percent: 22,
+      publications: "528K",
+      color: "#0ea5e9",
+      dasharray: "27.6 98",
+      dashoffset: "-44",
+    },
+    {
+      id: "cs",
+      label: "Computer Science",
+      percent: 18,
+      publications: "432K",
+      color: "#8b5cf6",
+      dasharray: "22.6 103",
+      dashoffset: "-71.6",
+    },
+    {
+      id: "eng",
+      label: "Engineering",
+      percent: 15,
+      publications: "360K",
+      color: "#f97316",
+      dasharray: "18.8 106.8",
+      dashoffset: "-94.2",
+    },
+    {
+      id: "other",
+      label: "Others",
+      percent: 10,
+      publications: "240K",
+      color: "#10b981",
+      dasharray: "12.6 113",
+      dashoffset: "-113",
+    },
+  ];
+
+  const handleSegmentClick = (segment) => {
+    setSelectedSegment(selectedSegment?.id === segment.id ? null : segment);
+  };
+
+  return (
+    <div className="lp-donut-row" style={{ position: "relative" }}>
+      <svg
+        viewBox="0 0 60 60"
+        width="48"
+        height="48"
+        aria-hidden="true"
+        style={{
+          transform: "rotate(-90deg)",
+          display: "block",
+        }}
+      >
+        {segments.map((segment) => (
+          <circle
+            key={segment.id}
+            cx="30"
+            cy="30"
+            r="20"
+            fill="none"
+            stroke={segment.color}
+            strokeWidth="6"
+            strokeDasharray={segment.dasharray}
+            strokeDashoffset={segment.dashoffset}
+            style={{
+              cursor: "pointer",
+              opacity:
+                hoveredSegment === segment.id ||
+                selectedSegment?.id === segment.id
+                  ? 1
+                  : hoveredSegment || selectedSegment
+                    ? 0.5
+                    : 1,
+              transition: "all 0.3s ease",
+              filter:
+                hoveredSegment === segment.id ||
+                selectedSegment?.id === segment.id
+                  ? "drop-shadow(0 0 4px " + segment.color + ")"
+                  : "none",
+            }}
+            onClick={() => handleSegmentClick(segment)}
+            onMouseEnter={() => setHoveredSegment(segment.id)}
+            onMouseLeave={() => setHoveredSegment(null)}
+          />
+        ))}
+      </svg>
+      {selectedSegment && (
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "55px",
+            transform: "translateY(-50%)",
+            background: "white",
+            border: "2px solid " + selectedSegment.color,
+            borderRadius: "8px",
+            padding: "12px 16px",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+            zIndex: 10,
+            minWidth: "160px",
+            animation: "fadeIn 0.3s ease",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "11px",
+              color: "#64748b",
+              fontWeight: 600,
+              marginBottom: "4px",
+            }}
+          >
+            {selectedSegment.label}
+          </div>
+          <div
+            style={{
+              fontSize: "20px",
+              fontWeight: 800,
+              color: selectedSegment.color,
+              marginBottom: "2px",
+            }}
+          >
+            {selectedSegment.publications}
+          </div>
+          <div style={{ fontSize: "13px", color: "#64748b" }}>
+            {selectedSegment.percent}% of total
+          </div>
+          <button
+            onClick={() => setSelectedSegment(null)}
+            style={{
+              position: "absolute",
+              top: "4px",
+              right: "4px",
+              background: "transparent",
+              border: "none",
+              color: "#94a3b8",
+              cursor: "pointer",
+              fontSize: "16px",
+              padding: "2px 6px",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <div className="lp-donut-legend">
+        {segments.map((segment) => (
+          <span
+            key={segment.id}
+            onClick={() => handleSegmentClick(segment)}
+            style={{
+              cursor: "pointer",
+              opacity:
+                hoveredSegment === segment.id ||
+                selectedSegment?.id === segment.id
+                  ? 1
+                  : hoveredSegment || selectedSegment
+                    ? 0.5
+                    : 1,
+              transition: "all 0.3s ease",
+            }}
+            onMouseEnter={() => setHoveredSegment(segment.id)}
+            onMouseLeave={() => setHoveredSegment(null)}
+          >
+            <i style={{ background: segment.color }}></i>
+            {segment.label} {segment.percent}%
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Brand({ boxed = false, small = false }) {
+  const [isHovered, setIsHovered] = React.useState(false);
+
   return (
     <a
       className={small ? "footer-brand" : "brand"}
       href="/"
       onClick={navTo("/")}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: small ? "10px" : "14px",
+        textDecoration: "none",
+        fontWeight: 700,
+        fontSize: small ? "14px" : "22px",
+        letterSpacing: "-0.03em",
+        transition: "all 0.3s ease",
+      }}
     >
       <span
         className={`brand-mark ${boxed ? "boxed" : ""} ${small ? "small" : ""}`}
         aria-hidden="true"
+        style={{
+          position: "relative",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: small ? "32px" : "42px",
+          height: small ? "32px" : "42px",
+          background:
+            "linear-gradient(135deg, #06b6d4 0%, #0284c7 50%, #0369a1 100%)",
+          borderRadius: small ? "10px" : "12px",
+          padding: small ? "5px" : "6px",
+          boxShadow: isHovered
+            ? "0 6px 24px rgba(6, 182, 212, 0.5), 0 3px 6px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.3)"
+            : "0 4px 16px rgba(6, 182, 212, 0.35), 0 2px 4px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
+          transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+          animation: isHovered ? "none" : "logoRotate 4s ease-in-out infinite",
+          transformStyle: "preserve-3d",
+          transform: isHovered ? "scale(1.15) rotateY(180deg)" : undefined,
+        }}
       >
         {boxed ? (
-          <svg viewBox="0 0 24 24" role="img">
-            <path d="M5 19V9" />
-            <path d="M12 19V5" />
-            <path d="M19 19v-7" />
+          <svg
+            viewBox="0 0 32 32"
+            role="img"
+            style={{
+              width: "100%",
+              height: "100%",
+              fill: "none",
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+              transition: "all 0.4s ease",
+            }}
+          >
+            <path d="M8 24V12" stroke="white" strokeWidth="3" opacity="0.9" />
+            <path d="M16 24V8" stroke="white" strokeWidth="3.5" opacity="1" />
+            <path d="M24 24V14" stroke="white" strokeWidth="3" opacity="0.9" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" role="img">
-            <path d="M12 3.25 8.5 8.7l3.5 2.15 3.5-2.15L12 3.25Z" />
-            <path d="M7.2 10.05 4.5 14.2l7.5 4.55 7.5-4.55-2.7-4.15-4.8 2.95-4.8-2.95Z" />
-            <path d="M6 19.2h12" />
+          <svg
+            viewBox="0 0 32 32"
+            role="img"
+            style={{
+              width: "100%",
+              height: "100%",
+              transition: "all 0.4s ease",
+            }}
+          >
+            {/* Base shape - white geometric icon */}
+            <path
+              d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.95"
+            />
+            <path
+              d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.75"
+            />
+            {/* Top triangle - highlight */}
+            <path
+              d="M16 4 L10 8 L16 10 L22 8 Z"
+              fill="rgba(255, 255, 255, 0.95)"
+            />
+            {/* Accent line */}
+            <path
+              d="M16 4 L16 28"
+              stroke="rgba(2, 132, 199, 0.4)"
+              strokeWidth="1.5"
+            />
+            {/* Bottom accent */}
+            <circle cx="16" cy="28" r="1.5" fill="white" />
           </svg>
         )}
       </span>
-      <span>
-        Scholar<span className="brand-gradient-text">Trend</span>
-        {small ? " © 2024" : ""}
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          whiteSpace: "nowrap",
+          fontWeight: 800,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        <span
+          style={{
+            background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}
+        >
+          Scholar
+        </span>
+        <span
+          style={{
+            background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            backgroundClip: "text",
+          }}
+        >
+          Trend
+        </span>
+        {small ? (
+          <span
+            style={{
+              color: "#64748b",
+              fontSize: "11px",
+              fontWeight: 500,
+              marginLeft: "8px",
+              letterSpacing: "0",
+            }}
+          >
+            {" "}
+            © 2026
+          </span>
+        ) : (
+          ""
+        )}
       </span>
     </a>
   );
@@ -295,18 +598,61 @@ function LandingPage() {
         >
           <div className="lp-dashboard-mockup">
             <div className="lp-dash-header">
-              <span className="lp-dash-logo">
-                <svg
-                  viewBox="0 0 24 24"
-                  width="14"
-                  height="14"
-                  aria-hidden="true"
-                  style={{ stroke: "#06b6d4", fill: "none" }}
+              <span
+                className="lp-dash-logo"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: "24px",
+                    height: "24px",
+                    background:
+                      "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+                    borderRadius: "5px",
+                    padding: "5px",
+                    boxShadow: "0 2px 6px rgba(6, 182, 212, 0.25)",
+                  }}
                 >
-                  <path d="M12 3.25 8.5 8.7l3.5 2.15 3.5-2.15L12 3.25Z" />
-                  <path d="M7.2 10.05 4.5 14.2l7.5 4.55 7.5-4.55-2.7-4.15-4.8 2.95-4.8-2.95Z" />
-                </svg>
-                ScholarTrend
+                  <svg
+                    viewBox="0 0 32 32"
+                    width="100%"
+                    height="100%"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+                      fill="white"
+                      opacity="0.95"
+                    />
+                    <path
+                      d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+                      fill="white"
+                      opacity="0.75"
+                    />
+                    <path
+                      d="M16 4 L10 8 L16 10 L22 8 Z"
+                      fill="rgba(255, 255, 255, 0.95)"
+                    />
+                    <path
+                      d="M16 4 L16 28"
+                      stroke="rgba(2, 132, 199, 0.4)"
+                      strokeWidth="1.5"
+                    />
+                    <circle cx="16" cy="28" r="1.5" fill="white" />
+                  </svg>
+                </span>
+                <span style={{ color: "#0f172a", fontWeight: 700 }}>
+                  Scholar<span style={{ color: "#06b6d4" }}>Trend</span>
+                </span>
               </span>
               <div className="lp-dash-search-container">
                 <svg
@@ -684,89 +1030,7 @@ function LandingPage() {
                     <div className="lp-dash-chart-title">
                       Top Research Areas
                     </div>
-                    <div className="lp-donut-row">
-                      <svg
-                        viewBox="0 0 60 60"
-                        width="48"
-                        height="48"
-                        aria-hidden="true"
-                        style={{
-                          transform: "rotate(-90deg)",
-                          display: "block",
-                        }}
-                      >
-                        <circle
-                          cx="30"
-                          cy="30"
-                          r="20"
-                          fill="none"
-                          stroke="#3b82f6"
-                          strokeWidth="6"
-                          strokeDasharray="44 81.6"
-                          strokeDashoffset="0"
-                        />
-                        <circle
-                          cx="30"
-                          cy="30"
-                          r="20"
-                          fill="none"
-                          stroke="#0ea5e9"
-                          strokeWidth="6"
-                          strokeDasharray="27.6 98"
-                          strokeDashoffset="-44"
-                        />
-                        <circle
-                          cx="30"
-                          cy="30"
-                          r="20"
-                          fill="none"
-                          stroke="#8b5cf6"
-                          strokeWidth="6"
-                          strokeDasharray="22.6 103"
-                          strokeDashoffset="-71.6"
-                        />
-                        <circle
-                          cx="30"
-                          cy="30"
-                          r="20"
-                          fill="none"
-                          stroke="#f97316"
-                          strokeWidth="6"
-                          strokeDasharray="18.8 106.8"
-                          strokeDashoffset="-94.2"
-                        />
-                        <circle
-                          cx="30"
-                          cy="30"
-                          r="20"
-                          fill="none"
-                          stroke="#10b981"
-                          strokeWidth="6"
-                          strokeDasharray="12.6 113"
-                          strokeDashoffset="-113"
-                        />
-                      </svg>
-                      <div className="lp-donut-legend">
-                        <span>
-                          <i style={{ background: "#3b82f6" }}></i>Artificial
-                          Intelligence 35%
-                        </span>
-                        <span>
-                          <i style={{ background: "#0ea5e9" }}></i>Medicine 22%
-                        </span>
-                        <span>
-                          <i style={{ background: "#8b5cf6" }}></i>Computer
-                          Science 18%
-                        </span>
-                        <span>
-                          <i style={{ background: "#f97316" }}></i>Engineering
-                          15%
-                        </span>
-                        <span>
-                          <i style={{ background: "#10b981" }}></i>Others 10%
-                        </span>
-                      </div>
-                    </div>
+                    <DonutChartInteractive />
                   </div>
                 </div>
                 <div className="lp-dash-bottom-grid">
@@ -776,41 +1040,63 @@ function LandingPage() {
                       {
                         label: "Large Language Models",
                         pct: "+168%",
-                        path: "M 2 15 Q 15 12, 25 14 T 45 6 T 58 2",
+                        data: [15, 12, 14, 8, 6, 2],
                       },
                       {
                         label: "AI in Healthcare",
                         pct: "+112%",
-                        path: "M 2 14 Q 15 6, 25 11 T 45 4 T 58 2",
+                        data: [14, 10, 11, 7, 4, 2],
                       },
                       {
                         label: "Quantum Computing",
                         pct: "+95%",
-                        path: "M 2 16 Q 15 13, 25 9 T 45 6 T 58 3",
+                        data: [16, 13, 9, 8, 6, 3],
                       },
                       {
                         label: "Sustainable Energy",
                         pct: "+74%",
-                        path: "M 2 15 Q 15 9, 25 12 T 45 7 T 58 4",
+                        data: [15, 12, 12, 9, 7, 4],
                       },
                     ].map((t) => (
                       <div key={t.label} className="lp-emerging-row">
                         <span className="lp-emerging-label">{t.label}</span>
-                        <div className="lp-emerging-sparkline-wrap">
-                          <svg
-                            viewBox="0 0 60 20"
-                            className="lp-sparkline-svg"
-                            aria-hidden="true"
-                          >
-                            <path
-                              d={t.path}
-                              fill="none"
-                              stroke="#3b82f6"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
+                        <div
+                          className="lp-emerging-sparkline-wrap"
+                          style={{ width: "60px", height: "20px" }}
+                        >
+                          <Line
+                            data={{
+                              labels: ["", "", "", "", "", ""],
+                              datasets: [
+                                {
+                                  data: t.data,
+                                  borderColor: "#3b82f6",
+                                  borderWidth: 1.5,
+                                  tension: 0.4,
+                                  pointRadius: 0,
+                                  pointHoverRadius: 0,
+                                },
+                              ],
+                            }}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              plugins: {
+                                legend: { display: false },
+                                tooltip: { enabled: false },
+                              },
+                              scales: {
+                                x: { display: false },
+                                y: { display: false },
+                              },
+                              elements: {
+                                line: {
+                                  borderCapStyle: "round",
+                                  borderJoinStyle: "round",
+                                },
+                              },
+                            }}
+                          />
                         </div>
                         <span className="lp-emerging-pct">{t.pct}</span>
                       </div>
@@ -906,55 +1192,186 @@ function LandingPage() {
       </section>
 
       {/* Stats bar */}
-      <section className="lp-stats-bar" aria-label="Platform statistics">
-        <div className="lp-stat-item">
-          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <path d="M14 2v6h6" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-            <line x1="10" y1="9" x2="8" y2="9" />
-          </svg>
-          <div>
-            <strong>2M+</strong>
-            <span>Publications Indexed</span>
-          </div>
-        </div>
-        <div className="lp-stat-divider" aria-hidden="true"></div>
-        <div className="lp-stat-item">
-          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>
-          <div>
-            <strong>500K+</strong>
-            <span>Researchers</span>
-          </div>
-        </div>
-        <div className="lp-stat-divider" aria-hidden="true"></div>
-        <div className="lp-stat-item">
-          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-          </svg>
-          <div>
-            <strong>150K+</strong>
-            <span>Journals</span>
-          </div>
-        </div>
-        <div className="lp-stat-divider" aria-hidden="true"></div>
-        <div className="lp-stat-item">
-          <svg viewBox="0 0 24 24" className="lp-stat-icon" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M2 12h20" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-          <div>
-            <strong>50+</strong>
-            <span>Countries</span>
-          </div>
+      <section
+        className="lp-stats-bar"
+        aria-label="Platform statistics"
+        style={{
+          background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+          padding: "48px 0",
+          borderTop: "1px solid #e2e8f0",
+          borderBottom: "1px solid #e2e8f0",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: "1200px",
+            margin: "0 auto",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "32px",
+            padding: "0 24px",
+          }}
+        >
+          {[
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M16 13H8" />
+                  <path d="M16 17H8" />
+                  <path d="M10 9H8" />
+                </svg>
+              ),
+              value: "2M+",
+              label: "Publications Indexed",
+              color: "#3b82f6",
+              gradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+            },
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87" />
+                  <path d="M16 3.13a4 4 0 010 7.75" />
+                </svg>
+              ),
+              value: "500K+",
+              label: "Researchers",
+              color: "#8b5cf6",
+              gradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
+            },
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+                </svg>
+              ),
+              value: "150K+",
+              label: "Journals",
+              color: "#10b981",
+              gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+            },
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M2 12h20" />
+                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                </svg>
+              ),
+              value: "50+",
+              label: "Countries",
+              color: "#f59e0b",
+              gradient: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+            },
+          ].map((stat, i) => (
+            <div
+              key={stat.label}
+              className="lp-stat-item"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "16px",
+                padding: "24px",
+                background: "white",
+                borderRadius: "16px",
+                border: "1px solid #e2e8f0",
+                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+                transition: "all 0.3s ease",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = `0 12px 24px ${stat.color}20`;
+                e.currentTarget.style.borderColor = `${stat.color}40`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 6px -1px rgba(0, 0, 0, 0.05)";
+                e.currentTarget.style.borderColor = "#e2e8f0";
+              }}
+            >
+              <div
+                className="lp-stat-icon"
+                style={{
+                  width: "56px",
+                  height: "56px",
+                  borderRadius: "12px",
+                  background: stat.gradient,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  boxShadow: `0 4px 12px ${stat.color}30`,
+                }}
+              >
+                <div style={{ color: "white", width: "28px", height: "28px" }}>
+                  {stat.icon}
+                </div>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "2px",
+                  minWidth: 0,
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: "28px",
+                    fontWeight: "700",
+                    color: "#1e293b",
+                    lineHeight: "1",
+                  }}
+                >
+                  {stat.value}
+                </strong>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    color: "#64748b",
+                    fontWeight: "500",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {stat.label}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -964,7 +1381,27 @@ function LandingPage() {
         className="lp-features-section"
         aria-labelledby="features-title"
       >
-        <div className="lp-section-label">POWERFUL FEATURES</div>
+        <div
+          className="lp-section-label"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            width="18"
+            height="18"
+          >
+            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          POWERFUL FEATURES
+        </div>
         <h2 id="features-title" className="lp-section-h2">
           Everything you need for
           <br />
@@ -975,87 +1412,196 @@ function LandingPage() {
           ever-evolving world of academic research.
         </p>
         <div className="lp-feature-grid">
-          <article className="lp-feat-card">
-            <div className="lp-feat-icon blue">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-            </div>
-            <h3>Smart Search</h3>
-            <p>
-              Advanced semantic search understands context, not just keywords.
-              Find the most relevant publications instantly.
-            </p>
-            <a
-              className="lp-feat-link"
-              href="/register"
-              onClick={navTo("/register")}
+          {[
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+              ),
+              title: "Smart Search",
+              desc: "Advanced semantic search understands context, not just keywords. Find the most relevant publications instantly.",
+              color: "#3b82f6",
+              gradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+            },
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 3v18h18" />
+                  <path d="M18 17l-5-5-4 4-6-6" />
+                </svg>
+              ),
+              title: "Trend Analytics",
+              desc: "Visualize research trends over time, identify emerging topics, and track citation velocity in real-time.",
+              color: "#8b5cf6",
+              gradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
+            },
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              ),
+              title: "AI Insights",
+              desc: "AI-powered summaries, research gap analysis, and key findings extraction from complex papers.",
+              color: "#10b981",
+              gradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+            },
+            {
+              icon: (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+                  <path d="M12 7v5" />
+                  <path d="M10 9h4" />
+                </svg>
+              ),
+              title: "Personal Workspace",
+              desc: "Save papers, follow topics, set alerts, and organize your research in one personalized workspace.",
+              color: "#f59e0b",
+              gradient: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+            },
+          ].map((feature, i) => (
+            <article
+              key={feature.title}
+              className="lp-feat-card"
+              style={{
+                transition: "all 0.3s ease",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-8px)";
+                e.currentTarget.style.boxShadow = `0 20px 40px ${feature.color}20`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "";
+              }}
             >
-              Learn more →
-            </a>
-          </article>
-          <article className="lp-feat-card">
-            <div className="lp-feat-icon purple">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M3 3v18h18" />
-                <path d="M18 17l-5-5-4 4-6-6" />
-              </svg>
-            </div>
-            <h3>Trend Analytics</h3>
-            <p>
-              Visualize research trends over time, identify emerging topics, and
-              track citation velocity in real-time.
-            </p>
-            <a
-              className="lp-feat-link"
-              href="/register"
-              onClick={navTo("/register")}
-            >
-              Learn more →
-            </a>
-          </article>
-          <article className="lp-feat-card">
-            <div className="lp-feat-icon green">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                <path d="M2 17l10 5 10-5" />
-                <path d="M2 12l10 5 10-5" />
-              </svg>
-            </div>
-            <h3>AI Insights</h3>
-            <p>
-              AI-powered summaries, research gap analysis, and key findings
-              extraction from complex papers.
-            </p>
-            <a
-              className="lp-feat-link"
-              href="/register"
-              onClick={navTo("/register")}
-            >
-              Learn more →
-            </a>
-          </article>
-          <article className="lp-feat-card">
-            <div className="lp-feat-icon orange">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-                <path d="M12 7v5" />
-              </svg>
-            </div>
-            <h3>Personal Workspace</h3>
-            <p>
-              Save papers, follow topics, set alerts, and organize your research
-              in one personalized workspace.
-            </p>
-            <a
-              className="lp-feat-link"
-              href="/register"
-              onClick={navTo("/register")}
-            >
-              Learn more →
-            </a>
-          </article>
+              <div
+                className={`lp-feat-icon ${["blue", "purple", "green", "orange"][i]}`}
+                style={{
+                  background: `${feature.color}15`,
+                  border: `2px solid ${feature.color}30`,
+                  width: "64px",
+                  height: "64px",
+                  borderRadius: "16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 20px",
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "-50%",
+                    right: "-50%",
+                    width: "100%",
+                    height: "100%",
+                    background: feature.gradient,
+                    opacity: 0.1,
+                    borderRadius: "50%",
+                  }}
+                />
+                <div
+                  style={{
+                    color: feature.color,
+                    width: "32px",
+                    height: "32px",
+                    position: "relative",
+                    zIndex: 1,
+                  }}
+                >
+                  {feature.icon}
+                </div>
+              </div>
+              <h3
+                style={{
+                  fontSize: "20px",
+                  fontWeight: "600",
+                  color: "#1e293b",
+                  marginBottom: "12px",
+                  textAlign: "center",
+                }}
+              >
+                {feature.title}
+              </h3>
+              <p
+                style={{
+                  fontSize: "15px",
+                  color: "#64748b",
+                  lineHeight: "1.7",
+                  marginBottom: "20px",
+                  textAlign: "center",
+                }}
+              >
+                {feature.desc}
+              </p>
+              <a
+                className="lp-feat-link"
+                href="/register"
+                onClick={navTo("/register")}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  color: feature.color,
+                  fontWeight: "500",
+                  fontSize: "14px",
+                  textDecoration: "none",
+                  transition: "gap 0.3s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.gap = "10px")}
+                onMouseLeave={(e) => (e.currentTarget.style.gap = "6px")}
+              >
+                Learn more
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  width="16"
+                  height="16"
+                >
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </a>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -1094,285 +1640,128 @@ function LandingPage() {
               <span className="lp-trend-badge">Emerging</span>
             </div>
 
-            <svg
-              viewBox="0 0 400 180"
-              className="lp-trend-chart"
-              aria-hidden="true"
-            >
-              <defs>
-                <linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-
-              {/* Grid lines */}
-              <line
-                x1="40"
-                y1="20"
-                x2="370"
-                y2="20"
-                stroke="rgba(255,255,255,0.06)"
-                strokeWidth="1"
+            <div style={{ height: "180px", position: "relative" }}>
+              <Line
+                data={{
+                  labels: ["2020", "2021", "2022", "2023", "2024", "2025"],
+                  datasets: [
+                    {
+                      label: "AI in Healthcare Publications",
+                      data: [5000, 10800, 23800, 42000, 61500, 96847],
+                      borderColor: "#06b6d4",
+                      backgroundColor: "rgba(6, 182, 212, 0.2)",
+                      tension: 0.4,
+                      fill: true,
+                      pointRadius: 6,
+                      pointHoverRadius: 8,
+                      pointBackgroundColor: "#06b6d4",
+                      pointBorderColor: "#fff",
+                      pointBorderWidth: 2,
+                      pointHoverBackgroundColor: "#06b6d4",
+                      pointHoverBorderColor: "#fff",
+                      pointHoverBorderWidth: 3,
+                      borderWidth: 3,
+                    },
+                  ],
+                }}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                      setActiveDataPoint(elements[0].index);
+                    }
+                  },
+                  interaction: {
+                    mode: "point",
+                    intersect: true,
+                  },
+                  plugins: {
+                    legend: {
+                      display: false,
+                    },
+                    tooltip: {
+                      enabled: true,
+                      backgroundColor: "rgba(13, 27, 42, 0.95)",
+                      borderColor: "rgba(6, 182, 212, 0.4)",
+                      borderWidth: 1.5,
+                      padding: 12,
+                      titleColor: "#ffffff",
+                      bodyColor: "#06b6d4",
+                      titleFont: {
+                        size: 13,
+                        weight: "bold",
+                      },
+                      bodyFont: {
+                        size: 12,
+                        weight: "bold",
+                      },
+                      footerColor: "rgba(255,255,255,0.65)",
+                      footerFont: {
+                        size: 11,
+                      },
+                      displayColors: false,
+                      callbacks: {
+                        title: function (context) {
+                          const year = context[0].label;
+                          return year === "2025" ? year + " (Projected)" : year;
+                        },
+                        label: function (context) {
+                          return (
+                            context.parsed.y.toLocaleString() + " publications"
+                          );
+                        },
+                        footer: function (context) {
+                          const idx = context[0].dataIndex;
+                          if (idx === 0) return "Starting year";
+                          const currentYear = parseInt(context[0].label);
+                          const growth = chartData[idx].growth;
+                          return growth + " from " + (currentYear - 1);
+                        },
+                      },
+                    },
+                  },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      max: 100000,
+                      grid: {
+                        color: "rgba(255, 255, 255, 0.06)",
+                        drawBorder: false,
+                      },
+                      ticks: {
+                        color: "#94a3b8",
+                        font: {
+                          size: 10,
+                        },
+                        callback: function (value) {
+                          return value / 1000 + "k";
+                        },
+                        stepSize: 25000,
+                      },
+                      border: {
+                        display: false,
+                      },
+                    },
+                    x: {
+                      grid: {
+                        display: false,
+                        drawBorder: false,
+                      },
+                      ticks: {
+                        color: "#64748b",
+                        font: {
+                          size: 10,
+                        },
+                      },
+                      border: {
+                        color: "rgba(255, 255, 255, 0.1)",
+                      },
+                    },
+                  },
+                }}
               />
-              <line
-                x1="40"
-                y1="50"
-                x2="370"
-                y2="50"
-                stroke="rgba(255,255,255,0.06)"
-                strokeWidth="1"
-              />
-              <line
-                x1="40"
-                y1="80"
-                x2="370"
-                y2="80"
-                stroke="rgba(255,255,255,0.06)"
-                strokeWidth="1"
-              />
-              <line
-                x1="40"
-                y1="110"
-                x2="370"
-                y2="110"
-                stroke="rgba(255,255,255,0.06)"
-                strokeWidth="1"
-              />
-              <line
-                x1="40"
-                y1="140"
-                x2="370"
-                y2="140"
-                stroke="rgba(255,255,255,0.1)"
-                strokeWidth="1"
-              />
-
-              {/* Path */}
-              <path
-                d="M40 135 C 75 132, 110 125, 145 118 C 180 110, 215 95, 250 82 C 285 68, 320 48, 370 25"
-                fill="none"
-                stroke="#06b6d4"
-                strokeWidth="3"
-              />
-              <path
-                d="M40 135 C 75 132, 110 125, 145 118 C 180 110, 215 95, 250 82 C 285 68, 320 48, 370 25 L 370 140 L 40 140 Z"
-                fill="url(#trendArea)"
-              />
-
-              {/* Clickable Dots - Single white ring + cyan center */}
-              {[
-                { cx: 40, cy: 135, idx: 0 },
-                { cx: 105, cy: 125, idx: 1 },
-                { cx: 170, cy: 112, idx: 2 },
-                { cx: 235, cy: 92, idx: 3 },
-                { cx: 300, cy: 68, idx: 4 },
-                { cx: 370, cy: 25, idx: 5 },
-              ].map((point) => (
-                <g
-                  key={point.idx}
-                  onClick={() => setActiveDataPoint(point.idx)}
-                  style={{ cursor: "pointer" }}
-                >
-                  {/* Transparent click area */}
-                  <circle
-                    cx={point.cx}
-                    cy={point.cy}
-                    r="10"
-                    fill="transparent"
-                  />
-                  {/* Single white ring */}
-                  <circle
-                    cx={point.cx}
-                    cy={point.cy}
-                    r="2.8"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="1"
-                    style={{ transition: "all 0.2s ease" }}
-                  />
-                  {/* Small cyan center dot */}
-                  <circle
-                    cx={point.cx}
-                    cy={point.cy}
-                    r={activeDataPoint === point.idx ? 1.3 : 1.2}
-                    fill="#06b6d4"
-                    style={{ transition: "all 0.2s ease" }}
-                  />
-                </g>
-              ))}
-
-              {/* Tooltip vertical dashed line */}
-              {activeDataPoint !== null && (
-                <line
-                  x1={[40, 105, 170, 235, 300, 370][activeDataPoint]}
-                  y1="20"
-                  x2={[40, 105, 170, 235, 300, 370][activeDataPoint]}
-                  y2="140"
-                  stroke="rgba(6,182,212,0.3)"
-                  strokeWidth="1"
-                  strokeDasharray="4,4"
-                />
-              )}
-
-              {/* Y axis text */}
-              <text x="32" y="23" fill="#94a3b8" fontSize="8" textAnchor="end">
-                100k
-              </text>
-              <text x="32" y="53" fill="#94a3b8" fontSize="8" textAnchor="end">
-                75k
-              </text>
-              <text x="32" y="83" fill="#94a3b8" fontSize="8" textAnchor="end">
-                50k
-              </text>
-              <text x="32" y="113" fill="#94a3b8" fontSize="8" textAnchor="end">
-                25k
-              </text>
-              <text x="32" y="143" fill="#94a3b8" fontSize="8" textAnchor="end">
-                0
-              </text>
-
-              {/* X axis text */}
-              <text
-                x="40"
-                y="155"
-                fill="#64748b"
-                fontSize="8"
-                textAnchor="middle"
-              >
-                2020
-              </text>
-              <text
-                x="105"
-                y="155"
-                fill="#64748b"
-                fontSize="8"
-                textAnchor="middle"
-              >
-                2021
-              </text>
-              <text
-                x="170"
-                y="155"
-                fill="#64748b"
-                fontSize="8"
-                textAnchor="middle"
-              >
-                2022
-              </text>
-              <text
-                x="235"
-                y="155"
-                fill="#64748b"
-                fontSize="8"
-                textAnchor="middle"
-              >
-                2023
-              </text>
-              <text
-                x="300"
-                y="155"
-                fill="#64748b"
-                fontSize="8"
-                textAnchor="middle"
-              >
-                2024
-              </text>
-              <text
-                x="370"
-                y="155"
-                fill="#64748b"
-                fontSize="8"
-                textAnchor="middle"
-              >
-                2025
-              </text>
-
-              {/* Tooltip box - Dynamic based on activeDataPoint */}
-              {activeDataPoint !== null && (
-                <>
-                  <rect
-                    x={
-                      [40, 105, 170, 235, 300, 370][activeDataPoint] > 250
-                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
-                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10
-                    }
-                    y={
-                      [135, 125, 112, 92, 68, 25][activeDataPoint] > 80
-                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
-                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10
-                    }
-                    width="100"
-                    height="32"
-                    rx="6"
-                    fill="rgba(13, 27, 42, 0.95)"
-                    stroke="rgba(6, 182, 212, 0.4)"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={
-                      ([40, 105, 170, 235, 300, 370][activeDataPoint] > 250
-                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
-                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10) +
-                      6
-                    }
-                    y={
-                      ([135, 125, 112, 92, 68, 25][activeDataPoint] > 80
-                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
-                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10) +
-                      12
-                    }
-                    fill="#ffffff"
-                    fontSize="7"
-                    fontWeight="bold"
-                  >
-                    {chartData[activeDataPoint].year}
-                    {activeDataPoint === 5 ? " (Projected)" : ""}
-                  </text>
-                  <text
-                    x={
-                      ([40, 105, 170, 235, 300, 370][activeDataPoint] > 250
-                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
-                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10) +
-                      6
-                    }
-                    y={
-                      ([135, 125, 112, 92, 68, 25][activeDataPoint] > 80
-                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
-                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10) +
-                      22
-                    }
-                    fill="#06b6d4"
-                    fontSize="7.5"
-                    fontWeight="bold"
-                  >
-                    {chartData[activeDataPoint].publications} publications
-                  </text>
-                  <text
-                    x={
-                      ([40, 105, 170, 235, 300, 370][activeDataPoint] > 250
-                        ? [40, 105, 170, 235, 300, 370][activeDataPoint] - 110
-                        : [40, 105, 170, 235, 300, 370][activeDataPoint] + 10) +
-                      6
-                    }
-                    y={
-                      ([135, 125, 112, 92, 68, 25][activeDataPoint] > 80
-                        ? [135, 125, 112, 92, 68, 25][activeDataPoint] - 45
-                        : [135, 125, 112, 92, 68, 25][activeDataPoint] + 10) +
-                      30
-                    }
-                    fill="rgba(255,255,255,0.65)"
-                    fontSize="6.5"
-                  >
-                    {chartData[activeDataPoint].growth !== "baseline"
-                      ? `${chartData[activeDataPoint].growth} from ${
-                          parseInt(chartData[activeDataPoint].year) - 1
-                        }`
-                      : "Starting year"}
-                  </text>
-                </>
-              )}
-            </svg>
+            </div>
           </div>
 
           <div className="lp-trend-right">
@@ -1405,7 +1794,27 @@ function LandingPage() {
 
       {/* How it works */}
       <section className="lp-how-section" aria-labelledby="how-title">
-        <div className="lp-section-label">HOW IT WORKS</div>
+        <div
+          className="lp-section-label"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            width="18"
+            height="18"
+          >
+            <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          HOW IT WORKS
+        </div>
         <h2 id="how-title" className="lp-section-h2">
           From Search to Insight in 4 Simple Steps
         </h2>
@@ -1413,10 +1822,19 @@ function LandingPage() {
           {[
             {
               num: "1",
+              color: "#3b82f6",
+              bgGradient: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
               icon: (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="m16.5 16.5 4 4" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
                 </svg>
               ),
               label: "Search",
@@ -1424,10 +1842,19 @@ function LandingPage() {
             },
             {
               num: "2",
+              color: "#10b981",
+              bgGradient: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
               icon: (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <polyline points="3 17 7 12 10 14.5 15 8 21 3" />
-                  <rect x="2" y="18" width="20" height="3" rx="1" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 21H4.6c-.56 0-.84 0-1.054-.109a1 1 0 01-.437-.437C3 20.24 3 19.96 3 19.4V3" />
+                  <path d="M7 14l3.5-3.5L14 14l5.5-5.5" />
                 </svg>
               ),
               label: "Analyze",
@@ -1435,10 +1862,21 @@ function LandingPage() {
             },
             {
               num: "3",
+              color: "#f59e0b",
+              bgGradient: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
               icon: (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <path d="M14 2v6h6M9 15l2 2 4-4" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M12 18v-6" />
+                  <path d="M9 15h6" />
                 </svg>
               ),
               label: "Explore",
@@ -1446,9 +1884,20 @@ function LandingPage() {
             },
             {
               num: "4",
+              color: "#8b5cf6",
+              bgGradient: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
               icon: (
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" />
+                  <path d="M12 11V7" />
+                  <path d="M10 9h4" />
                 </svg>
               ),
               label: "Save & Track",
@@ -1456,14 +1905,106 @@ function LandingPage() {
             },
           ].map((step, i) => (
             <React.Fragment key={step.num}>
-              <div className="lp-step">
-                <div className={`lp-step-num lp-step-num-${i}`}>{step.num}</div>
-                <div className="lp-step-icon">{step.icon}</div>
-                <div className="lp-step-label">{step.label}</div>
-                <div className="lp-step-desc">{step.desc}</div>
+              <div
+                className="lp-step"
+                style={{
+                  position: "relative",
+                  transition: "transform 0.3s ease",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.transform = "translateY(-8px)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.transform = "translateY(0)")
+                }
+              >
+                <div
+                  className={`lp-step-num lp-step-num-${i}`}
+                  style={{
+                    background: step.bgGradient,
+                    color: "white",
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "20px",
+                    fontWeight: "700",
+                    margin: "0 auto 16px",
+                    boxShadow: `0 4px 14px ${step.color}40`,
+                  }}
+                >
+                  {step.num}
+                </div>
+                <div
+                  className="lp-step-icon"
+                  style={{
+                    width: "56px",
+                    height: "56px",
+                    margin: "0 auto 16px",
+                    background: `${step.color}10`,
+                    borderRadius: "16px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: `2px solid ${step.color}20`,
+                  }}
+                >
+                  <div
+                    style={{ color: step.color, width: "28px", height: "28px" }}
+                  >
+                    {step.icon}
+                  </div>
+                </div>
+                <div
+                  className="lp-step-label"
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: "600",
+                    color: "#1e293b",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {step.label}
+                </div>
+                <div
+                  className="lp-step-desc"
+                  style={{
+                    fontSize: "14px",
+                    color: "#64748b",
+                    lineHeight: "1.6",
+                  }}
+                >
+                  {step.desc}
+                </div>
               </div>
               {i < 3 && (
-                <div className="lp-step-arrow" aria-hidden="true"></div>
+                <div
+                  className="lp-step-arrow"
+                  aria-hidden="true"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "0 -20px",
+                    alignSelf: "center",
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#cbd5e1"
+                    strokeWidth="2"
+                    width="32"
+                    height="32"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M5 12h14" />
+                    <path d="M12 5l7 7-7 7" />
+                  </svg>
+                </div>
               )}
             </React.Fragment>
           ))}
@@ -1476,7 +2017,24 @@ function LandingPage() {
         className="lp-testimonials-section"
         aria-labelledby="testimonials-title"
       >
-        <div className="lp-section-label">TRUSTED BY RESEARCHERS</div>
+        <div className="lp-section-label">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            width="16"
+            height="16"
+            style={{
+              display: "inline-block",
+              marginRight: "8px",
+              verticalAlign: "middle",
+            }}
+          >
+            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          TRUSTED BY RESEARCHERS
+        </div>
         <h2 id="testimonials-title" className="lp-section-h2">
           Loved by Researchers Worldwide
         </h2>
@@ -1487,35 +2045,134 @@ function LandingPage() {
                 "ScholarTrend has transformed how I discover and track research trends. It saves me hours every week.",
               name: "Dr. Sarah Chen",
               org: "University of Stanford",
+              role: "Professor of Computer Science",
               img: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=100&h=100&q=80",
+              rating: 5,
             },
             {
               quote:
                 "The trend analysis and AI insights are incredibly accurate. Essential tool for any researcher.",
               name: "Prof. Michael Rodriguez",
               org: "MIT",
+              role: "Research Director",
               img: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=100&h=100&q=80",
+              rating: 5,
             },
             {
               quote:
                 "Finding emerging topics has never been easier. ScholarTrend keeps me ahead of the curve.",
               name: "Dr. Emily Johnson",
               org: "Harvard University",
+              role: "Associate Professor",
               img: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80",
+              rating: 5,
             },
           ].map((t) => (
             <article key={t.name} className="lp-testimonial-card">
-              <div className="lp-testimonial-quote">"</div>
-              <p className="lp-testimonial-text">{t.quote}</p>
-              <div className="lp-testimonial-author">
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  marginBottom: "16px",
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  width="32"
+                  height="32"
+                  style={{ color: "#6366f1", opacity: 0.2 }}
+                >
+                  <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+                </svg>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  {[...Array(t.rating)].map((_, i) => (
+                    <svg
+                      key={i}
+                      viewBox="0 0 24 24"
+                      fill="#fbbf24"
+                      width="16"
+                      height="16"
+                    >
+                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                    </svg>
+                  ))}
+                </div>
+              </div>
+              <p
+                className="lp-testimonial-text"
+                style={{
+                  fontSize: "15px",
+                  lineHeight: "1.7",
+                  marginBottom: "20px",
+                  color: "#475569",
+                }}
+              >
+                {t.quote}
+              </p>
+              <div
+                className="lp-testimonial-author"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  paddingTop: "16px",
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
                 <img
                   className="lp-testimonial-avatar"
                   src={t.img}
                   alt={t.name}
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    border: "2px solid #e0e7ff",
+                  }}
                 />
                 <div>
-                  <div className="lp-testimonial-name">{t.name}</div>
-                  <div className="lp-testimonial-org">{t.org}</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      marginBottom: "2px",
+                    }}
+                  >
+                    <div
+                      className="lp-testimonial-name"
+                      style={{ fontWeight: "600", color: "#1e293b" }}
+                    >
+                      {t.name}
+                    </div>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="#3b82f6"
+                      width="16"
+                      height="16"
+                      title="Verified"
+                    >
+                      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div
+                    className="lp-testimonial-org"
+                    style={{ fontSize: "13px", color: "#64748b" }}
+                  >
+                    {t.role}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "#94a3b8",
+                      fontWeight: "500",
+                    }}
+                  >
+                    {t.org}
+                  </div>
                 </div>
               </div>
             </article>
@@ -1585,24 +2242,55 @@ function LandingPage() {
               researchers.
             </p>
             <div className="lp-footer-socials">
-              <a href="/" className="lp-social-icon" aria-label="X link">
-                𝕏
+              <a href="/" className="lp-social-icon" aria-label="X (Twitter)">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  width="18"
+                  height="18"
+                >
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="LinkedIn link">
-                in
+              <a href="/" className="lp-social-icon" aria-label="LinkedIn">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  width="18"
+                  height="18"
+                >
+                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="Facebook link">
-                f
+              <a href="/" className="lp-social-icon" aria-label="Facebook">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  width="18"
+                  height="18"
+                >
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="GitHub link">
-                git
+              <a href="/" className="lp-social-icon" aria-label="GitHub">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  width="18"
+                  height="18"
+                >
+                  <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+                </svg>
               </a>
-              <a
-                href="/"
-                className="lp-social-icon"
-                aria-label="Instagram link"
-              >
-                📷
+              <a href="/" className="lp-social-icon" aria-label="Instagram">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  width="18"
+                  height="18"
+                >
+                  <path d="M12 0C8.74 0 8.333.015 7.053.072 5.775.132 4.905.333 4.14.63c-.789.306-1.459.717-2.126 1.384S.935 3.35.63 4.14C.333 4.905.131 5.775.072 7.053.012 8.333 0 8.74 0 12s.015 3.667.072 4.947c.06 1.277.261 2.148.558 2.913.306.788.717 1.459 1.384 2.126.667.666 1.336 1.079 2.126 1.384.766.296 1.636.499 2.913.558C8.333 23.988 8.74 24 12 24s3.667-.015 4.947-.072c1.277-.06 2.148-.262 2.913-.558.788-.306 1.459-.718 2.126-1.384.666-.667 1.079-1.335 1.384-2.126.296-.765.499-1.636.558-2.913.06-1.28.072-1.687.072-4.947s-.015-3.667-.072-4.947c-.06-1.277-.262-2.149-.558-2.913-.306-.789-.718-1.459-1.384-2.126C21.319 1.347 20.651.935 19.86.63c-.765-.297-1.636-.499-2.913-.558C15.667.012 15.26 0 12 0zm0 2.16c3.203 0 3.585.016 4.85.071 1.17.055 1.805.249 2.227.415.562.217.96.477 1.382.896.419.42.679.819.896 1.381.164.422.36 1.057.413 2.227.057 1.266.07 1.646.07 4.85s-.015 3.585-.074 4.85c-.061 1.17-.256 1.805-.421 2.227-.224.562-.479.96-.899 1.382-.419.419-.824.679-1.38.896-.42.164-1.065.36-2.235.413-1.274.057-1.649.07-4.859.07-3.211 0-3.586-.015-4.859-.074-1.171-.061-1.816-.256-2.236-.421-.569-.224-.96-.479-1.379-.899-.421-.419-.69-.824-.9-1.38-.165-.42-.359-1.065-.42-2.235-.045-1.26-.061-1.649-.061-4.844 0-3.196.016-3.586.061-4.861.061-1.17.255-1.814.42-2.234.21-.57.479-.96.9-1.381.419-.419.81-.689 1.379-.898.42-.166 1.051-.361 2.221-.421 1.275-.045 1.65-.06 4.859-.06l.045.03zm0 3.678c-3.405 0-6.162 2.76-6.162 6.162 0 3.405 2.76 6.162 6.162 6.162 3.405 0 6.162-2.76 6.162-6.162 0-3.405-2.76-6.162-6.162-6.162zM12 16c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm7.846-10.405c0 .795-.646 1.44-1.44 1.44-.795 0-1.44-.646-1.44-1.44 0-.794.646-1.439 1.44-1.439.793-.001 1.44.645 1.44 1.439z" />
+                </svg>
               </a>
             </div>
           </div>
@@ -1645,7 +2333,7 @@ function LandingPage() {
           </div>
         </div>
         <div className="lp-footer-bottom">
-          <span>© 2024 ScholarTrend. All rights reserved.</span>
+          <span>© 2026 ScholarTrend. All rights reserved.</span>
           <nav className="lp-footer-bottom-links" aria-label="Legal links">
             <a href="/">Terms of Service</a>
             <a href="/">Privacy Policy</a>
@@ -1908,24 +2596,174 @@ function RegisterPage() {
               <span></span>
             </div>
           </div>
-          <div className="visual-copy">
-            <div className="accent-line" aria-hidden="true"></div>
-            <div>
-              <h2>Accelerate Discovery</h2>
-              <p>
+          <div
+            className="visual-copy"
+            style={{
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            <div
+              className="accent-line"
+              aria-hidden="true"
+              style={{
+                background: "linear-gradient(180deg, #06b6d4 0%, #0284c7 100%)",
+                boxShadow:
+                  "0 0 20px rgba(6, 182, 212, 0.5), 0 0 40px rgba(6, 182, 212, 0.3)",
+                animation: "accentPulse 3s ease-in-out infinite",
+              }}
+            ></div>
+            <div
+              style={{
+                animation: "fadeInUp 1s ease-out",
+              }}
+            >
+              <h2
+                style={{
+                  fontSize: "42px",
+                  fontWeight: 800,
+                  lineHeight: 1.1,
+                  marginBottom: "20px",
+                  background:
+                    "linear-gradient(135deg, #ffffff 0%, #e0f2fe 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  letterSpacing: "-0.02em",
+                  animation: "slideInLeft 0.8s ease-out",
+                }}
+              >
+                Accelerate
+                <br />
+                Discovery
+              </h2>
+              <p
+                style={{
+                  fontSize: "17px",
+                  lineHeight: 1.6,
+                  color: "#94a3b8",
+                  maxWidth: "480px",
+                  animation: "fadeIn 1.2s ease-out 0.3s both",
+                }}
+              >
                 Join researchers and institutions using analytical intelligence
                 to uncover publication trends and drive scientific progress.
               </p>
             </div>
           </div>
-          <div className="auth-stats">
-            <div>
-              <span>Publications Tracked</span>
-              <strong>14.2M+</strong>
+          <div
+            className="auth-stats"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "20px",
+              marginTop: "40px",
+              animation: "fadeInUp 1s ease-out 0.5s both",
+            }}
+          >
+            <div
+              style={{
+                padding: "24px",
+                background: "rgba(6, 182, 212, 0.05)",
+                border: "1px solid rgba(6, 182, 212, 0.2)",
+                borderRadius: "12px",
+                transition: "all 0.3s ease",
+                cursor: "default",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(6, 182, 212, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.4)";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow =
+                  "0 8px 24px rgba(6, 182, 212, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(6, 182, 212, 0.05)";
+                e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.2)";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#64748b",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: "8px",
+                }}
+              >
+                Publications Tracked
+              </span>
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "36px",
+                  fontWeight: 800,
+                  background:
+                    "linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                14.2M+
+              </strong>
             </div>
-            <div>
-              <span>Global Institutions</span>
-              <strong>8,450</strong>
+            <div
+              style={{
+                padding: "24px",
+                background: "rgba(6, 182, 212, 0.05)",
+                border: "1px solid rgba(6, 182, 212, 0.2)",
+                borderRadius: "12px",
+                transition: "all 0.3s ease",
+                cursor: "default",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(6, 182, 212, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.4)";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow =
+                  "0 8px 24px rgba(6, 182, 212, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(6, 182, 212, 0.05)";
+                e.currentTarget.style.borderColor = "rgba(6, 182, 212, 0.2)";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  color: "#64748b",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: "8px",
+                }}
+              >
+                Global Institutions
+              </span>
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "36px",
+                  fontWeight: 800,
+                  background:
+                    "linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  backgroundClip: "text",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                8,450
+              </strong>
             </div>
           </div>
         </aside>
@@ -2739,19 +3577,33 @@ const notificationItems = [
 const profileTabs = [
   {
     label: "Personal Info",
-    icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    icon: "M12 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM3 20a9 9 0 0 1 18 0",
     active: true,
   },
   {
     label: "Academic Identity",
-    icon: "M4 6.5h16v11H4zM8 10h8M8 13h5M17 4v4M15 6h4",
+    icon: "M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6ZM8 9h8M8 13h6M18 7v2M16 8h4",
   },
   {
     label: "Change Password",
-    icon: "M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10",
+    icon: "M5 11h14v10H5V11ZM8 11V8a4 4 0 0 1 8 0v3M12 14v4",
   },
-  { label: "Research Interests", icon: "M12 4l7 16H5l7-16ZM9.8 14h4.4" },
-  { label: "Preferences", icon: "M5 7h14M8 12h8M10 17h4" },
+  {
+    label: "Research Interests",
+    icon: "M12 2l2.4 7.2h7.6l-6 4.8 2.4 7.2L12 16.8l-6.4 4.4 2.4-7.2-6-4.8h7.6L12 2Z",
+  },
+  {
+    label: "Notification Settings",
+    icon: "M10 5a2 2 0 0 1 4 0 7 7 0 0 1 7 7v5l2 2v1H1v-1l2-2v-5a7 7 0 0 1 7-7ZM9 21h6",
+  },
+  {
+    label: "Privacy & Security",
+    icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10ZM12 8v4M12 16h.01",
+  },
+  {
+    label: "Preferences",
+    icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20ZM12 6v6l4 2",
+  },
 ];
 
 const relatedPublications = [
@@ -3564,11 +4416,86 @@ function MiniIcon({ path }) {
 function StudentSidebar({ activeRoute }) {
   return (
     <aside className="student-sidebar">
-      <div className="student-logo">
-        <a href="/" onClick={navTo("/")}>
-          ScholarTrend
-        </a>
-        <span>Analytical Intelligence</span>
+      <div
+        className="student-logo"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "20px 24px",
+          borderBottom: "1px solid #e2e8f0",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "36px",
+            height: "36px",
+            background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+            borderRadius: "8px",
+            padding: "8px",
+            boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
+            flexShrink: 0,
+          }}
+        >
+          <svg
+            viewBox="0 0 32 32"
+            width="100%"
+            height="100%"
+            aria-hidden="true"
+          >
+            <path
+              d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.95"
+            />
+            <path
+              d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.75"
+            />
+            <path
+              d="M16 4 L10 8 L16 10 L22 8 Z"
+              fill="rgba(255, 255, 255, 0.95)"
+            />
+            <path
+              d="M16 4 L16 28"
+              stroke="rgba(2, 132, 199, 0.4)"
+              strokeWidth="1.5"
+            />
+            <circle cx="16" cy="28" r="1.5" fill="white" />
+          </svg>
+        </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          <a
+            href="/"
+            onClick={navTo("/")}
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#0f172a",
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "2px",
+            }}
+          >
+            <span>Scholar</span>
+            <span style={{ color: "#06b6d4" }}>Trend</span>
+          </a>
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#64748b",
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+            }}
+          >
+            Analytical Intelligence
+          </span>
+        </div>
       </div>
 
       <nav className="student-nav" aria-label="Student dashboard navigation">
@@ -3788,11 +4715,94 @@ function ResearcherSidebar({
     <aside
       className={`researcher-sidebar ${collapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}
     >
-      <div className="researcher-logo">
-        <a href="/" onClick={navTo("/")}>
-          ScholarTrend
-        </a>
-        <span>Analytical Intelligence</span>
+      <div
+        className="researcher-logo"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "20px 24px",
+          borderBottom: "1px solid rgba(226, 232, 240, 0.8)",
+          position: "relative",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "36px",
+            height: "36px",
+            background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+            borderRadius: "8px",
+            padding: "8px",
+            boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
+            flexShrink: 0,
+          }}
+        >
+          <svg
+            viewBox="0 0 32 32"
+            width="100%"
+            height="100%"
+            aria-hidden="true"
+          >
+            <path
+              d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.95"
+            />
+            <path
+              d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.75"
+            />
+            <path
+              d="M16 4 L10 8 L16 10 L22 8 Z"
+              fill="rgba(255, 255, 255, 0.95)"
+            />
+            <path
+              d="M16 4 L16 28"
+              stroke="rgba(2, 132, 199, 0.4)"
+              strokeWidth="1.5"
+            />
+            <circle cx="16" cy="28" r="1.5" fill="white" />
+          </svg>
+        </span>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+            flex: 1,
+          }}
+        >
+          <a
+            href="/"
+            onClick={navTo("/")}
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#0f172a",
+              textDecoration: "none",
+              display: "flex",
+              alignItems: "center",
+              gap: "2px",
+            }}
+          >
+            <span>Scholar</span>
+            <span style={{ color: "#06b6d4" }}>Trend</span>
+          </a>
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#64748b",
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+            }}
+          >
+            Analytical Intelligence
+          </span>
+        </div>
         <button
           type="button"
           className="researcher-sidebar-close"
@@ -7548,8 +8558,35 @@ function NotificationsPage({ role = "student" }) {
               type="button"
               className="load-more-button"
               onClick={handleLoadMore}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onSelectStart={(e) => {
+                e.preventDefault();
+                return false;
+              }}
+              style={{
+                userSelect: "none",
+                WebkitUserSelect: "none",
+                MozUserSelect: "none",
+                msUserSelect: "none",
+                cursor: "pointer",
+                outline: "none",
+                WebkitTapHighlightColor: "transparent",
+                MozUserSelect: "none",
+              }}
             >
-              Load More
+              <span
+                style={{
+                  userSelect: "none",
+                  WebkitUserSelect: "none",
+                  MozUserSelect: "none",
+                  pointerEvents: "none",
+                }}
+              >
+                Load More
+              </span>
             </button>
           ) : (
             <div
@@ -8061,6 +9098,365 @@ function ProfilePage({ role = "student" }) {
                     OpenAlex Database
                   </label>
                 </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Notification Settings" && (
+          <section className="profile-card" aria-label="Notification settings">
+            <div className="profile-card-header">
+              <h2>Notification Settings</h2>
+              <span>Manage Alerts</span>
+            </div>
+            <div style={{ display: "grid", gap: "24px" }}>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "12px",
+                    color: "#111827",
+                  }}
+                >
+                  Email Notifications
+                </h3>
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {[
+                    {
+                      label: "New publications matching your interests",
+                      checked: true,
+                    },
+                    {
+                      label: "Weekly digest of trending papers",
+                      checked: true,
+                    },
+                    {
+                      label: "Citation alerts for your publications",
+                      checked: false,
+                    },
+                    { label: "Collaboration invitations", checked: true },
+                  ].map((item, i) => (
+                    <label
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        fontSize: "14px",
+                        color: "#374151",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        defaultChecked={item.checked}
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          margin: 0,
+                          cursor: "pointer",
+                        }}
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "12px",
+                    color: "#111827",
+                  }}
+                >
+                  In-App Notifications
+                </h3>
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {[
+                    { label: "Real-time publication alerts", checked: true },
+                    { label: "Sync status updates", checked: true },
+                    { label: "System announcements", checked: false },
+                  ].map((item, i) => (
+                    <label
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        fontSize: "14px",
+                        color: "#374151",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        defaultChecked={item.checked}
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          margin: 0,
+                          cursor: "pointer",
+                        }}
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "8px",
+                    color: "#111827",
+                  }}
+                >
+                  Notification Frequency
+                </h3>
+                <select
+                  style={{
+                    width: "100%",
+                    height: "40px",
+                    padding: "0 12px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: "6px",
+                    fontSize: "14px",
+                    color: "#374151",
+                  }}
+                >
+                  <option>Real-time (as it happens)</option>
+                  <option selected>Daily digest</option>
+                  <option>Weekly summary</option>
+                </select>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "Privacy & Security" && (
+          <section className="profile-card" aria-label="Privacy and security">
+            <div className="profile-card-header">
+              <h2>Privacy & Security</h2>
+              <span>Account Protection</span>
+            </div>
+            <div style={{ display: "grid", gap: "24px" }}>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "12px",
+                    color: "#111827",
+                  }}
+                >
+                  Profile Visibility
+                </h3>
+                <div style={{ display: "grid", gap: "12px" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      fontSize: "14px",
+                      color: "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      defaultChecked
+                      style={{ margin: 0, cursor: "pointer" }}
+                    />
+                    Public - Visible to all ScholarTrend users
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      fontSize: "14px",
+                      color: "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      style={{ margin: 0, cursor: "pointer" }}
+                    />
+                    Institution Only - Visible to your institution
+                  </label>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      fontSize: "14px",
+                      color: "#374151",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      style={{ margin: 0, cursor: "pointer" }}
+                    />
+                    Private - Only you can see your profile
+                  </label>
+                </div>
+              </div>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "12px",
+                    color: "#111827",
+                  }}
+                >
+                  Data Sharing
+                </h3>
+                <div style={{ display: "grid", gap: "12px" }}>
+                  {[
+                    {
+                      label: "Share publication data with collaborators",
+                      checked: true,
+                    },
+                    {
+                      label: "Allow indexing by external search engines",
+                      checked: false,
+                    },
+                    {
+                      label: "Participate in research analytics",
+                      checked: true,
+                    },
+                  ].map((item, i) => (
+                    <label
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        fontSize: "14px",
+                        color: "#374151",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        defaultChecked={item.checked}
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          margin: 0,
+                          cursor: "pointer",
+                        }}
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "12px",
+                    color: "#111827",
+                  }}
+                >
+                  Two-Factor Authentication
+                </h3>
+                <div
+                  style={{
+                    padding: "16px",
+                    background: "#f1f5f9",
+                    borderRadius: "8px",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: 600,
+                          color: "#111827",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        2FA Status:{" "}
+                        <span style={{ color: "#ef4444" }}>Disabled</span>
+                      </div>
+                      <div style={{ fontSize: "13px", color: "#64748b" }}>
+                        Add an extra layer of security to your account
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{
+                        padding: "8px 16px",
+                        background: "#4f46e5",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Enable 2FA
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    marginBottom: "8px",
+                    color: "#111827",
+                  }}
+                >
+                  Active Sessions
+                </h3>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#64748b",
+                    marginBottom: "12px",
+                  }}
+                >
+                  You're currently logged in on 2 devices
+                </div>
+                <button
+                  type="button"
+                  style={{
+                    padding: "8px 16px",
+                    background: "white",
+                    color: "#ef4444",
+                    border: "1px solid #ef4444",
+                    borderRadius: "6px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Sign Out All Devices
+                </button>
               </div>
             </div>
           </section>
@@ -8749,13 +10145,90 @@ const adminActivity = [
 function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
   return (
     <aside className={`admin-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
-      <div className="admin-sidebar-brand">
-        <span className="admin-brand-mark">
-          <MiniIcon path="M5 4h14v16H5zM9 15v-3M12 15V8M15 15v-5M8 18h8" />
+      <div
+        className="admin-sidebar-brand"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "20px 24px",
+          borderBottom: "1px solid rgba(226, 232, 240, 0.8)",
+          position: "relative",
+        }}
+      >
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "36px",
+            height: "36px",
+            background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+            borderRadius: "8px",
+            padding: "8px",
+            boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
+            flexShrink: 0,
+          }}
+        >
+          <svg
+            viewBox="0 0 32 32"
+            width="100%"
+            height="100%"
+            aria-hidden="true"
+          >
+            <path
+              d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.95"
+            />
+            <path
+              d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+              fill="white"
+              opacity="0.75"
+            />
+            <path
+              d="M16 4 L10 8 L16 10 L22 8 Z"
+              fill="rgba(255, 255, 255, 0.95)"
+            />
+            <path
+              d="M16 4 L16 28"
+              stroke="rgba(2, 132, 199, 0.4)"
+              strokeWidth="1.5"
+            />
+            <circle cx="16" cy="28" r="1.5" fill="white" />
+          </svg>
         </span>
-        <div>
-          <strong>ScholarTrend</strong>
-          <b>Analytical Intelligence</b>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+            flex: 1,
+          }}
+        >
+          <strong
+            style={{
+              fontSize: "16px",
+              fontWeight: 700,
+              color: "#0f172a",
+              display: "flex",
+              alignItems: "center",
+              gap: "2px",
+            }}
+          >
+            <span>Scholar</span>
+            <span style={{ color: "#06b6d4" }}>Trend</span>
+          </strong>
+          <b
+            style={{
+              fontSize: "11px",
+              color: "#64748b",
+              fontWeight: 500,
+              letterSpacing: "0.02em",
+            }}
+          >
+            Analytical Intelligence
+          </b>
         </div>
         <button
           type="button"
