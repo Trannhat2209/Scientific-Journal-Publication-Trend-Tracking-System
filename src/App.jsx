@@ -21,6 +21,58 @@ const navTo = (path) => (event) => {
   window.dispatchEvent(new Event("scholartrend:navigate"));
 };
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
+const roleDashboardRoutes = {
+  Researcher: "/researcher-dashboard",
+  Lecturer: "/lecturer-dashboard",
+  Student: "/student-dashboard",
+  Administrator: "/admin-dashboard",
+};
+
+const authFetch = (path, options = {}) =>
+  fetch(`${API_BASE_URL}${path}`, {
+    credentials: "include",
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+    },
+  });
+
+const goToRoute = (route) => {
+  window.history.pushState({}, "", route);
+  window.dispatchEvent(new Event("scholartrend:navigate"));
+};
+
+const persistSession = (user) => {
+  if (!user) return;
+  window.localStorage.setItem(
+    "scholartrend.session",
+    JSON.stringify({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      picture: user.picture,
+      role: user.role,
+      provider: user.provider || "Google",
+      signedInAt: user.lastLoginAt || new Date().toISOString(),
+    }),
+  );
+};
+
+const beginGoogleOAuth = async (role) => {
+  const response = await authFetch(
+    `/api/auth/google/url?role=${encodeURIComponent(role)}`,
+  );
+  const payload = await response.json();
+
+  if (!response.ok || !payload.url) {
+    throw new Error(payload.error || "Could not start Google sign in.");
+  }
+
+  window.location.assign(payload.url);
+};
+
 function DonutChartInteractive() {
   const [selectedSegment, setSelectedSegment] = React.useState(null);
   const [hoveredSegment, setHoveredSegment] = React.useState(null);
@@ -2350,7 +2402,35 @@ function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [registerRole, setRegisterRole] = React.useState("");
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
+  const [authFeedback, setAuthFeedback] = React.useState(null);
+  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const registerRoles = ["Researcher", "Lecturer", "Student", "Administrator"];
+
+  const handleGoogleRegister = async () => {
+    if (!registerRole) {
+      setAuthFeedback({
+        type: "error",
+        text: "Select your primary role before continuing with Google.",
+      });
+      return;
+    }
+
+    setIsGoogleLoading(true);
+    setAuthFeedback({
+      type: "success",
+      text: "Opening Google authentication...",
+    });
+
+    try {
+      await beginGoogleOAuth(registerRole);
+    } catch (error) {
+      setIsGoogleLoading(false);
+      setAuthFeedback({
+        type: "error",
+        text: error.message,
+      });
+    }
+  };
 
   return (
     <main className="auth-shell" aria-label="Register account">
@@ -2362,7 +2442,10 @@ function RegisterPage() {
             <p>Join the academic intelligence network.</p>
           </div>
 
-          <form className="register-form">
+          <form
+            className="register-form"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <label className="field">
               <span>Full Name</span>
               <span className="input-with-icon">
@@ -2526,8 +2609,9 @@ function RegisterPage() {
               <button
                 className="google-login-button google-auth-button"
                 type="button"
-                disabled
-                title="Coming soon - Backend integration in progress"
+                onClick={handleGoogleRegister}
+                disabled={isGoogleLoading}
+                title="Continue with Google OAuth2"
               >
                 <svg
                   className="google-mark"
@@ -2539,7 +2623,7 @@ function RegisterPage() {
                   <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
                   <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
                 </svg>
-                Continue with Google
+                {isGoogleLoading ? "Connecting Google..." : "Continue with Google"}
               </button>
               <button
                 className="institution-login-button"
@@ -2568,6 +2652,14 @@ function RegisterPage() {
                 ORCID
               </button>
             </div>
+            {authFeedback && (
+              <p
+                className={`login-feedback ${authFeedback.type}`}
+                role={authFeedback.type === "error" ? "alert" : "status"}
+              >
+                {authFeedback.text}
+              </p>
+            )}
           </form>
 
           <p className="auth-switch">
@@ -2788,6 +2880,7 @@ function LoginPage() {
     );
   });
   const [feedback, setFeedback] = React.useState(null);
+  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
 
   const roleRoutes = {
     Researcher: "/researcher-dashboard",
@@ -2830,6 +2923,64 @@ function LoginPage() {
     window.history.pushState({}, "", route);
     window.dispatchEvent(new Event("scholartrend:navigate"));
   };
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authResult = params.get("auth");
+
+    if (!authResult) return;
+
+    window.history.replaceState({}, "", "/login");
+
+    if (authResult === "google-error") {
+      setFeedback({
+        type: "error",
+        text:
+          params.get("message") ||
+          "Google authentication could not be completed.",
+      });
+      return;
+    }
+
+    const finishGoogleLogin = async () => {
+      setIsGoogleLoading(true);
+      setFeedback({
+        type: "success",
+        text: "Google profile verified. Preparing your workspace...",
+      });
+
+      try {
+        const response = await authFetch("/api/auth/me");
+        const payload = await response.json();
+
+        if (!response.ok || !payload.authenticated) {
+          throw new Error("Google session was not found. Please sign in again.");
+        }
+
+        persistSession(payload.user);
+        setFeedback({
+          type: "success",
+          text: `${payload.user.role} Google profile verified. Loading your workspace...`,
+        });
+
+        window.setTimeout(
+          () =>
+            goToWorkspace(
+              payload.user.route || roleDashboardRoutes[payload.user.role],
+            ),
+          550,
+        );
+      } catch (error) {
+        setIsGoogleLoading(false);
+        setFeedback({
+          type: "error",
+          text: error.message,
+        });
+      }
+    };
+
+    finishGoogleLogin();
+  }, []);
 
   const handleRoleSelect = (nextRole) => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -2912,26 +3063,22 @@ function LoginPage() {
     });
   };
 
-  const handleGoogleLogin = () => {
-    const normalizedEmail = email.trim().toLowerCase();
-    const route = roleRoutes[selectedRole];
-
-    window.localStorage.setItem(
-      "scholartrend.session",
-      JSON.stringify({
-        email: normalizedEmail || "google.researcher@university.edu",
-        role: selectedRole,
-        provider: "Google",
-        signedInAt: new Date().toISOString(),
-      }),
-    );
-
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
     setFeedback({
       type: "success",
-      text: `Google academic profile connected as ${selectedRole}. Loading your research trend workspace...`,
+      text: "Opening Google authentication...",
     });
 
-    window.setTimeout(() => goToWorkspace(route), 550);
+    try {
+      await beginGoogleOAuth(selectedRole);
+    } catch (error) {
+      setIsGoogleLoading(false);
+      setFeedback({
+        type: "error",
+        text: error.message,
+      });
+    }
   };
 
   const handleAcademicProviderLogin = (provider) => {
@@ -3271,8 +3418,8 @@ function LoginPage() {
               className="google-login-button"
               type="button"
               onClick={handleGoogleLogin}
-              disabled
-              title="Coming soon - Backend integration in progress"
+              disabled={isGoogleLoading}
+              title="Continue with Google OAuth2"
             >
               <svg
                 className="google-mark"
@@ -3284,7 +3431,7 @@ function LoginPage() {
                 <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
                 <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
               </svg>
-              Continue with Google
+              {isGoogleLoading ? "Connecting Google..." : "Continue with Google"}
             </button>
             <button
               className="orcid-login-button"
