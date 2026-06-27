@@ -438,3 +438,5 @@ build/
 
 # VS Code
 .vscode/
+
+.fake
