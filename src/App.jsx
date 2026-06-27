@@ -2400,21 +2400,14 @@ function LandingPage() {
 function RegisterPage() {
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-  const [registerRole, setRegisterRole] = React.useState("");
+  const [registerRole, setRegisterRole] = React.useState("Researcher");
   const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
   const [authFeedback, setAuthFeedback] = React.useState(null);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const registerRoles = ["Researcher", "Lecturer", "Student", "Administrator"];
 
   const handleGoogleRegister = async () => {
-    if (!registerRole) {
-      setAuthFeedback({
-        type: "error",
-        text: "Select your primary role before continuing with Google.",
-      });
-      return;
-    }
-
+    const role = registerRole || "Researcher";
     setIsGoogleLoading(true);
     setAuthFeedback({
       type: "success",
@@ -2422,7 +2415,7 @@ function RegisterPage() {
     });
 
     try {
-      await beginGoogleOAuth(registerRole);
+      await beginGoogleOAuth(role);
     } catch (error) {
       setIsGoogleLoading(false);
       setAuthFeedback({
@@ -3504,21 +3497,21 @@ const statCards = [
     value: "42",
     note: "+3 this week",
     tone: "green",
-    icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+    icon: "M6 4.5h12v15L12 16l-6 3.5v-15ZM9 8h6M9 11h4",
   },
   {
     label: "Followed Keywords",
     value: "12",
     note: "Active",
     tone: "gray",
-    icon: "M5 7h14M5 12h14M5 17h14",
+    icon: "M5 7h14M8 12h8M10 17h4M7 5.5v3M17 5.5v3M10 10.5v3M14 10.5v3",
   },
   {
     label: "Unread Alerts",
     value: "5",
     note: "Needs review",
     tone: "gray",
-    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+    icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M17.5 5.5l2-2M6.5 5.5l-2-2",
     red: true,
   },
   {
@@ -3526,7 +3519,7 @@ const statCards = [
     value: "18",
     note: "Last 7 days",
     tone: "gray",
-    icon: "M12 7v5l3 2M20 12a8 8 0 1 1-2.35-5.65",
+    icon: "M12 7v5l3 2M20 12a8 8 0 1 1-2.35-5.65M12 3v2M19 12h2",
   },
 ];
 
@@ -3553,22 +3546,22 @@ const activities = [
   [
     "Quantum Cryptography Protocols",
     "Viewed 2 hours ago",
-    "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z",
+    "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6",
   ],
   [
     "Dataset: Global Emiss...",
     "Downloaded yesterday",
-    "M12 4v10M8 10l4 4 4-4M5 19h14",
+    "M12 4v10M8 10l4 4 4-4M5 19h14M7 6h3M14 6h3",
   ],
   [
     "Sociological Impact of AI",
     "Bookmarked 3 days ago",
-    "M6 4.5h12v15L12 16l-6 3.5v-15Z",
+    "M6 4.5h12v15L12 16l-6 3.5v-15ZM9 8h6M9 11h4",
   ],
   [
     "Advanced Polymer Synthesis",
     "Viewed 1 week ago",
-    "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12Z",
+    "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6",
   ],
 ];
 
@@ -3676,48 +3669,58 @@ const notificationFilters = [
 
 const notificationItems = [
   {
+    id: "topic-alert-neural-architecture",
     type: "TOPIC ALERT",
     time: "Just now",
     title: "NEW TOPIC MATCH:",
     text: 'A new publication titled "Advancements in Neural Architecture Search" matches your interest in Deep Learning. Similarity: 92%.',
-    icon: "M12 4.5v15M6 8.5c2.4-.8 4.4-.4 6 1.2 1.6-1.6 3.6-2 6-1.2v8.5c-2.4-.8-4.4-.4-6 1.2-1.6-1.6-3.6-2-6-1.2V8.5ZM9 12h1.8M13.2 12H15",
+    icon: "M12 3.5 19.5 7.8v8.4L12 20.5 4.5 16.2V7.8L12 3.5ZM8.5 10.2l3.5 2 3.5-2M12 12.2v4.3M8.5 7.9l3.5 2 3.5-2",
     tone: "purple",
     unread: true,
     bookmarked: true,
+    route: "/researcher-search?view=list",
   },
   {
+    id: "trend-transformer-models",
     type: "TREND ALERT",
     time: "10 mins ago",
     title: "",
     text: 'Keyword "Transformer Models" is showing a 34% spike in citations this month across top-tier ML journals.',
-    icon: "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14",
+    icon: "M4 17.5 9 12l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14M7 16v4M12 14v6M17 11v9",
     tone: "green",
     unread: true,
+    route: "/researcher-trend-tracking",
   },
   {
+    id: "new-publications-quantum",
     type: "NEW PUBLICATION",
     time: "2 hours ago",
     title: "",
     text: '5 new publications match your followed keyword "Quantum Computing Scaling" in Nature Physics.',
-    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
+    icon: "M7 4.5h8.5L19 8v12H7zM15.5 4.5V8H19M10 12h5M10 15h6M10 18h3M4 7.5v12h3",
     tone: "purple-soft",
     unread: true,
+    route: "/researcher-search?view=list",
   },
   {
+    id: "system-sync-arxiv",
     type: "SYSTEM",
     time: "yesterday",
     title: "",
     text: "Sync management encountered a delay integrating the latest ArXiv dataset. The issue has been resolved.",
-    icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
+    icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8L20 6M17 16.5a6 6 0 0 1-10.2 2.8L4 18",
     tone: "gray",
+    route: "/researcher-sync-management",
   },
   {
+    id: "author-paper-thorne",
     type: "NEW PUBLICATION",
     time: "3 days ago",
     title: "",
     text: 'Dr. E. Thorne, whom you follow, published a new paper: "Neuroplasticity in Adult Avian Models."',
-    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
+    icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0M16.5 5.5h3M18 4v3",
     tone: "purple-soft",
+    route: "/researcher-profile",
   },
 ];
 
@@ -4567,13 +4570,14 @@ function StudentSidebar({ activeRoute }) {
         className="student-logo"
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           gap: "12px",
           padding: "20px 24px",
-          borderBottom: "1px solid #e2e8f0",
+          borderBottom: "1px solid rgba(226, 232, 240, 0.14)",
         }}
       >
         <span
+          className="student-logo-mark"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -4585,6 +4589,7 @@ function StudentSidebar({ activeRoute }) {
             padding: "8px",
             boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
             flexShrink: 0,
+            marginTop: 0,
           }}
         >
           <svg
@@ -4615,32 +4620,47 @@ function StudentSidebar({ activeRoute }) {
             <circle cx="16" cy="28" r="1.5" fill="white" />
           </svg>
         </span>
-        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+        <div
+          className="student-logo-copy"
+          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
+        >
           <a
             href="/"
             onClick={navTo("/")}
             style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              color: "#0f172a",
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#cbd5e1",
               textDecoration: "none",
               display: "flex",
               alignItems: "center",
-              gap: "2px",
+              gap: "3px",
+              letterSpacing: "0.08em",
+              lineHeight: 1,
+              textTransform: "uppercase",
             }}
           >
-            <span>Scholar</span>
-            <span style={{ color: "#06b6d4" }}>Trend</span>
+            <span style={{ display: "inline", marginTop: 0 }}>Scholar</span>
+            <span style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}>
+              Trend
+            </span>
           </a>
           <span
             style={{
+              display: "block",
+              marginTop: 0,
+              maxWidth: "116px",
               fontSize: "11px",
-              color: "#64748b",
-              fontWeight: 500,
-              letterSpacing: "0.02em",
+              color: "#7f8aa0",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              lineHeight: 1.2,
+              textTransform: "uppercase",
             }}
           >
-            Analytical Intelligence
+            Analytical
+            <br />
+            Intelligence
           </span>
         </div>
       </div>
@@ -4695,7 +4715,13 @@ function StudentTopbar({
     <header
       className={`student-topbar ${isUtility ? "utility" : ""} ${isProfileUtility ? "profile-utility" : ""}`}
     >
-      {crumb ? typeof crumb === "string" ? <span>{crumb}</span> : crumb : null}
+      {crumb ? (
+        typeof crumb === "string" ? (
+          <span className="student-topbar-title">{crumb}</span>
+        ) : (
+          crumb
+        )
+      ) : null}
       <div className="student-top-actions">
         <form
           className={`student-global-search ${wideSearch ? "wide" : ""}`}
@@ -4713,6 +4739,7 @@ function StudentTopbar({
             type="button"
             aria-label={isUtility ? "Help" : "Notifications"}
             className={`top-icon ${isUtility ? "" : "alert-dot"}`}
+            onClick={isUtility ? undefined : navTo("/student-notifications")}
           >
             <MiniIcon
               path={
@@ -4722,13 +4749,19 @@ function StudentTopbar({
               }
             />
           </button>
-          <button type="button" aria-label="Settings" className="top-icon">
+          <button
+            type="button"
+            aria-label="Settings"
+            className="top-icon"
+            onClick={navTo("/student-profile")}
+          >
             <MiniIcon path="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM19 12h2M3 12h2M12 3v2M12 19v2" />
           </button>
           <button
             type="button"
             aria-label="User profile"
             className="student-avatar image-avatar"
+            onClick={navTo("/student-profile")}
           >
             <img
               src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
@@ -4757,7 +4790,8 @@ function StudentDashboard() {
               </p>
             </div>
             <button type="button" className="new-project">
-              + New Project
+              <MiniIcon path="M12 5v14M5 12h14M7.5 7.5l9 9M16.5 7.5l-9 9" />
+              <span>New Project</span>
             </button>
           </div>
 
@@ -4857,6 +4891,7 @@ function ResearcherSidebar({
   onClose,
   onToggleCollapse,
   onUpgrade,
+  onSettings,
 }) {
   return (
     <aside
@@ -4866,7 +4901,7 @@ function ResearcherSidebar({
         className="researcher-logo"
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           gap: "12px",
           padding: "20px 24px",
           borderBottom: "1px solid rgba(226, 232, 240, 0.8)",
@@ -4885,6 +4920,7 @@ function ResearcherSidebar({
             padding: "8px",
             boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
             flexShrink: 0,
+            marginTop: 0,
           }}
         >
           <svg
@@ -4919,35 +4955,49 @@ function ResearcherSidebar({
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: "2px",
+            gap: "9px",
             flex: 1,
+            minWidth: 0,
+            paddingTop: "2px",
           }}
         >
           <a
             href="/"
             onClick={navTo("/")}
             style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              color: "#0f172a",
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#cbd5e1",
               textDecoration: "none",
               display: "flex",
               alignItems: "center",
-              gap: "2px",
+              gap: "3px",
+              letterSpacing: "0.08em",
+              lineHeight: 1,
+              textTransform: "uppercase",
             }}
           >
-            <span>Scholar</span>
-            <span style={{ color: "#06b6d4" }}>Trend</span>
+            <span style={{ display: "inline", marginTop: 0 }}>Scholar</span>
+            <span style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}>
+              Trend
+            </span>
           </a>
           <span
             style={{
+              display: "block",
+              marginTop: 0,
+              maxWidth: "116px",
               fontSize: "11px",
-              color: "#64748b",
-              fontWeight: 500,
-              letterSpacing: "0.02em",
+              color: "#7f8aa0",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              lineHeight: 1.2,
+              textTransform: "uppercase",
             }}
           >
-            Analytical Intelligence
+            Analytical
+            <br />
+            Intelligence
           </span>
         </div>
         <button
@@ -5031,7 +5081,7 @@ function ResearcherSidebar({
             <MiniIcon path="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM7 18.2a5.7 5.7 0 0 1 10 0" />
             <span>Profile</span>
           </a>
-          <button type="button" aria-label="Settings">
+          <button type="button" aria-label="Settings" onClick={onSettings}>
             <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
             <span>Settings</span>
           </button>
@@ -5155,6 +5205,460 @@ function UpgradeProModal({ open, onClose }) {
   );
 }
 
+const defaultAcademicWorkspaceSettings = {
+  sources: {
+    openAlex: true,
+    semanticScholar: true,
+    crossref: true,
+    arxiv: false,
+  },
+  alerts: {
+    trendSpikes: true,
+    citationMilestones: true,
+    authorUpdates: true,
+    journalQuartileChanges: false,
+  },
+  privacy: {
+    publicProfile: true,
+    shareReadingSignals: false,
+    showInstitutionDashboard: true,
+  },
+  defaultDiscipline: "Computer Science",
+  trendThreshold: "20% weekly growth",
+  digestFrequency: "Weekly",
+  citationWindow: "Last 12 months",
+  graphDensity: "Balanced",
+  exportFormat: "PDF + CSV",
+};
+
+const getDefaultAcademicWorkspaceSettings = (role = "researcher") => ({
+  ...defaultAcademicWorkspaceSettings,
+  defaultDiscipline: role === "lecturer" ? "AI in Education" : "Computer Science",
+});
+
+const mergeAcademicWorkspaceSettings = (saved, role) => {
+  const defaults = getDefaultAcademicWorkspaceSettings(role);
+  return {
+    ...defaults,
+    ...(saved || {}),
+    sources: {
+      ...defaults.sources,
+      ...(saved?.sources || {}),
+    },
+    alerts: {
+      ...defaults.alerts,
+      ...(saved?.alerts || {}),
+    },
+    privacy: {
+      ...defaults.privacy,
+      ...(saved?.privacy || {}),
+    },
+  };
+};
+
+function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
+  const storageKey = `scholartrend.${role}.workspaceSettings`;
+  const roleLabel = role === "lecturer" ? "Lecturer" : "Researcher";
+  const readSavedSettings = () => {
+    const saved = window.localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        return mergeAcademicWorkspaceSettings(JSON.parse(saved), role);
+      } catch {
+        return getDefaultAcademicWorkspaceSettings(role);
+      }
+    }
+
+    return getDefaultAcademicWorkspaceSettings(role);
+  };
+  const [settings, setSettings] = React.useState(readSavedSettings);
+  const [message, setMessage] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+
+    setSettings(readSavedSettings());
+    setMessage("");
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, role]);
+
+  if (!open) return null;
+
+  const updateSetting = (key, value) => {
+    setSettings((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  };
+
+  const updateGroupSetting = (group, key, value) => {
+    setSettings((current) => ({
+      ...current,
+      [group]: {
+        ...current[group],
+        [key]: value,
+      },
+    }));
+  };
+
+  const saveSettings = () => {
+    window.localStorage.setItem(storageKey, JSON.stringify(settings));
+    setMessage("Settings saved for this browser.");
+  };
+
+  const resetSettings = () => {
+    const defaults = getDefaultAcademicWorkspaceSettings(role);
+    setSettings(defaults);
+    window.localStorage.setItem(storageKey, JSON.stringify(defaults));
+    setMessage("Settings reset to ScholarTrend defaults.");
+  };
+
+  const openProfileNotifications = () => {
+    saveSettings();
+    onClose();
+    goToRoute(getAcademicPath("/researcher-profile", role));
+  };
+
+  const sourceOptions = [
+    [
+      "openAlex",
+      "OpenAlex",
+      "Works, authors, institutions, and concepts",
+      "M4 7.5 12 3l8 4.5-8 4.5L4 7.5ZM4 12l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5",
+      "cyan",
+    ],
+    [
+      "semanticScholar",
+      "Semantic Scholar",
+      "Citation graph and paper similarity",
+      "M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10",
+      "indigo",
+    ],
+    [
+      "crossref",
+      "Crossref",
+      "DOI metadata and publisher records",
+      "M7 4.5h7l3 3V20H7zM14 4.5V8h3M10 12h4M10 15h6M10 18h3M4 8v12h3",
+      "emerald",
+    ],
+    [
+      "arxiv",
+      "arXiv",
+      "Preprint discovery for fast-moving fields",
+      "M12 3.5 20 8v8l-8 4.5L4 16V8l8-4.5ZM8.5 10.2l3.5 2 3.5-2M12 12.2v4.3",
+      "amber",
+    ],
+  ];
+  const alertOptions = [
+    ["trendSpikes", "Trend spike alerts", "Notify when a keyword accelerates beyond your threshold.", "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3"],
+    ["citationMilestones", "Citation milestones", "Track citation gains on saved and authored papers.", "M12 19V5M7 10l5-5 5 5M5 19h14"],
+    ["authorUpdates", "Author updates", "Watch followed researchers for new publications.", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0"],
+    ["journalQuartileChanges", "Journal quartile changes", "Flag ranking changes for followed journals.", "M5 19V5h14v14H5ZM8 15l2.4-2.4 2 1.6L16.5 9M15 9h2v2"],
+  ];
+  const privacyOptions = [
+    ["publicProfile", "Public academic profile", "Allow collaborators to view your research identity.", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0"],
+    ["shareReadingSignals", "Share reading signals", "Use saved papers and views to improve recommendations.", "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6"],
+    ["showInstitutionDashboard", "Institution dashboard visibility", "Include your aggregate activity in department analytics.", "M3.5 20h17M5 17V9h4v8M10 17V5h4v12M15 17v-6h4v6"],
+  ];
+
+  return (
+    <div
+      className="academic-settings-backdrop"
+      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <section
+        className="academic-settings-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="academic-settings-title"
+      >
+        <header className="academic-settings-header">
+          <div className="academic-settings-title-wrap">
+            <i className="academic-settings-hero-icon" aria-hidden="true">
+              <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
+            </i>
+            <div>
+              <span>{roleLabel} Workspace</span>
+              <h2 id="academic-settings-title">Settings</h2>
+              <p>Control how ScholarTrend tracks publications, trends, and alerts.</p>
+            </div>
+          </div>
+          <button type="button" aria-label="Close settings" onClick={onClose}>
+            <MiniIcon path="M6 6l12 12M18 6 6 18" />
+          </button>
+        </header>
+
+        <div className="academic-settings-body">
+          <div className="academic-settings-summary" aria-label="Current settings summary">
+            <div>
+              <i className="summary-icon teal" aria-hidden="true">
+                <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" />
+              </i>
+              <span>
+                <small>Trend threshold</small>
+                <strong>{settings.trendThreshold}</strong>
+              </span>
+            </div>
+            <div>
+              <i className="summary-icon violet" aria-hidden="true">
+                <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
+              </i>
+              <span>
+                <small>Digest</small>
+                <strong>{settings.digestFrequency}</strong>
+              </span>
+            </div>
+            <div>
+              <i className="summary-icon blue" aria-hidden="true">
+                <MiniIcon path="M4 7.5 12 3l8 4.5-8 4.5L4 7.5ZM4 12l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5" />
+              </i>
+              <span>
+                <small>Sources</small>
+                <strong>
+                  {Object.values(settings.sources).filter(Boolean).length} active
+                </strong>
+              </span>
+            </div>
+          </div>
+
+          <section className="academic-settings-section">
+            <div className="academic-settings-section-title">
+              <i className="academic-section-icon cyan" aria-hidden="true">
+                <MiniIcon path="M4 7.5 12 3l8 4.5-8 4.5L4 7.5ZM4 12l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5" />
+              </i>
+              <h3>Academic data sources</h3>
+            </div>
+            <div className="academic-settings-list">
+              {sourceOptions.map(([key, label, detail, icon, tone]) => (
+                <label className="academic-settings-toggle" key={key}>
+                  <span className="academic-toggle-copy">
+                    <i className={`academic-toggle-icon ${tone}`} aria-hidden="true">
+                      <MiniIcon path={icon} />
+                    </i>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </span>
+                  </span>
+                  <span className="academic-toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(settings.sources[key])}
+                      onChange={(event) =>
+                        updateGroupSetting("sources", key, event.target.checked)
+                      }
+                    />
+                    <span className="academic-toggle-track" aria-hidden="true">
+                      <MiniIcon path="M5 12.5 9.2 16.5 19 7" />
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="academic-settings-section">
+            <div className="academic-settings-section-title">
+              <i className="academic-section-icon emerald" aria-hidden="true">
+                <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" />
+              </i>
+              <h3>Trend and citation alerts</h3>
+            </div>
+            <div className="academic-settings-grid">
+              <label>
+                <span>Default discipline</span>
+                <select
+                  value={settings.defaultDiscipline}
+                  onChange={(event) =>
+                    updateSetting("defaultDiscipline", event.target.value)
+                  }
+                >
+                  <option>Computer Science</option>
+                  <option>AI in Education</option>
+                  <option>Biomedical Science</option>
+                  <option>Environmental Science</option>
+                  <option>Business Analytics</option>
+                </select>
+              </label>
+              <label>
+                <span>Trend threshold</span>
+                <select
+                  value={settings.trendThreshold}
+                  onChange={(event) =>
+                    updateSetting("trendThreshold", event.target.value)
+                  }
+                >
+                  <option>10% weekly growth</option>
+                  <option>20% weekly growth</option>
+                  <option>35% weekly growth</option>
+                  <option>Top 5% topic momentum</option>
+                </select>
+              </label>
+              <label>
+                <span>Citation window</span>
+                <select
+                  value={settings.citationWindow}
+                  onChange={(event) =>
+                    updateSetting("citationWindow", event.target.value)
+                  }
+                >
+                  <option>Last 30 days</option>
+                  <option>Last 6 months</option>
+                  <option>Last 12 months</option>
+                  <option>All time</option>
+                </select>
+              </label>
+              <label>
+                <span>Digest frequency</span>
+                <select
+                  value={settings.digestFrequency}
+                  onChange={(event) =>
+                    updateSetting("digestFrequency", event.target.value)
+                  }
+                >
+                  <option>Real time</option>
+                  <option>Daily</option>
+                  <option>Weekly</option>
+                  <option>Monthly</option>
+                </select>
+              </label>
+            </div>
+            <div className="academic-settings-list">
+              {alertOptions.map(([key, label, detail, icon]) => (
+                <label className="academic-settings-toggle" key={key}>
+                  <span className="academic-toggle-copy">
+                    <i className="academic-toggle-icon rose" aria-hidden="true">
+                      <MiniIcon path={icon} />
+                    </i>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </span>
+                  </span>
+                  <span className="academic-toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(settings.alerts[key])}
+                      onChange={(event) =>
+                        updateGroupSetting("alerts", key, event.target.checked)
+                      }
+                    />
+                    <span className="academic-toggle-track" aria-hidden="true">
+                      <MiniIcon path="M5 12.5 9.2 16.5 19 7" />
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <section className="academic-settings-section">
+            <div className="academic-settings-section-title">
+              <i className="academic-section-icon violet" aria-hidden="true">
+                <MiniIcon path="M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10" />
+              </i>
+              <h3>Workspace output</h3>
+            </div>
+            <div className="academic-settings-grid">
+              <label>
+                <span>Knowledge graph density</span>
+                <select
+                  value={settings.graphDensity}
+                  onChange={(event) =>
+                    updateSetting("graphDensity", event.target.value)
+                  }
+                >
+                  <option>Compact</option>
+                  <option>Balanced</option>
+                  <option>Expanded</option>
+                </select>
+              </label>
+              <label>
+                <span>Default report export</span>
+                <select
+                  value={settings.exportFormat}
+                  onChange={(event) =>
+                    updateSetting("exportFormat", event.target.value)
+                  }
+                >
+                  <option>PDF</option>
+                  <option>CSV</option>
+                  <option>PDF + CSV</option>
+                  <option>BibTeX + RIS</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section className="academic-settings-section">
+            <div className="academic-settings-section-title">
+              <i className="academic-section-icon slate" aria-hidden="true">
+                <MiniIcon path="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+              </i>
+              <h3>Privacy and institution sharing</h3>
+            </div>
+            <div className="academic-settings-list">
+              {privacyOptions.map(([key, label, detail, icon]) => (
+                <label className="academic-settings-toggle" key={key}>
+                  <span className="academic-toggle-copy">
+                    <i className="academic-toggle-icon slate" aria-hidden="true">
+                      <MiniIcon path={icon} />
+                    </i>
+                    <span>
+                      <strong>{label}</strong>
+                      <small>{detail}</small>
+                    </span>
+                  </span>
+                  <span className="academic-toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(settings.privacy[key])}
+                      onChange={(event) =>
+                        updateGroupSetting("privacy", key, event.target.checked)
+                      }
+                    />
+                    <span className="academic-toggle-track" aria-hidden="true">
+                      <MiniIcon path="M5 12.5 9.2 16.5 19 7" />
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <footer className="academic-settings-footer">
+          <button type="button" className="settings-secondary" onClick={resetSettings}>
+            Reset
+          </button>
+          <button
+            type="button"
+            className="settings-secondary"
+            onClick={openProfileNotifications}
+          >
+            Profile settings
+          </button>
+          <button type="button" className="settings-primary" onClick={saveSettings}>
+            Save Settings
+          </button>
+          {message ? <p role="status">{message}</p> : null}
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function useResearcherSidebarControls() {
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -5179,9 +5683,11 @@ function useResearcherSidebarControls() {
 function ResearcherTopbar({
   current = "Dashboard",
   onMenuClick,
+  onOpenSettings,
   rootLabel = "ScholarTrend",
   rootPath = "/",
   searchPlaceholder = "Search publications, authors, keywords...",
+  avatarUrl = "",
 }) {
   return (
     <header className="researcher-topbar">
@@ -5221,6 +5727,7 @@ function ResearcherTopbar({
           type="button"
           className="researcher-top-icon"
           aria-label="Settings"
+          onClick={onOpenSettings}
         >
           <MiniIcon path="M5 7h4M13 7h6M11 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 12h9M18 12h1M16 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 17h2M11 17h8M9 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0" />
         </button>
@@ -5230,17 +5737,21 @@ function ResearcherTopbar({
           aria-label="User profile"
           onClick={navTo("/researcher-profile")}
         >
-          <img
-            src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-            alt="Researcher profile"
-          />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Researcher profile" />
+          ) : (
+            <img
+              src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
+              alt="Researcher profile"
+            />
+          )}
         </button>
       </div>
     </header>
   );
 }
 
-function LecturerTopbar({ onMenuClick }) {
+function LecturerTopbar({ onMenuClick, onOpenSettings }) {
   return (
     <header className="researcher-topbar lecturer-topbar">
       <button
@@ -5279,6 +5790,7 @@ function LecturerTopbar({ onMenuClick }) {
           type="button"
           className="researcher-top-icon"
           aria-label="Settings"
+          onClick={onOpenSettings}
         >
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
         </button>
@@ -5304,29 +5816,45 @@ function ResearcherShell({
   breadcrumbRootLabel,
   breadcrumbRootPath,
   searchPlaceholder,
+  profileAvatarUrl = "",
   children,
 }) {
   const sidebar = useResearcherSidebarControls();
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const academicRole = getAcademicRole();
   const isLecturer = academicRole === "lecturer";
   const resolvedActiveRoute = getAcademicPath(activeRoute, academicRole);
   const TopbarComponent =
     topbar === "lecturer" ? (
-      <LecturerTopbar onMenuClick={sidebar.handleMenu} />
+      <LecturerTopbar
+        onMenuClick={sidebar.handleMenu}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
     ) : topbar === "list" ? (
-      <ResearcherListTopbar onMenuClick={sidebar.handleMenu} />
+      <ResearcherListTopbar
+        onMenuClick={sidebar.handleMenu}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
     ) : topbar === "graph" ? (
-      <ResearcherSearchTopbar onMenuClick={sidebar.handleMenu} />
+      <ResearcherSearchTopbar
+        onMenuClick={sidebar.handleMenu}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
     ) : topbar === "publication" ? (
-      <ResearcherPublicationTopbar onMenuClick={sidebar.handleMenu} />
+      <ResearcherPublicationTopbar
+        onMenuClick={sidebar.handleMenu}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
     ) : (
       <ResearcherTopbar
         current={current}
         onMenuClick={sidebar.handleMenu}
+        onOpenSettings={() => setSettingsOpen(true)}
         rootLabel={breadcrumbRootLabel}
         rootPath={breadcrumbRootPath}
         searchPlaceholder={searchPlaceholder}
+        avatarUrl={profileAvatarUrl}
       />
     );
 
@@ -5348,10 +5876,16 @@ function ResearcherShell({
         onClose={sidebar.closeMobile}
         onToggleCollapse={sidebar.toggleCollapse}
         onUpgrade={() => setUpgradeOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
       <UpgradeProModal
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
+      />
+      <AcademicSettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        role={academicRole}
       />
       <section className={`researcher-main ${mainClassName}`}>
         {TopbarComponent}
@@ -7106,7 +7640,7 @@ function SyncManagementPage() {
   );
 }
 
-function ResearcherSearchTopbar({ onMenuClick }) {
+function ResearcherSearchTopbar({ onMenuClick, onOpenSettings }) {
   return (
     <header className="researcher-graph-topbar">
       <button
@@ -7160,6 +7694,7 @@ function ResearcherSearchTopbar({ onMenuClick }) {
           type="button"
           className="graph-icon-button"
           aria-label="Settings"
+          onClick={onOpenSettings}
         >
           <MiniIcon path="M5 7h4M13 7h6M11 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 12h9M18 12h1M16 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 17h2M11 17h8M9 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0" />
         </button>
@@ -7168,7 +7703,7 @@ function ResearcherSearchTopbar({ onMenuClick }) {
   );
 }
 
-function ResearcherPublicationTopbar({ onMenuClick }) {
+function ResearcherPublicationTopbar({ onMenuClick, onOpenSettings }) {
   return (
     <header className="researcher-topbar researcher-publication-topbar">
       <button
@@ -7215,6 +7750,7 @@ function ResearcherPublicationTopbar({ onMenuClick }) {
           type="button"
           className="researcher-top-icon"
           aria-label="Settings"
+          onClick={onOpenSettings}
         >
           <MiniIcon path="M5 7h4M13 7h6M11 7m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 12h9M18 12h1M16 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M5 17h2M11 17h8M9 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0" />
         </button>
@@ -7785,7 +8321,7 @@ const listViewPapers = [
   },
 ];
 
-function ResearcherListTopbar({ onMenuClick }) {
+function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
   return (
     <header className="researcher-list-topbar">
       <button
@@ -7829,7 +8365,7 @@ function ResearcherListTopbar({ onMenuClick }) {
         <button type="button" aria-label="Filter results">
           <MiniIcon path="M5 7h14M8 12h8M10 17h4" />
         </button>
-        <button type="button" aria-label="Settings">
+        <button type="button" aria-label="Settings" onClick={onOpenSettings}>
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
         </button>
         <button type="button" aria-label="Help">
@@ -8086,12 +8622,18 @@ function SearchFilterPanel() {
   return (
     <aside className="search-filter-panel" aria-label="Search filters">
       <div className="search-filter-heading">
-        <h2>Filters</h2>
+        <h2>
+          <MiniIcon path="M5 7h14M8 12h8M10 17h4" />
+          Filters
+        </h2>
         <button type="button">Clear All</button>
       </div>
 
       <section className="filter-card">
-        <h3>Publication Year</h3>
+        <h3>
+          <MiniIcon path="M7 4v3M17 4v3M5 8h14M6 6h12v13H6z" />
+          Publication Year
+        </h3>
         <div className="year-range">
           <input type="text" defaultValue="2010" aria-label="From year" />
           <span>-</span>
@@ -8100,7 +8642,10 @@ function SearchFilterPanel() {
       </section>
 
       <section className="filter-card">
-        <h3>Data Source</h3>
+        <h3>
+          <MiniIcon path="M5 7c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3ZM5 7v5c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 12v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5" />
+          Data Source
+        </h3>
         <label>
           <input type="radio" name="source" defaultChecked /> Semantic Scholar
         </label>
@@ -8110,7 +8655,10 @@ function SearchFilterPanel() {
       </section>
 
       <section className="filter-card">
-        <h3>Keywords</h3>
+        <h3>
+          <MiniIcon path="M20 13.5 13.5 20 4 10.5V4h6.5l9.5 9.5ZM8 8h.01" />
+          Keywords
+        </h3>
         <div className="keyword-chips">
           <span>
             Machine Learning{" "}
@@ -8124,7 +8672,10 @@ function SearchFilterPanel() {
               x
             </button>
           </span>
-          <button type="button">+ Add</button>
+          <button type="button">
+            <MiniIcon path="M12 5v14M5 12h14" />
+            Add
+          </button>
         </div>
       </section>
     </aside>
@@ -8178,7 +8729,11 @@ function StudentSearchPage() {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              Dashboard <span>&gt;</span> <strong>Search Results</strong>
+              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+                Dashboard
+              </a>
+              <span>&gt;</span>
+              <strong>Search Results</strong>
             </div>
           }
           searchValue=""
@@ -8403,7 +8958,11 @@ function BookmarksPage({ role = "student" }) {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              Dashboard <span>&gt;</span> <strong>Bookmarks</strong>
+              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+                Dashboard
+              </a>
+              <span>&gt;</span>
+              <strong>Bookmarks</strong>
             </div>
           }
           variant="utility"
@@ -8525,7 +9084,7 @@ function BookmarksPage({ role = "student" }) {
   );
 }
 
-function NotificationFilterPanel() {
+function NotificationFilterPanel({ activeFilters, onChangeFilter }) {
   return (
     <aside className="notification-filters" aria-label="Notification filters">
       {notificationFilters.map((group, groupIndex) => (
@@ -8536,17 +9095,17 @@ function NotificationFilterPanel() {
           {group.title ? <h2>{group.title}</h2> : null}
           <div className="notification-filter-options">
             {group.options.map((option) => (
-              <label
-                className={option.active ? "active" : ""}
+              <button
+                type="button"
+                className={
+                  activeFilters[groupIndex] === option.label ? "active" : ""
+                }
                 key={option.label}
+                onClick={() => onChangeFilter(groupIndex, option.label)}
               >
-                <input
-                  type="radio"
-                  name={`notification-filter-${groupIndex}`}
-                  defaultChecked={option.active}
-                />
+                <i aria-hidden="true"></i>
                 <span>{option.label}</span>
-              </label>
+              </button>
             ))}
           </div>
         </section>
@@ -8574,9 +9133,9 @@ function renderFormattedText(text) {
         subPart === "OpenAlex"
       ) {
         return (
-          <a href="#" className="text-link" key={`${index}-${subIndex}`}>
+          <span className="text-link" key={`${index}-${subIndex}`}>
             {subPart}
-          </a>
+          </span>
         );
       }
       return subPart;
@@ -8584,10 +9143,19 @@ function renderFormattedText(text) {
   });
 }
 
-function NotificationCard({ item }) {
+function NotificationCard({ item, onOpen, onToggleBookmark }) {
   return (
     <article
+      role="button"
+      tabIndex={0}
       className={`notification-card ${item.tone} ${item.unread ? "unread" : ""}`}
+      onClick={() => onOpen(item)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(item);
+        }
+      }}
     >
       <div className={`notification-icon ${item.tone}`}>
         <MiniIcon path={item.icon} />
@@ -8614,48 +9182,68 @@ function NotificationCard({ item }) {
           type="button"
           className="notification-bookmark"
           aria-label="Save notification"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleBookmark(item.id);
+          }}
         >
           <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
         </button>
-      ) : null}
+      ) : (
+        <span className="notification-open-indicator" aria-hidden="true">
+          <MiniIcon path="M9 5l7 7-7 7" />
+        </span>
+      )}
     </article>
   );
 }
 
 const extraNotificationItems = [
   {
+    id: "new-research-regularization",
     type: "NEW PUBLICATION",
     time: "4 days ago",
     title: "NEW RESEARCH:",
     text: 'Dr. Elena Rostova published "Topological Regularization in Deep Autoencoders" in Nature Computational Science.',
-    icon: "M7 5h10v14H7zM10 9h4M10 12h4M10 15h3",
+    icon: "M7 4.5h8.5L19 8v12H7zM15.5 4.5V8H19M10 12h5M10 15h6M10 18h3M4 7.5v12h3",
     tone: "purple-soft",
     unread: false,
+    route: "/researcher-search?view=list",
   },
   {
+    id: "system-semantic-sync",
     type: "SYSTEM ALERT",
     time: "5 days ago",
     title: "SYNC COMPLETE:",
     text: "14,200 new publications were successfully synchronized from Semantic Scholar API.",
-    icon: "M7 7.5a6 6 0 0 1 10.2-2.8L19 6.5M17 16.5a6 6 0 0 1-10.2 2.8L5 17.5",
+    icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8L20 6M17 16.5a6 6 0 0 1-10.2 2.8L4 18",
     tone: "gray",
     unread: false,
+    route: "/researcher-sync-management",
   },
   {
+    id: "trend-single-cell-rna",
     type: "TREND ALERT",
     time: "1 week ago",
     title: "TREND SPIKE:",
     text: 'Keyword "Single-cell RNA" citation velocity increased by 28% in computational biology journals.',
-    icon: "M5 15.5 9.2 11l3.2 2.6L19 7M16 7h3v3",
+    icon: "M4 17.5 9 12l3.2 2.8L20 6.5M17 6.5h3v3M5 20h14M7 16v4M12 14v6M17 11v9",
     tone: "green",
     unread: false,
+    route: "/researcher-trend-tracking",
   },
 ];
 
 function NotificationsPage({ role = "student" }) {
   const [notifications, setNotifications] = React.useState(notificationItems);
   const [hasMore, setHasMore] = React.useState(true);
-  const isResearcher = role === "researcher";
+  const [activeFilters, setActiveFilters] = React.useState({
+    0: "All Notifications",
+    1: "Any Time",
+  });
+  const isResearcher = role === "researcher" || role === "lecturer";
+  const rolePrefix =
+    role === "lecturer" ? "lecturer" : role === "researcher" ? "researcher" : "student";
 
   const handleLoadMore = () => {
     setNotifications((prev) => [...prev, ...extraNotificationItems]);
@@ -8667,6 +9255,59 @@ function NotificationsPage({ role = "student" }) {
       prev.map((item) => ({ ...item, unread: false })),
     );
   };
+
+  const handleChangeFilter = (groupIndex, value) => {
+    setActiveFilters((current) => ({
+      ...current,
+      [groupIndex]: value,
+    }));
+  };
+
+  const resolveNotificationRoute = (item) => {
+    if (rolePrefix === "student") {
+      if (item.type.includes("SYSTEM")) return "/student-notifications";
+      if (item.type.includes("TREND")) return "/student-search";
+      return "/student-search";
+    }
+
+    return getAcademicPath(item.route || "/researcher-search", rolePrefix);
+  };
+
+  const handleOpenNotification = (item) => {
+    setNotifications((current) =>
+      current.map((notification) =>
+        notification.id === item.id
+          ? { ...notification, unread: false }
+          : notification,
+      ),
+    );
+    goToRoute(resolveNotificationRoute(item));
+  };
+
+  const handleToggleBookmark = (itemId) => {
+    setNotifications((current) =>
+      current.map((notification) =>
+        notification.id === itemId
+          ? { ...notification, bookmarked: !notification.bookmarked }
+          : notification,
+      ),
+    );
+  };
+
+  const filteredNotifications = notifications.filter((item) => {
+    const readFilter = activeFilters[0];
+    if (readFilter === "Unread" && !item.unread) return false;
+
+    const timeFilter = activeFilters[1];
+    if (timeFilter === "Today") {
+      return item.time === "Just now" || item.time.includes("mins") || item.time.includes("hours");
+    }
+    if (timeFilter === "This Week") {
+      return !item.time.includes("week");
+    }
+
+    return true;
+  });
 
   const pageContent = (
     <div
@@ -8692,12 +9333,17 @@ function NotificationsPage({ role = "student" }) {
       </div>
 
       <div className="notifications-layout">
-        <NotificationFilterPanel />
+        <NotificationFilterPanel
+          activeFilters={activeFilters}
+          onChangeFilter={handleChangeFilter}
+        />
         <section className="notification-list" aria-label="Notifications list">
-          {notifications.map((item, index) => (
+          {filteredNotifications.map((item, index) => (
             <NotificationCard
               item={item}
               key={`${item.type}-${item.time}-${index}`}
+              onOpen={handleOpenNotification}
+              onToggleBookmark={handleToggleBookmark}
             />
           ))}
           {hasMore ? (
@@ -8721,7 +9367,6 @@ function NotificationsPage({ role = "student" }) {
                 cursor: "pointer",
                 outline: "none",
                 WebkitTapHighlightColor: "transparent",
-                MozUserSelect: "none",
               }}
             >
               <span
@@ -8776,7 +9421,11 @@ function NotificationsPage({ role = "student" }) {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              Dashboard <span>&gt;</span> <strong>Notifications</strong>
+              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+                Dashboard
+              </a>
+              <span>&gt;</span>
+              <strong>Notifications</strong>
             </div>
           }
           variant="utility"
@@ -8806,12 +9455,24 @@ function ProfileTabs({ activeTab, setActiveTab }) {
   );
 }
 
-function ProfileField({ label, value, readOnly = false, locked = false }) {
+function ProfileField({
+  label,
+  value,
+  onChange,
+  readOnly = false,
+  locked = false,
+  type = "text",
+}) {
   return (
     <label className="profile-field">
       <span>{label}</span>
       <span className={`profile-input ${locked ? "locked" : ""}`}>
-        <input type="text" defaultValue={value} readOnly={readOnly} />
+        <input
+          type={type}
+          value={value}
+          readOnly={readOnly}
+          onChange={(event) => onChange?.(event.target.value)}
+        />
         {locked ? (
           <MiniIcon path="M6 10h12v9H6zM8.5 10V7.8a3.5 3.5 0 0 1 7 0V10" />
         ) : null}
@@ -8822,26 +9483,221 @@ function ProfileField({ label, value, readOnly = false, locked = false }) {
 
 function ProfilePage({ role = "student" }) {
   const [activeTab, setActiveTab] = React.useState("Personal Info");
-  const [identityConnections, setIdentityConnections] = React.useState({
-    orcid: true,
-    scholar: false,
-    semantic: true,
+  const [identityConnections, setIdentityConnections] = React.useState(() => {
+    const saved = window.localStorage.getItem(
+      `scholartrend.${role}.identityConnections`,
+    );
+    if (saved) {
+      try {
+        return {
+          orcid: true,
+          scholar: false,
+          semantic: true,
+          ...JSON.parse(saved),
+        };
+      } catch {
+        return {
+          orcid: true,
+          scholar: false,
+          semantic: true,
+        };
+      }
+    }
+
+    return {
+      orcid: true,
+      scholar: false,
+      semantic: true,
+    };
   });
-  const [autoSync, setAutoSync] = React.useState(true);
+  const [autoSync, setAutoSync] = React.useState(() => {
+    const saved = window.localStorage.getItem(`scholartrend.${role}.autoSync`);
+    return saved ? saved === "true" : true;
+  });
   const [identityMessage, setIdentityMessage] = React.useState(
     "Academic profile synced 2 hours ago.",
   );
   const isResearcher = role === "researcher";
+  const avatarInputRef = React.useRef(null);
+  const storageKey = `scholartrend.${role}.profile`;
+  const defaultProfileData = {
+    personal: {
+      fullName: "Dr. Alexander Scientist",
+      email: "alexander.s@scholartrend.edu",
+      institution: "Institute of Advanced Analytics",
+      department: "Computational Biology",
+      roleBadge: "Lead Researcher",
+      avatarUrl: "",
+    },
+    interests: [
+      "Deep Learning",
+      "Computational Biology",
+      "Quantum Computing",
+      "Single-cell RNA",
+    ],
+    preferences: {
+      realTimeAlerts: true,
+      weeklyDigest: true,
+      systemAlerts: false,
+      semanticScholar: true,
+      openAlex: true,
+    },
+    notifications: {
+      publicationMatches: true,
+      weeklyTrendingDigest: true,
+      citationAlerts: false,
+      collaborationInvites: true,
+      realtimePublicationAlerts: true,
+      syncStatusUpdates: true,
+      systemAnnouncements: false,
+      frequency: "Daily digest",
+    },
+    privacy: {
+      visibility: "Public",
+      sharePublicationData: true,
+      externalIndexing: false,
+      researchAnalytics: true,
+      twoFactorEnabled: false,
+      signedOutAllDevices: false,
+    },
+  };
+  const loadProfileData = React.useCallback(() => {
+    const saved = window.localStorage.getItem(storageKey);
+    if (!saved) return defaultProfileData;
+    try {
+      const parsed = JSON.parse(saved);
+      return {
+        ...defaultProfileData,
+        ...parsed,
+        personal: { ...defaultProfileData.personal, ...(parsed.personal || {}) },
+        preferences: {
+          ...defaultProfileData.preferences,
+          ...(parsed.preferences || {}),
+        },
+        notifications: {
+          ...defaultProfileData.notifications,
+          ...(parsed.notifications || {}),
+        },
+        privacy: { ...defaultProfileData.privacy, ...(parsed.privacy || {}) },
+        interests: Array.isArray(parsed.interests)
+          ? parsed.interests
+          : defaultProfileData.interests,
+      };
+    } catch {
+      return defaultProfileData;
+    }
+  }, [storageKey]);
+  const [profileData, setProfileData] = React.useState(loadProfileData);
+  const [savedProfileData, setSavedProfileData] = React.useState(profileData);
+  const [newInterest, setNewInterest] = React.useState("");
+  const [profileMessage, setProfileMessage] = React.useState("");
+  const [passwords, setPasswords] = React.useState({
+    current: "",
+    next: "",
+    confirm: "",
+  });
+
+  const updatePersonalField = (field, value) => {
+    setProfileData((current) => ({
+      ...current,
+      personal: { ...current.personal, [field]: value },
+    }));
+    setProfileMessage("");
+  };
+
+  const updateNestedProfileField = (group, field, value) => {
+    setProfileData((current) => ({
+      ...current,
+      [group]: { ...current[group], [field]: value },
+    }));
+    setProfileMessage("");
+  };
+
+  const handleProfileAvatarUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setProfileMessage("Please choose an image file.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > 800 * 1024) {
+      setProfileMessage("Avatar image must be 800K or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      updatePersonalField("avatarUrl", reader.result);
+      setProfileMessage("Avatar selected. Press Save Changes to keep it.");
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+
+  const removeProfileAvatar = () => {
+    updatePersonalField("avatarUrl", "");
+    setProfileMessage("Avatar removed. Press Save Changes to keep it.");
+  };
+
+  const addProfileInterest = (event) => {
+    event.preventDefault();
+    const value = newInterest.trim();
+    if (!value) return;
+    setProfileData((current) => ({
+      ...current,
+      interests: current.interests.includes(value)
+        ? current.interests
+        : [...current.interests, value],
+    }));
+    setNewInterest("");
+    setProfileMessage("");
+  };
+
+  const removeProfileInterest = (interest) => {
+    setProfileData((current) => ({
+      ...current,
+      interests: current.interests.filter((item) => item !== interest),
+    }));
+    setProfileMessage("");
+  };
+
+  const saveProfileChanges = () => {
+    if (passwords.next || passwords.confirm || passwords.current) {
+      if (!passwords.current || !passwords.next || passwords.next !== passwords.confirm) {
+        setProfileMessage("Check your current password and matching new password.");
+        return;
+      }
+    }
+
+    window.localStorage.setItem(storageKey, JSON.stringify(profileData));
+    setSavedProfileData(profileData);
+    setPasswords({ current: "", next: "", confirm: "" });
+    setProfileMessage("Profile changes saved.");
+  };
+
+  const cancelProfileChanges = () => {
+    setProfileData(savedProfileData);
+    setPasswords({ current: "", next: "", confirm: "" });
+    setNewInterest("");
+    setProfileMessage("Unsaved changes were discarded.");
+  };
 
   const toggleIdentityConnection = (key, label) => {
     setIdentityConnections((current) => {
       const nextValue = !current[key];
+      const nextConnections = { ...current, [key]: nextValue };
       setIdentityMessage(
         nextValue
           ? `${label} connected. ScholarTrend will include it in publication matching.`
           : `${label} disconnected from automatic publication matching.`,
       );
-      return { ...current, [key]: nextValue };
+      window.localStorage.setItem(
+        `scholartrend.${role}.identityConnections`,
+        JSON.stringify(nextConnections),
+      );
+      return nextConnections;
     });
   };
 
@@ -8871,19 +9727,49 @@ function ProfilePage({ role = "student" }) {
           <section className="profile-card" aria-label="Personal information">
             <div className="profile-card-header">
               <h2>Personal Information</h2>
-              <span>Lead Researcher</span>
+              <span>{profileData.personal.roleBadge}</span>
             </div>
 
             <div className="profile-photo-row">
-              <div className="profile-photo" aria-label="Profile photo">
-                <span>A</span>
-              </div>
+              <button
+                type="button"
+                className="profile-photo"
+                aria-label="Change profile photo"
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                {profileData.personal.avatarUrl ? (
+                  <img
+                    src={profileData.personal.avatarUrl}
+                    alt={profileData.personal.fullName}
+                  />
+                ) : (
+                  <span>
+                    {profileData.personal.fullName.trim().charAt(0) || "A"}
+                  </span>
+                )}
+              </button>
+              <input
+                ref={avatarInputRef}
+                className="profile-avatar-input"
+                type="file"
+                accept="image/*"
+                onChange={handleProfileAvatarUpload}
+              />
               <div className="profile-upload-actions">
                 <div>
-                  <button type="button" className="upload-button">
+                  <button
+                    type="button"
+                    className="upload-button"
+                    onClick={() => avatarInputRef.current?.click()}
+                  >
                     Upload New
                   </button>
-                  <button type="button" className="remove-button">
+                  <button
+                    type="button"
+                    className="remove-button"
+                    onClick={removeProfileAvatar}
+                    disabled={!profileData.personal.avatarUrl}
+                  >
                     Remove
                   </button>
                 </div>
@@ -8892,18 +9778,27 @@ function ProfilePage({ role = "student" }) {
             </div>
 
             <div className="profile-form-grid">
-              <ProfileField label="Full Name" value="Dr. Alexander Scientist" />
+              <ProfileField
+                label="Full Name"
+                value={profileData.personal.fullName}
+                onChange={(value) => updatePersonalField("fullName", value)}
+              />
               <ProfileField
                 label="Email Address (Read-only)"
-                value="alexander.s@scholartrend.edu"
+                value={profileData.personal.email}
                 readOnly
                 locked
               />
               <ProfileField
                 label="Institution"
-                value="Institute of Advanced Analytics"
+                value={profileData.personal.institution}
+                onChange={(value) => updatePersonalField("institution", value)}
               />
-              <ProfileField label="Department" value="Computational Biology" />
+              <ProfileField
+                label="Department"
+                value={profileData.personal.department}
+                onChange={(value) => updatePersonalField("department", value)}
+              />
             </div>
           </section>
         )}
@@ -8951,7 +9846,13 @@ function ProfilePage({ role = "student" }) {
                 }
                 aria-pressed={autoSync}
                 onClick={() => {
-                  setAutoSync((enabled) => !enabled);
+                  setAutoSync((enabled) => {
+                    window.localStorage.setItem(
+                      `scholartrend.${role}.autoSync`,
+                      String(!enabled),
+                    );
+                    return !enabled;
+                  });
                   setIdentityMessage(
                     autoSync
                       ? "Auto-sync paused. Manual sync is still available."
@@ -9036,7 +9937,14 @@ function ProfilePage({ role = "student" }) {
                 <span className="profile-input">
                   <input
                     type="password"
-                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                    value={passwords.current}
+                    onChange={(event) =>
+                      setPasswords((current) => ({
+                        ...current,
+                        current: event.target.value,
+                      }))
+                    }
+                    placeholder="Current password"
                     style={{ maxWidth: "45%" }}
                   />
                 </span>
@@ -9046,7 +9954,14 @@ function ProfilePage({ role = "student" }) {
                 <span className="profile-input">
                   <input
                     type="password"
-                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                    value={passwords.next}
+                    onChange={(event) =>
+                      setPasswords((current) => ({
+                        ...current,
+                        next: event.target.value,
+                      }))
+                    }
+                    placeholder="New password"
                   />
                 </span>
               </label>
@@ -9055,7 +9970,14 @@ function ProfilePage({ role = "student" }) {
                 <span className="profile-input">
                   <input
                     type="password"
-                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
+                    value={passwords.confirm}
+                    onChange={(event) =>
+                      setPasswords((current) => ({
+                        ...current,
+                        confirm: event.target.value,
+                      }))
+                    }
+                    placeholder="Confirm new password"
                   />
                 </span>
               </label>
@@ -9080,52 +10002,33 @@ function ProfilePage({ role = "student" }) {
               your dashboard feeds and alert notifications.
             </p>
             <div className="keyword-chips" style={{ marginBottom: "20px" }}>
-              <span>
-                Deep Learning{" "}
+              {profileData.interests.map((interest) => (
+                <span key={interest}>
+                  {interest}{" "}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${interest}`}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => removeProfileInterest(interest)}
+                  >
+                    x
+                  </button>
+                </span>
+              ))}
+              <form className="profile-interest-form" onSubmit={addProfileInterest}>
+                <input
+                  value={newInterest}
+                  onChange={(event) => setNewInterest(event.target.value)}
+                  placeholder="Add keyword"
+                  aria-label="Add research keyword"
+                />
                 <button
-                  type="button"
-                  aria-label="Remove Deep Learning"
-                  style={{ cursor: "pointer" }}
+                  type="submit"
+                  style={{ borderStyle: "dashed", cursor: "pointer" }}
                 >
-                  x
+                  + Add Keyword
                 </button>
-              </span>
-              <span>
-                Computational Biology{" "}
-                <button
-                  type="button"
-                  aria-label="Remove Computational Biology"
-                  style={{ cursor: "pointer" }}
-                >
-                  x
-                </button>
-              </span>
-              <span>
-                Quantum Computing{" "}
-                <button
-                  type="button"
-                  aria-label="Remove Quantum Computing"
-                  style={{ cursor: "pointer" }}
-                >
-                  x
-                </button>
-              </span>
-              <span>
-                Single-cell RNA{" "}
-                <button
-                  type="button"
-                  aria-label="Remove Single-cell RNA"
-                  style={{ cursor: "pointer" }}
-                >
-                  x
-                </button>
-              </span>
-              <button
-                type="button"
-                style={{ borderStyle: "dashed", cursor: "pointer" }}
-              >
-                + Add Keyword
-              </button>
+              </form>
             </div>
           </section>
         )}
@@ -9160,7 +10063,14 @@ function ProfilePage({ role = "student" }) {
                   >
                     <input
                       type="checkbox"
-                      defaultChecked
+                      checked={profileData.preferences.realTimeAlerts}
+                      onChange={(event) =>
+                        updateNestedProfileField(
+                          "preferences",
+                          "realTimeAlerts",
+                          event.target.checked,
+                        )
+                      }
                       style={{ width: "16px", height: "16px", margin: 0 }}
                     />{" "}
                     Real-time alerts for new publication matches
@@ -9176,7 +10086,14 @@ function ProfilePage({ role = "student" }) {
                   >
                     <input
                       type="checkbox"
-                      defaultChecked
+                      checked={profileData.preferences.weeklyDigest}
+                      onChange={(event) =>
+                        updateNestedProfileField(
+                          "preferences",
+                          "weeklyDigest",
+                          event.target.checked,
+                        )
+                      }
                       style={{ width: "16px", height: "16px", margin: 0 }}
                     />{" "}
                     Weekly summary email digest
@@ -9192,6 +10109,14 @@ function ProfilePage({ role = "student" }) {
                   >
                     <input
                       type="checkbox"
+                      checked={profileData.preferences.systemAlerts}
+                      onChange={(event) =>
+                        updateNestedProfileField(
+                          "preferences",
+                          "systemAlerts",
+                          event.target.checked,
+                        )
+                      }
                       style={{ width: "16px", height: "16px", margin: 0 }}
                     />{" "}
                     System health & sync status alerts
@@ -9223,7 +10148,14 @@ function ProfilePage({ role = "student" }) {
                   >
                     <input
                       type="checkbox"
-                      defaultChecked
+                      checked={profileData.preferences.semanticScholar}
+                      onChange={(event) =>
+                        updateNestedProfileField(
+                          "preferences",
+                          "semanticScholar",
+                          event.target.checked,
+                        )
+                      }
                       style={{ width: "16px", height: "16px", margin: 0 }}
                     />{" "}
                     Semantic Scholar API
@@ -9239,7 +10171,14 @@ function ProfilePage({ role = "student" }) {
                   >
                     <input
                       type="checkbox"
-                      defaultChecked
+                      checked={profileData.preferences.openAlex}
+                      onChange={(event) =>
+                        updateNestedProfileField(
+                          "preferences",
+                          "openAlex",
+                          event.target.checked,
+                        )
+                      }
                       style={{ width: "16px", height: "16px", margin: 0 }}
                     />{" "}
                     OpenAlex Database
@@ -9271,18 +10210,21 @@ function ProfilePage({ role = "student" }) {
                 <div style={{ display: "grid", gap: "12px" }}>
                   {[
                     {
+                      key: "publicationMatches",
                       label: "New publications matching your interests",
-                      checked: true,
                     },
                     {
+                      key: "weeklyTrendingDigest",
                       label: "Weekly digest of trending papers",
-                      checked: true,
                     },
                     {
+                      key: "citationAlerts",
                       label: "Citation alerts for your publications",
-                      checked: false,
                     },
-                    { label: "Collaboration invitations", checked: true },
+                    {
+                      key: "collaborationInvites",
+                      label: "Collaboration invitations",
+                    },
                   ].map((item, i) => (
                     <label
                       key={i}
@@ -9297,7 +10239,14 @@ function ProfilePage({ role = "student" }) {
                     >
                       <input
                         type="checkbox"
-                        defaultChecked={item.checked}
+                        checked={profileData.notifications[item.key]}
+                        onChange={(event) =>
+                          updateNestedProfileField(
+                            "notifications",
+                            item.key,
+                            event.target.checked,
+                          )
+                        }
                         style={{
                           width: "18px",
                           height: "18px",
@@ -9323,9 +10272,12 @@ function ProfilePage({ role = "student" }) {
                 </h3>
                 <div style={{ display: "grid", gap: "12px" }}>
                   {[
-                    { label: "Real-time publication alerts", checked: true },
-                    { label: "Sync status updates", checked: true },
-                    { label: "System announcements", checked: false },
+                    {
+                      key: "realtimePublicationAlerts",
+                      label: "Real-time publication alerts",
+                    },
+                    { key: "syncStatusUpdates", label: "Sync status updates" },
+                    { key: "systemAnnouncements", label: "System announcements" },
                   ].map((item, i) => (
                     <label
                       key={i}
@@ -9340,7 +10292,14 @@ function ProfilePage({ role = "student" }) {
                     >
                       <input
                         type="checkbox"
-                        defaultChecked={item.checked}
+                        checked={profileData.notifications[item.key]}
+                        onChange={(event) =>
+                          updateNestedProfileField(
+                            "notifications",
+                            item.key,
+                            event.target.checked,
+                          )
+                        }
                         style={{
                           width: "18px",
                           height: "18px",
@@ -9365,6 +10324,14 @@ function ProfilePage({ role = "student" }) {
                   Notification Frequency
                 </h3>
                 <select
+                  value={profileData.notifications.frequency}
+                  onChange={(event) =>
+                    updateNestedProfileField(
+                      "notifications",
+                      "frequency",
+                      event.target.value,
+                    )
+                  }
                   style={{
                     width: "100%",
                     height: "40px",
@@ -9376,7 +10343,7 @@ function ProfilePage({ role = "student" }) {
                   }}
                 >
                   <option>Real-time (as it happens)</option>
-                  <option selected>Daily digest</option>
+                  <option>Daily digest</option>
                   <option>Weekly summary</option>
                 </select>
               </div>
@@ -9403,58 +10370,37 @@ function ProfilePage({ role = "student" }) {
                   Profile Visibility
                 </h3>
                 <div style={{ display: "grid", gap: "12px" }}>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      fontSize: "14px",
-                      color: "#374151",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      defaultChecked
-                      style={{ margin: 0, cursor: "pointer" }}
-                    />
-                    Public - Visible to all ScholarTrend users
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      fontSize: "14px",
-                      color: "#374151",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      style={{ margin: 0, cursor: "pointer" }}
-                    />
-                    Institution Only - Visible to your institution
-                  </label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "12px",
-                      fontSize: "14px",
-                      color: "#374151",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      style={{ margin: 0, cursor: "pointer" }}
-                    />
-                    Private - Only you can see your profile
-                  </label>
+                  {[
+                    ["Public", "Public - Visible to all ScholarTrend users"],
+                    [
+                      "Institution Only",
+                      "Institution Only - Visible to your institution",
+                    ],
+                    ["Private", "Private - Only you can see your profile"],
+                  ].map(([value, label]) => (
+                    <label
+                      key={value}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        fontSize: "14px",
+                        color: "#374151",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="visibility"
+                        checked={profileData.privacy.visibility === value}
+                        onChange={() =>
+                          updateNestedProfileField("privacy", "visibility", value)
+                        }
+                        style={{ margin: 0, cursor: "pointer" }}
+                      />
+                      {label}
+                    </label>
+                  ))}
                 </div>
               </div>
               <div>
@@ -9471,16 +10417,16 @@ function ProfilePage({ role = "student" }) {
                 <div style={{ display: "grid", gap: "12px" }}>
                   {[
                     {
+                      key: "sharePublicationData",
                       label: "Share publication data with collaborators",
-                      checked: true,
                     },
                     {
+                      key: "externalIndexing",
                       label: "Allow indexing by external search engines",
-                      checked: false,
                     },
                     {
+                      key: "researchAnalytics",
                       label: "Participate in research analytics",
-                      checked: true,
                     },
                   ].map((item, i) => (
                     <label
@@ -9496,7 +10442,14 @@ function ProfilePage({ role = "student" }) {
                     >
                       <input
                         type="checkbox"
-                        defaultChecked={item.checked}
+                        checked={profileData.privacy[item.key]}
+                        onChange={(event) =>
+                          updateNestedProfileField(
+                            "privacy",
+                            item.key,
+                            event.target.checked,
+                          )
+                        }
                         style={{
                           width: "18px",
                           height: "18px",
@@ -9545,7 +10498,17 @@ function ProfilePage({ role = "student" }) {
                         }}
                       >
                         2FA Status:{" "}
-                        <span style={{ color: "#ef4444" }}>Disabled</span>
+                        <span
+                          style={{
+                            color: profileData.privacy.twoFactorEnabled
+                              ? "#059669"
+                              : "#ef4444",
+                          }}
+                        >
+                          {profileData.privacy.twoFactorEnabled
+                            ? "Enabled"
+                            : "Disabled"}
+                        </span>
                       </div>
                       <div style={{ fontSize: "13px", color: "#64748b" }}>
                         Add an extra layer of security to your account
@@ -9553,6 +10516,13 @@ function ProfilePage({ role = "student" }) {
                     </div>
                     <button
                       type="button"
+                      onClick={() =>
+                        updateNestedProfileField(
+                          "privacy",
+                          "twoFactorEnabled",
+                          !profileData.privacy.twoFactorEnabled,
+                        )
+                      }
                       style={{
                         padding: "8px 16px",
                         background: "#4f46e5",
@@ -9564,7 +10534,9 @@ function ProfilePage({ role = "student" }) {
                         cursor: "pointer",
                       }}
                     >
-                      Enable 2FA
+                      {profileData.privacy.twoFactorEnabled
+                        ? "Disable 2FA"
+                        : "Enable 2FA"}
                     </button>
                   </div>
                 </div>
@@ -9587,10 +10559,20 @@ function ProfilePage({ role = "student" }) {
                     marginBottom: "12px",
                   }}
                 >
-                  You're currently logged in on 2 devices
+                  {profileData.privacy.signedOutAllDevices
+                    ? "Other devices have been signed out"
+                    : "You're currently logged in on 2 devices"}
                 </div>
                 <button
                   type="button"
+                  onClick={() =>
+                    updateNestedProfileField(
+                      "privacy",
+                      "signedOutAllDevices",
+                      true,
+                    )
+                  }
+                  disabled={profileData.privacy.signedOutAllDevices}
                   style={{
                     padding: "8px 16px",
                     background: "white",
@@ -9599,10 +10581,15 @@ function ProfilePage({ role = "student" }) {
                     borderRadius: "6px",
                     fontSize: "13px",
                     fontWeight: 600,
-                    cursor: "pointer",
+                    cursor: profileData.privacy.signedOutAllDevices
+                      ? "not-allowed"
+                      : "pointer",
+                    opacity: profileData.privacy.signedOutAllDevices ? 0.65 : 1,
                   }}
                 >
-                  Sign Out All Devices
+                  {profileData.privacy.signedOutAllDevices
+                    ? "Signed Out"
+                    : "Sign Out All Devices"}
                 </button>
               </div>
             </div>
@@ -9610,11 +10597,20 @@ function ProfilePage({ role = "student" }) {
         )}
       </div>
 
+      {profileMessage && <p className="profile-status-message">{profileMessage}</p>}
       <div className="profile-action-bar">
-        <button type="button" className="profile-cancel">
+        <button
+          type="button"
+          className="profile-cancel"
+          onClick={cancelProfileChanges}
+        >
           Cancel
         </button>
-        <button type="button" className="profile-save">
+        <button
+          type="button"
+          className="profile-save"
+          onClick={saveProfileChanges}
+        >
           <MiniIcon path="M5 5h14v14H5zM8 5v5h8V5M8 19v-5h8v5" />
           Save Changes
         </button>
@@ -9629,6 +10625,7 @@ function ProfilePage({ role = "student" }) {
         current="Profile"
         pageClassName="profile-page researcher-profile-page"
         mainClassName="researcher-profile-main"
+        profileAvatarUrl={profileData.personal.avatarUrl}
       >
         {pageContent}
       </ResearcherShell>
@@ -10209,7 +11206,7 @@ const adminNavItems = [
   {
     label: "Sync Management",
     route: "/admin-sync-management",
-    icon: "M7 7h7.5a4.5 4.5 0 0 1 4.2 6.1M17.5 7H14V3.5M17 17H9.5a4.5 4.5 0 0 1-4.2-6.1M6.5 17H10v3.5",
+    icon: "M5 7.5h9.5a4.5 4.5 0 0 1 4.2 6.1M18.8 7.5h-4.3V3.2M19 16.5H9.5a4.5 4.5 0 0 1-4.2-6.1M5.2 16.5h4.3v4.3M12 9.2v3.1l2.2 1.3",
   },
   {
     label: "User Management",
@@ -10289,7 +11286,7 @@ const adminActivity = [
   },
 ];
 
-function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
+function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
   return (
     <aside className={`admin-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       <div
@@ -10349,32 +11346,46 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: "2px",
+            gap: "9px",
             flex: 1,
+            minWidth: 0,
+            paddingTop: "2px",
           }}
         >
           <strong
             style={{
-              fontSize: "16px",
-              fontWeight: 700,
-              color: "#0f172a",
+              fontSize: "12px",
+              fontWeight: 800,
+              color: "#cbd5e1",
               display: "flex",
               alignItems: "center",
-              gap: "2px",
+              gap: "3px",
+              letterSpacing: "0.08em",
+              lineHeight: 1,
+              textTransform: "uppercase",
             }}
           >
-            <span>Scholar</span>
-            <span style={{ color: "#06b6d4" }}>Trend</span>
+            <span style={{ color: "#cbd5e1", display: "inline", marginTop: 0 }}>
+              Scholar
+            </span>
+            <span style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}>
+              Trend
+            </span>
           </strong>
           <b
             style={{
+              maxWidth: "116px",
               fontSize: "11px",
-              color: "#64748b",
-              fontWeight: 500,
-              letterSpacing: "0.02em",
+              color: "#7f8aa0",
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              lineHeight: 1.2,
+              textTransform: "uppercase",
             }}
           >
-            Analytical Intelligence
+            Analytical
+            <br />
+            Intelligence
           </b>
         </div>
         <button
@@ -10401,14 +11412,18 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose }) {
       </nav>
 
       <div className="admin-sidebar-footer">
-        <p>
+        <button
+          type="button"
+          className="admin-status-button"
+          onClick={() => onOpenPanel("status")}
+        >
           <i></i> System Status: Healthy
-        </p>
-        <button type="button">
+        </button>
+        <button type="button" onClick={() => onOpenPanel("settings")}>
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
           Settings
         </button>
-        <button type="button">
+        <button type="button" onClick={() => onOpenPanel("support")}>
           <MiniIcon path="M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
           Support
         </button>
@@ -10421,6 +11436,7 @@ function AdminTopbar({
   current = "Overview",
   onMenuClick,
   sectionPage = false,
+  onOpenPanel,
 }) {
   return (
     <header
@@ -10449,7 +11465,7 @@ function AdminTopbar({
         <>
           <nav aria-label="Admin breadcrumb">
             <span>Dashboard</span>
-            <b>â€º</b>
+            <b>/</b>
             <strong>{current}</strong>
           </nav>
           <form onSubmit={(event) => event.preventDefault()}>
@@ -10467,20 +11483,688 @@ function AdminTopbar({
           type="button"
           className="alert"
           aria-label="Admin notifications"
+          onClick={() => onOpenPanel("notifications")}
         >
           <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
         </button>
-        <button type="button" aria-label="Admin settings">
+        <button
+          type="button"
+          aria-label="Admin settings"
+          onClick={() => onOpenPanel("settings")}
+        >
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
         </button>
-        <span className="admin-mode">
-          Admin
-          <br />
-          Mode
-        </span>
-        <span className="admin-avatar">AD</span>
+        <button
+          type="button"
+          className="admin-avatar"
+          aria-label="Admin account"
+          onClick={() => onOpenPanel("profile")}
+        >
+          <span>AD</span>
+        </button>
       </div>
     </header>
+  );
+}
+
+const adminPanelNotifications = [
+  {
+    id: "api-rate-limit",
+    title: "API rate usage is near limit",
+    detail: "Semantic Scholar usage reached 82% of the daily quota.",
+    time: "5 mins ago",
+    route: "/admin-system-logs",
+    icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+  },
+  {
+    id: "admin-sign-in",
+    title: "New administrator sign-in",
+    detail: "Admin workspace was opened from the local development server.",
+    time: "18 mins ago",
+    route: "/admin-user-management",
+    icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+  },
+  {
+    id: "openalex-sync",
+    title: "OpenAlex sync completed",
+    detail: "Publication and author indexes are available for review.",
+    time: "45 mins ago",
+    route: "/admin-sync-management",
+    icon: "M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5",
+  },
+];
+
+function AdminUtilityPanel({ panel, onClose }) {
+  const avatarInputRef = React.useRef(null);
+  const [settings, setSettings] = React.useState(() => {
+    const saved = window.localStorage.getItem("scholartrend.admin.settings");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return null;
+      }
+    }
+
+    return {
+      emailAlerts: true,
+      autoSync: true,
+      maintenanceMode: false,
+      syncInterval: "Every 6 hours",
+    };
+  });
+  const [supportMessage, setSupportMessage] = React.useState("");
+  const [statusMessage, setStatusMessage] = React.useState("");
+  const [ticketMessage, setTicketMessage] = React.useState("");
+  const [readNotificationIds, setReadNotificationIds] = React.useState(() => {
+    const saved = window.localStorage.getItem("scholartrend.admin.readNotifications");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  });
+  const [isEditingProfile, setIsEditingProfile] = React.useState(false);
+  const [editingProfileField, setEditingProfileField] = React.useState(null);
+  const [profileMessage, setProfileMessage] = React.useState("");
+  const defaultAdminProfile = {
+    name: "Admin User",
+    email: "admin@university.edu",
+    role: "Administrator",
+    session: "Local development",
+    phone: "+84 901 234 567",
+    department: "System Administration",
+    location: "Ho Chi Minh City",
+    bio: "Manages ScholarTrend access, sync operations, and platform health.",
+    avatarUrl: "",
+  };
+  const [adminProfile, setAdminProfile] = React.useState(() => {
+    const saved = window.localStorage.getItem("scholartrend.admin.profile");
+    if (saved) {
+      try {
+        return { ...defaultAdminProfile, ...JSON.parse(saved) };
+      } catch {
+        return defaultAdminProfile;
+      }
+    }
+
+    return defaultAdminProfile;
+  });
+
+  if (!panel) return null;
+
+  const saveSettings = () => {
+    window.localStorage.setItem(
+      "scholartrend.admin.settings",
+      JSON.stringify(settings),
+    );
+    setStatusMessage("Settings saved for this browser.");
+  };
+
+  const submitTicket = (event) => {
+    event.preventDefault();
+    const ticket = {
+      id: `SUP-${Date.now()}`,
+      message: supportMessage,
+      createdAt: new Date().toISOString(),
+      status: "Open",
+    };
+    const currentTickets = JSON.parse(
+      window.localStorage.getItem("scholartrend.admin.supportTickets") || "[]",
+    );
+    window.localStorage.setItem(
+      "scholartrend.admin.supportTickets",
+      JSON.stringify([ticket, ...currentTickets]),
+    );
+    setTicketMessage("Support ticket created. Opening System Logs...");
+    setSupportMessage("");
+    window.setTimeout(() => {
+      onClose();
+      goToRoute("/admin-system-logs");
+    }, 650);
+  };
+
+  const saveAdminProfile = (event) => {
+    event.preventDefault();
+    window.localStorage.setItem(
+      "scholartrend.admin.profile",
+      JSON.stringify(adminProfile),
+    );
+    setIsEditingProfile(false);
+    setEditingProfileField(null);
+    setProfileMessage("Admin account updated.");
+  };
+
+  const updateAdminProfile = (field, value) => {
+    setAdminProfile((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const beginProfileFieldEdit = (field) => {
+    setIsEditingProfile(true);
+    setEditingProfileField(field);
+    setProfileMessage("Press Save Account to keep changes.");
+  };
+
+  const copyAdminEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(adminProfile.email);
+      setProfileMessage("Email copied to clipboard.");
+    } catch {
+      setProfileMessage("Email ready to copy: " + adminProfile.email);
+    }
+  };
+
+  const handleAvatarUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setProfileMessage("Please choose an image file for the avatar.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAdminProfile((current) => ({
+        ...current,
+        avatarUrl: reader.result,
+      }));
+      setProfileMessage("Avatar selected. Press Save Account to keep it.");
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+
+  const viewAdminAvatar = () => {
+    if (!adminProfile.avatarUrl) {
+      setProfileMessage("No custom avatar uploaded yet.");
+      return;
+    }
+
+    const avatarWindow = window.open();
+    if (avatarWindow) {
+      avatarWindow.document.write(
+        `<title>${adminProfile.name} Avatar</title><img src="${adminProfile.avatarUrl}" alt="${adminProfile.name}" style="max-width:100%;height:auto;display:block;margin:24px auto;border-radius:16px;" />`,
+      );
+      avatarWindow.document.close();
+    }
+  };
+
+  const removeAdminAvatar = () => {
+    setAdminProfile((current) => ({
+      ...current,
+      avatarUrl: "",
+    }));
+    setProfileMessage("Avatar removed. Press Save Account to keep this change.");
+  };
+
+  const openAdminRoute = (route) => {
+    onClose();
+    goToRoute(route);
+  };
+
+  const saveReadNotifications = (ids) => {
+    setReadNotificationIds(ids);
+    window.localStorage.setItem(
+      "scholartrend.admin.readNotifications",
+      JSON.stringify(ids),
+    );
+  };
+
+  const markAllNotificationsRead = () => {
+    saveReadNotifications(adminPanelNotifications.map((item) => item.id));
+  };
+
+  const openNotification = (item) => {
+    const nextReadIds = readNotificationIds.includes(item.id)
+      ? readNotificationIds
+      : [...readNotificationIds, item.id];
+    saveReadNotifications(nextReadIds);
+    openAdminRoute(item.route);
+  };
+
+  const unreadNotificationCount = adminPanelNotifications.filter(
+    (item) => !readNotificationIds.includes(item.id),
+  ).length;
+
+  const renderEditableProfileValue = ({
+    label,
+    field,
+    type = "text",
+    multiline = false,
+    className = "",
+  }) => {
+    const isActive = isEditingProfile && editingProfileField === field;
+    const value = adminProfile[field] || "";
+
+    if (isActive) {
+      const inputProps = {
+        value,
+        onChange: (event) => updateAdminProfile(field, event.target.value),
+        onKeyDown: (event) => {
+          if (event.key === "Escape") {
+            setEditingProfileField(null);
+          }
+        },
+        autoFocus: true,
+      };
+
+      return (
+        <label className={`admin-profile-inline-field ${className}`}>
+          <span>{label}</span>
+          {multiline ? (
+            <textarea {...inputProps}></textarea>
+          ) : (
+            <input type={type} {...inputProps} />
+          )}
+        </label>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        className={`admin-profile-editable-value ${className}`}
+        onClick={() => beginProfileFieldEdit(field)}
+      >
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </button>
+    );
+  };
+
+  const panelTitles = {
+    status: "System Status",
+    settings: "Admin Settings",
+    support: "Support Center",
+    notifications: "Notifications",
+    profile: "Admin Account",
+  };
+  const panelMeta = {
+    status: {
+      tone: "emerald",
+      icon: "M4 12.5 9.2 18 20 6.5M4 6h5l2 4 2-7 2 7 2-4h3",
+    },
+    settings: {
+      tone: "indigo",
+      icon: "M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z",
+    },
+    support: {
+      tone: "blue",
+      icon: "M8.5 18.5h7M9 9a3 3 0 1 1 5 2.2c-1 .8-1.7 1.5-1.7 3.1M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
+    },
+    notifications: {
+      tone: "rose",
+      icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+    },
+    profile: {
+      tone: "slate",
+      icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    },
+  };
+
+  return (
+    <div
+      className={`admin-utility-layer ${panel}-utility-layer`}
+      role="presentation"
+    >
+      <button
+        type="button"
+        className="admin-utility-backdrop"
+        aria-label="Close Admin panel"
+        onClick={onClose}
+      ></button>
+      <aside
+        className={`admin-utility-panel ${panel}-utility-panel`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-utility-title"
+      >
+        <header className="admin-utility-header">
+          <div className="admin-utility-title-row">
+            <span className={`admin-utility-title-icon ${panelMeta[panel].tone}`}>
+              <MiniIcon path={panelMeta[panel].icon} />
+            </span>
+            <div>
+              <span>Administrator</span>
+              <h2 id="admin-utility-title">{panelTitles[panel]}</h2>
+            </div>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose}>
+            <MiniIcon path="M6 6l12 12M18 6 6 18" />
+          </button>
+        </header>
+
+        {panel === "status" && (
+          <div className="admin-utility-body">
+            <div className="admin-health-summary">
+              <i></i>
+              <div>
+                <strong>All core services are healthy</strong>
+                <span>Last check completed just now</span>
+              </div>
+            </div>
+            {[
+              [
+                "API Gateway",
+                "Operational",
+                "34 ms",
+                "M4 8h16M4 16h16M7 5v14M17 5v14",
+                "emerald",
+                "/admin-system-logs",
+              ],
+              [
+                "Auth Service",
+                "Operational",
+                "OAuth2 ready",
+                "M12 3.5 18.5 7v5c0 3.8-2.6 6.7-6.5 8-3.9-1.3-6.5-4.2-6.5-8V7L12 3.5ZM9.5 12l1.6 1.6 3.5-4",
+                "blue",
+                "/admin-user-management",
+              ],
+              [
+                "Search Index",
+                "Operational",
+                "99.9% uptime",
+                "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8 10.5h5M10.5 8v5",
+                "violet",
+                "/admin-sync-management",
+              ],
+              [
+                "Sync Workers",
+                "Monitoring",
+                "Next run in 42 min",
+                "M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5",
+                "amber",
+                "/admin-sync-management",
+              ],
+            ].map(([name, state, value, icon, tone, route]) => (
+              <button
+                type="button"
+                className="admin-health-row"
+                key={name}
+                onClick={() => openAdminRoute(route)}
+              >
+                <i className={`admin-health-icon ${tone}`}>
+                  <MiniIcon path={icon} />
+                </i>
+                <span>{name}</span>
+                <strong>{state}</strong>
+                <em>{value}</em>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="admin-panel-primary"
+              onClick={() => setStatusMessage("Health check completed successfully.")}
+            >
+              Run Health Check
+            </button>
+            {statusMessage && <p className="admin-panel-note">{statusMessage}</p>}
+          </div>
+        )}
+
+        {panel === "settings" && (
+          <div className="admin-utility-body">
+            {[
+              [
+                "emailAlerts",
+                "Email alerts",
+                "Send critical system alerts to admins.",
+                "M4 6.5h16v11H4zM5.2 7.8l6.8 5 6.8-5",
+              ],
+              [
+                "autoSync",
+                "Auto sync",
+                "Refresh external publication indexes automatically.",
+                "M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5",
+              ],
+              [
+                "maintenanceMode",
+                "Maintenance mode",
+                "Limit access while admin changes are applied.",
+                "M14.7 6.3 17.7 3.3 20.7 6.3 17.7 9.3 14.7 6.3ZM4 15.5l5.5-5.5 4.5 4.5L8.5 20H4v-4.5Z",
+              ],
+            ].map(([key, label, description, icon]) => (
+              <label className="admin-setting-row" key={key}>
+                <i className="admin-setting-icon">
+                  <MiniIcon path={icon} />
+                </i>
+                <span>
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </span>
+                <input
+                  className="admin-switch-input"
+                  type="checkbox"
+                  checked={Boolean(settings[key])}
+                  onChange={(event) =>
+                    setSettings((current) => ({
+                      ...current,
+                      [key]: event.target.checked,
+                    }))
+                  }
+                />
+                <b className="admin-switch-track" aria-hidden="true"></b>
+              </label>
+            ))}
+            <label className="admin-setting-field">
+              <span>Sync interval</span>
+              <select
+                value={settings.syncInterval}
+                onChange={(event) =>
+                  setSettings((current) => ({
+                    ...current,
+                    syncInterval: event.target.value,
+                  }))
+                }
+              >
+                <option>Every 2 hours</option>
+                <option>Every 6 hours</option>
+                <option>Every 12 hours</option>
+                <option>Daily</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="admin-panel-primary"
+              onClick={saveSettings}
+            >
+              Save Settings
+            </button>
+            {statusMessage && <p className="admin-panel-note">{statusMessage}</p>}
+          </div>
+        )}
+
+        {panel === "support" && (
+          <form className="admin-utility-body" onSubmit={submitTicket}>
+            <div className="admin-support-intro">
+              <i>
+                <MiniIcon path="M8.5 18.5h7M9 9a3 3 0 1 1 5 2.2c-1 .8-1.7 1.5-1.7 3.1M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </i>
+              <p className="admin-support-copy">
+                Send an internal support note with current workspace context.
+              </p>
+            </div>
+            <label className="admin-setting-field">
+              <span>Issue summary</span>
+              <textarea
+                value={supportMessage}
+                onChange={(event) => setSupportMessage(event.target.value)}
+                placeholder="Describe the admin issue..."
+                required
+              ></textarea>
+            </label>
+            <button type="submit" className="admin-panel-primary">
+              Create Support Ticket
+            </button>
+            {ticketMessage && <p className="admin-panel-note">{ticketMessage}</p>}
+          </form>
+        )}
+
+        {panel === "notifications" && (
+          <div className="admin-utility-body">
+            <div className="admin-notification-actions">
+              <span>{unreadNotificationCount} unread</span>
+              <button type="button" onClick={markAllNotificationsRead}>
+                Mark All Read
+              </button>
+            </div>
+            {adminPanelNotifications.map((item) => (
+              <button
+                type="button"
+                className={`admin-notification-item ${
+                  readNotificationIds.includes(item.id) ? "" : "unread"
+                }`}
+                key={item.title}
+                onClick={() => openNotification(item)}
+              >
+                <i className="admin-notification-icon">
+                  <MiniIcon path={item.icon} />
+                </i>
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.detail}</p>
+                  <span>{item.time}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {panel === "profile" && (
+          <form className="admin-utility-body" onSubmit={saveAdminProfile}>
+            <div className="admin-profile-card">
+              <button
+                type="button"
+                className="admin-profile-avatar"
+                onClick={() => avatarInputRef.current?.click()}
+                aria-label="Change admin avatar"
+              >
+                {adminProfile.avatarUrl ? (
+                  <img src={adminProfile.avatarUrl} alt={adminProfile.name} />
+                ) : (
+                  <span>AD</span>
+                )}
+              </button>
+              <input
+                ref={avatarInputRef}
+                className="admin-profile-avatar-upload-input"
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+              />
+              <div className="admin-profile-card-details">
+                {renderEditableProfileValue({
+                  label: "Name",
+                  field: "name",
+                  className: "compact",
+                })}
+                {renderEditableProfileValue({
+                  label: "Email",
+                  field: "email",
+                  type: "email",
+                  className: "compact muted",
+                })}
+                <small>Administrator access</small>
+              </div>
+            </div>
+            <div className="admin-avatar-actions">
+              <button type="button" onClick={viewAdminAvatar}>
+                View Avatar
+              </button>
+              <label>
+                Upload Avatar
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={removeAdminAvatar}
+                disabled={!adminProfile.avatarUrl}
+              >
+                Remove
+              </button>
+            </div>
+            {renderEditableProfileValue({
+              label: "Role",
+              field: "role",
+              className: "admin-profile-row",
+            })}
+            {renderEditableProfileValue({
+              label: "Session",
+              field: "session",
+              className: "admin-profile-row",
+            })}
+            <div className="admin-profile-info-grid">
+              {renderEditableProfileValue({
+                label: "Phone",
+                field: "phone",
+                type: "tel",
+              })}
+              {renderEditableProfileValue({
+                label: "Department",
+                field: "department",
+              })}
+              {renderEditableProfileValue({
+                label: "Location",
+                field: "location",
+              })}
+              {renderEditableProfileValue({
+                label: "Bio",
+                field: "bio",
+                multiline: true,
+                className: "wide",
+              })}
+            </div>
+            <div className="admin-profile-actions">
+              <button
+                type={isEditingProfile ? "submit" : "button"}
+                className="admin-panel-primary"
+                onClick={() => {
+                  if (!isEditingProfile) {
+                    setIsEditingProfile(true);
+                    setEditingProfileField("name");
+                    setProfileMessage("");
+                  }
+                }}
+              >
+                {isEditingProfile ? "Save Account" : "Edit Account"}
+              </button>
+              <button
+                type="button"
+                className="admin-panel-secondary"
+                onClick={copyAdminEmail}
+              >
+                Copy Email
+              </button>
+            </div>
+            {profileMessage && (
+              <p className="admin-panel-note">{profileMessage}</p>
+            )}
+            <button
+              type="button"
+              className="admin-profile-signout"
+              onClick={() => {
+                window.localStorage.removeItem("scholartrend.session");
+                goToRoute("/login");
+              }}
+            >
+              Sign Out
+            </button>
+          </form>
+        )}
+      </aside>
+    </div>
   );
 }
 
@@ -10491,6 +12175,7 @@ function AdminShell({
   children,
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [activePanel, setActivePanel] = React.useState(null);
   const routeClass = activeRoute.replace(/^\//, "").replaceAll("-", "-");
 
   return (
@@ -10507,15 +12192,21 @@ function AdminShell({
         activeRoute={activeRoute}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
+        onOpenPanel={setActivePanel}
       />
       <section className="admin-main">
         <AdminTopbar
           current={current}
           sectionPage={sectionPage}
           onMenuClick={() => setMobileOpen(true)}
+          onOpenPanel={setActivePanel}
         />
         {children}
       </section>
+      <AdminUtilityPanel
+        panel={activePanel}
+        onClose={() => setActivePanel(null)}
+      />
     </main>
   );
 }
@@ -10787,7 +12478,7 @@ function AdminSyncConfiguration() {
   return (
     <section className="admin-sync-config-card">
       <h2>
-        <MiniIcon path="M6 4v4M6 12v8M12 4v9M12 17v3M18 4v2M18 10v10M4 8h4M10 13h4M16 6h4" />
+        <MiniIcon path="M6.5 4v5M6.5 13v7M12 4v8M12 16v4M17.5 4v3M17.5 11v9M4.2 9h4.6M9.8 12h4.4M15.2 7h4.6M15.2 11h4.6" />
         Configuration
       </h2>
       <div className="admin-config-body">
@@ -10826,7 +12517,7 @@ function AdminSyncConfiguration() {
                     setSaved(false);
                   }}
                 >
-                  Ă—
+                  <MiniIcon path="M6 6l12 12M18 6 6 18" />
                 </button>
               </span>
             ))}
@@ -10927,7 +12618,7 @@ function AdminSyncHistory() {
     <section className="admin-sync-history-card" id="admin-sync-history">
       <div className="admin-sync-history-heading">
         <h2>
-          <MiniIcon path="M4 12a8 8 0 1 0 2.3-5.7M4 5v5h5M12 8v5l3 2" />
+          <MiniIcon path="M4 12a8 8 0 1 0 2.35-5.65M4.2 5.2v5h5M12 7.7v4.7l3.2 1.9M8.2 18.2h7.6" />
           Sync History / Logs
         </h2>
         <div>
@@ -10937,14 +12628,14 @@ function AdminSyncHistory() {
             aria-label="Filter failed logs"
             onClick={() => setFailedOnly((value) => !value)}
           >
-            <MiniIcon path="M5 7h14M8 12h8M10 17h4" />
+            <MiniIcon path="M4.5 6.5h15M7.5 11.8h9M10 17h4M8.5 6.5l2.5 5.3v3.8M15.5 6.5 13 11.8v3.8" />
           </button>
           <button
             type="button"
             aria-label="Download sync logs"
             onClick={downloadLogs}
           >
-            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+            <MiniIcon path="M12 4v9M8.5 9.5 12 13l3.5-3.5M5 16v2.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V16M7.5 16h9" />
           </button>
         </div>
       </div>
@@ -10967,7 +12658,7 @@ function AdminSyncHistory() {
                     {row.source}
                   </td>
                   <td>
-                    <span>â™ {row.status}</span>
+                    <span className="admin-sync-status-pill">{row.status}</span>
                   </td>
                   <td>{row.records}</td>
                   <td>{row.time}</td>
@@ -10976,7 +12667,7 @@ function AdminSyncHistory() {
                   <tr className="admin-sync-error-row">
                     <td colSpan="4">
                       <div>
-                        <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
+                        <MiniIcon path="M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM12 8.2v5.2M12 16.5h.01" />
                         <p>
                           <strong>{row.error}</strong>
                           <span>{row.detail}</span>
@@ -10998,7 +12689,7 @@ function AdminSyncHistory() {
             disabled={page === 1}
             onClick={() => setPage((value) => Math.max(1, value - 1))}
           >
-            â€¹
+            <MiniIcon path="M15 18l-6-6 6-6" />
           </button>
           {[1, 2, 3].map((number) => (
             <button
@@ -11014,7 +12705,7 @@ function AdminSyncHistory() {
             type="button"
             onClick={() => setPage((value) => Math.min(3, value + 1))}
           >
-            â€º
+            <MiniIcon path="M9 18l6-6-6-6" />
           </button>
         </div>
       </footer>
@@ -11049,7 +12740,8 @@ function AdminSyncManagementPage() {
             className={running ? "running" : ""}
             onClick={() => setRunning(true)}
           >
-            â–· {running ? "Manual Sync Running" : "Trigger Manual Sync"}
+            <MiniIcon path="M5 12a7 7 0 0 1 11.9-5M17 4.5v4h-4M19 12a7 7 0 0 1-11.9 5M7 19.5v-4h4M12 9v3l2 1.2" />
+            {running ? "Manual Sync Running" : "Trigger Manual Sync"}
           </button>
         </header>
 
@@ -11057,7 +12749,7 @@ function AdminSyncManagementPage() {
           <article className="running-card">
             <div>
               <span>Currently Running</span>
-              <MiniIcon path="M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8" />
+              <MiniIcon path="M5 12a7 7 0 0 1 11.9-5M17 4.5v4h-4M19 12a7 7 0 0 1-11.9 5M7 19.5v-4h4M10 10h4v4h-4z" />
             </div>
             <strong>
               {running ? "1" : "0"}
@@ -11071,7 +12763,7 @@ function AdminSyncManagementPage() {
           <article className="success-card">
             <div>
               <span>Last Successful Sync</span>
-              <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
+              <MiniIcon path="M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5" />
             </div>
             <strong>Today, 10:45 AM</strong>
             <p>12,450 records</p>
@@ -11080,7 +12772,7 @@ function AdminSyncManagementPage() {
           <article className="failed-card">
             <div>
               <span>Failed in Last 24h</span>
-              <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
+              <MiniIcon path="M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM12 8.2v5.2M12 16.5h.01" />
             </div>
             <strong>
               2<small>events</small>
@@ -11226,13 +12918,13 @@ const adminUserSummary = [
     label: "Total Users",
     value: "12,458",
     note: "+4.2% from last month",
-    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
+    icon: "M8.5 11.2a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM3.5 20a5 5 0 0 1 10 0M17 10.2a2.8 2.8 0 1 0 0-5.6M15.5 15.2a4.2 4.2 0 0 1 5 4.1M12.2 7.5h1.6M19.2 7.5h1.3",
   },
   {
     label: "Active Users (30d)",
     value: "8,924",
     note: "+1.8% from last month",
-    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM17 7v6M14 10h6M4 20a6 6 0 0 1 10.5-4",
+    icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.8 20a5 5 0 0 1 9.9-1M16.8 6.8l1.4 1.5 2.8-3M18.7 12.5v2.2M18.7 18.2v1.1M15.9 15.4h-1.1M22.6 15.4h-1.1M16.7 17.5l-.8.8M21.5 13l-.8.8M16.7 13.2l-.8-.8M21.5 17.8l-.8-.8",
   },
 ];
 
@@ -11303,7 +12995,7 @@ function AdminUserManagementPage() {
           <article className="admin-user-summary-card admin-key-roles-card">
             <div>
               <span>Key Roles</span>
-              <MiniIcon path="M8 7h8M8 11h8M8 15h5M5 4h14v16H5z" />
+              <MiniIcon path="M6 4.5h12A1.5 1.5 0 0 1 19.5 6v12A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18V6A1.5 1.5 0 0 1 6 4.5ZM8 8h8M8 11.5h5.5M8 15h4M16.2 13.8l1.1 1.1 2-2.4" />
             </div>
             <p>
               <span>Admin</span>
@@ -11452,28 +13144,28 @@ const adminSystemLogSummary = [
     value: "18,742",
     note: "+326 today",
     tone: "neutral",
-    icon: "M5 4h14v16H5zM8 8h8M8 12h8M8 16h5",
+    icon: "M6 4.5h12A1.5 1.5 0 0 1 19.5 6v12A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18V6A1.5 1.5 0 0 1 6 4.5ZM8 8h8M8 11.5h8M8 15h4.5M15.5 15.5l1.3 1.3 2.2-2.8",
   },
   {
     label: "Warnings",
     value: "128",
     note: "14 unresolved",
     tone: "warning",
-    icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+    icon: "M12 3.8 3.8 18.5a1.5 1.5 0 0 0 1.3 2.2h13.8a1.5 1.5 0 0 0 1.3-2.2L12 3.8ZM12 8.3v5.4M12 16.8h.01M18.5 6.5l1.4-1.4M5.5 6.5 4.1 5.1",
   },
   {
     label: "Errors",
     value: "12",
     note: "2 critical",
     tone: "danger",
-    icon: "M12 9v4M12 17h.01M5 5l14 14M19 5 5 19",
+    icon: "M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM9 9l6 6M15 9l-6 6",
   },
   {
     label: "Audit Pass Rate",
     value: "99.2%",
     note: "+0.4% from last week",
     tone: "success",
-    icon: "M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9",
+    icon: "M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5",
   },
 ];
 
@@ -11577,8 +13269,10 @@ function AdminSystemLogsPage() {
             className="admin-log-export-button"
             onClick={exportLogs}
           >
-            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
-            Export Logs
+            <span className="admin-log-export-icon">
+              <MiniIcon path="M12 4v9M8.5 9.5 12 13l3.5-3.5M5 16v2.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V16M7.5 16h9" />
+            </span>
+            <span className="admin-log-export-label">Download Logs</span>
           </button>
         </header>
 
