@@ -5,7 +5,7 @@ namespace ScientificJournal.Common.DTOs.Response.Publication;
 
 public class PublicationDto
 {
-    public Guid Id { get; set; }
+    public int Id { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Abstract { get; set; }
     public int Year { get; set; }

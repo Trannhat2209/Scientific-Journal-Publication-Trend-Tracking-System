@@ -7,5 +7,5 @@ namespace ScientificJournal.DataAccess.Repositories.Interfaces;
 
 public interface INotificationRepository : IGenericRepository<Notification>
 {
-    Task<IEnumerable<Notification>> GetUnreadByUserAsync(Guid userId);
+    Task<IEnumerable<Notification>> GetUnreadByUserAsync(int userId);
 }

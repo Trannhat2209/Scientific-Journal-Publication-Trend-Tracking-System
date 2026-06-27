@@ -13,7 +13,7 @@ public class TrendingMetricRepository : GenericRepository<TrendingMetric>, ITren
 {
     public TrendingMetricRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IEnumerable<TrendingMetric>> GetTrendsByKeywordAsync(Guid keywordId, int fromYear, int toYear) =>
+    public async Task<IEnumerable<TrendingMetric>> GetTrendsByKeywordAsync(int keywordId, int fromYear, int toYear) =>
         await _context.TrendingMetrics
             .Where(tm => tm.KeywordId == keywordId && tm.Year >= fromYear && tm.Year <= toYear)
             .OrderBy(tm => tm.Year)

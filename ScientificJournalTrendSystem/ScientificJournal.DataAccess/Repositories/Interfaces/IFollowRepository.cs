@@ -7,5 +7,5 @@ namespace ScientificJournal.DataAccess.Repositories.Interfaces;
 
 public interface IFollowRepository : IGenericRepository<Follow>
 {
-    Task<IEnumerable<Follow>> GetByUserAsync(Guid userId);
+    Task<IEnumerable<Follow>> GetByUserAsync(int userId);
 }

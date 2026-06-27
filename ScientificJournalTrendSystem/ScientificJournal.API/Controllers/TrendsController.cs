@@ -22,4 +22,26 @@ public class TrendsController : ControllerBase
         var result = await _trendingService.GetTrendingScoreAsync(request);
         return Ok(result);
     }
+
+    [HttpGet("keywords")]
+    public async Task<IActionResult> GetTrendingKeywords([FromQuery] int limit = 10)
+    {
+        var result = await _trendingService.GetTrendingKeywordsAsync(limit);
+        return Ok(result);
+    }
+
+    [HttpGet("top-keywords")]
+    public async Task<IActionResult> GetTopKeywords([FromQuery] int count = 10)
+    {
+        var result = await _trendingService.GetTopKeywordsAsync(count);
+        return Ok(result);
+    }
+
+    [HttpGet("keyword/{id:int}/history")]
+    public async Task<IActionResult> GetKeywordHistory(int id)
+    {
+        var result = await _trendingService.GetKeywordTrendHistoryAsync(id);
+        return Ok(result);
+    }
+
 }

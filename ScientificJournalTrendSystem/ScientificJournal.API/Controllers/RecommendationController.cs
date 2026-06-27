@@ -24,7 +24,7 @@ public class RecommendationController : ControllerBase
     public async Task<IActionResult> GetRecommendations([FromQuery] int topN = 20)
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-        if (!Guid.TryParse(userIdValue, out var userId))
+        if (!int.TryParse(userIdValue, out var userId))
         {
             return Unauthorized();
         }

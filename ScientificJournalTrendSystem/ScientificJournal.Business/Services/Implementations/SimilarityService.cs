@@ -29,7 +29,7 @@ public class SimilarityService : ISimilarityService
         return SimilarityHelper.CalculateJaccardSimilarity(set1, set2);
     }
 
-    public async Task<double> GetSimilarityScoreAsync(Guid pubId1, Guid pubId2)
+    public async Task<double> GetSimilarityScoreAsync(int pubId1, int pubId2)
     {
         if (pubId1 == pubId2) return 1.0;
 
@@ -39,7 +39,7 @@ public class SimilarityService : ISimilarityService
         return SimilarityHelper.CalculateJaccardSimilarity(pub1Keywords, pub2Keywords);
     }
 
-    public async Task<bool> IsDuplicateRiskAsync(Guid pubId1, Guid pubId2)
+    public async Task<bool> IsDuplicateRiskAsync(int pubId1, int pubId2)
     {
         var score = await GetSimilarityScoreAsync(pubId1, pubId2);
         return score >= 0.5;
@@ -54,7 +54,7 @@ public class SimilarityService : ISimilarityService
             .ToHashSet();
     }
 
-    private async Task<HashSet<string>> GetPublicationKeywordTermsAsync(Guid publicationId)
+    private async Task<HashSet<string>> GetPublicationKeywordTermsAsync(int publicationId)
     {
         var terms = await _context.PublicationKeywords
             .Where(pk => pk.PublicationId == publicationId)

@@ -6,5 +6,5 @@ namespace ScientificJournal.Business.Services.Interfaces;
 
 public interface IRelationshipNetworkService
 {
-    Task<RelationshipNetworkDto> GetRelationshipNetworkAsync(Guid publicationId, double similarityThreshold = 0.3);
+    Task<RelationshipNetworkDto> GetRelationshipNetworkAsync(int publicationId, double similarityThreshold = 0.3);
 }

@@ -10,6 +10,9 @@ public class FollowConfiguration : IEntityTypeConfiguration<Follow>
     {
         builder.ToTable("follows");
         builder.HasKey(f => f.Id);
+        
+        builder.Property(f => f.FollowType)
+            .HasConversion<string>();
 
         builder.HasOne(f => f.User)
             .WithMany(u => u.Follows)

@@ -45,7 +45,7 @@ public class PublicationService : IPublicationService
             query = query.Where(p => p.Year == request.Year);
         }
 
-        if (!string.IsNullOrWhiteSpace(request.JournalId) && Guid.TryParse(request.JournalId, out var journalId))
+        if (!string.IsNullOrWhiteSpace(request.JournalId) && int.TryParse(request.JournalId, out var journalId))
         {
             query = query.Where(p => p.JournalId == journalId);
         }
@@ -75,7 +75,7 @@ public class PublicationService : IPublicationService
         };
     }
 
-    public async Task<PublicationDetailDto> GetPublicationDetailAsync(Guid id)
+    public async Task<PublicationDetailDto> GetPublicationDetailAsync(int id)
     {
         var publication = await _context.Publications
             .AsNoTracking()
@@ -98,6 +98,36 @@ public class PublicationService : IPublicationService
         };
     }
 
+    public async Task<object> GetPublicationsStatisticsAsync()
+    {
+        var publications = await _context.Publications.Where(p => !p.IsDeleted).ToListAsync();
+        if (!publications.Any())
+        {
+            return new
+            {
+                totalPublications = 0,
+                avgCitation = 0.0,
+                topYear = 0
+            };
+        }
+
+        var totalPublications = publications.Count;
+        var avgCitation = Math.Round(publications.Average(p => p.CitationCount), 2);
+        
+        var topYear = publications
+            .GroupBy(p => p.Year)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .FirstOrDefault();
+
+        return new
+        {
+            totalPublications,
+            avgCitation,
+            topYear
+        };
+    }
+
     private static PublicationDto MapToDto(Publication publication)
     {
         return new PublicationDto
@@ -114,3 +144,4 @@ public class PublicationService : IPublicationService
         };
     }
 }
+

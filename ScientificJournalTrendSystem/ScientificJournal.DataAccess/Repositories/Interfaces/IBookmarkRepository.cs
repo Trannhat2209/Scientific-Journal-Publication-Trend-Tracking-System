@@ -7,5 +7,5 @@ namespace ScientificJournal.DataAccess.Repositories.Interfaces;
 
 public interface IBookmarkRepository : IGenericRepository<Bookmark>
 {
-    Task<IEnumerable<Bookmark>> GetByUserAsync(Guid userId);
+    Task<IEnumerable<Bookmark>> GetByUserAsync(int userId);
 }

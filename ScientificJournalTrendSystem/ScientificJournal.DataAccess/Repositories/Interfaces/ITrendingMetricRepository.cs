@@ -7,5 +7,5 @@ namespace ScientificJournal.DataAccess.Repositories.Interfaces;
 
 public interface ITrendingMetricRepository : IGenericRepository<TrendingMetric>
 {
-    Task<IEnumerable<TrendingMetric>> GetTrendsByKeywordAsync(Guid keywordId, int fromYear, int toYear);
+    Task<IEnumerable<TrendingMetric>> GetTrendsByKeywordAsync(int keywordId, int fromYear, int toYear);
 }

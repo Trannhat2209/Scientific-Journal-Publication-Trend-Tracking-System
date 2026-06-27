@@ -8,16 +8,50 @@ using ScientificJournal.API.Extensions;
 using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Jobs;
 using ScientificJournal.Common.Configurations;
+using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
+builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("Smtp"));
 
 // Add services to the container.
-builder.Services.AddControllers(options => options.Filters.Add(new ValidateModelFilter()));
+builder.Services.AddControllers(options => options.Filters.Add(new ValidateModelFilter()))
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    });
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo { Title = "Scientific Journal Trend System API", Version = "v1" });
+    
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
+        Name = "Authorization",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+builder.Services.AddSignalR();
 
 var jwtSettings = builder.Configuration.GetSection("Jwt").Get<JwtSettings>()!;
 var jwtKey = Encoding.UTF8.GetBytes(jwtSettings.Secret);
@@ -53,9 +87,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<ScientificJournal.API.Hubs.NotificationHub>("/notificationHub");
+
 
 // Enable Hangfire dashboard middleware
 app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
@@ -82,6 +119,12 @@ using (var scope = app.Services.CreateScope())
         "notification-processing",
         job => job.ExecuteAsync(),
         Cron.Hourly);
+
+    recurringJobManager.AddOrUpdate<TrendRecalculateJob>(
+        "weekly-trend-recalculate",
+        job => job.ExecuteAsync(),
+        Cron.Weekly);
 }
 
 app.Run();
+

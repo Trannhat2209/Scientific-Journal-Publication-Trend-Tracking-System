@@ -18,16 +18,26 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpGet]
+    [HttpGet("search")]
+    [HttpGet("filter")]
     public async Task<IActionResult> Search([FromQuery] PublicationSearchRequestDto request)
     {
         var result = await _publicationService.SearchPublicationsAsync(request);
         return Ok(result);
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetDetail(Guid id)
+    [HttpGet("statistics")]
+    public async Task<IActionResult> GetStatistics()
+    {
+        var result = await _publicationService.GetPublicationsStatisticsAsync();
+        return Ok(result);
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetDetail(int id)
     {
         var result = await _publicationService.GetPublicationDetailAsync(id);
         return Ok(result);
     }
+
 }

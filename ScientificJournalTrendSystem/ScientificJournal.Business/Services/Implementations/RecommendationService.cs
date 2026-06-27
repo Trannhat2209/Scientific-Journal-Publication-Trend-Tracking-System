@@ -22,7 +22,7 @@ public class RecommendationService : IRecommendationService
         _similarityService = similarityService;
     }
 
-    public async Task<IEnumerable<RelatedPublicationDto>> GetRelatedPublicationsAsync(Guid publicationId, int limit = 5)
+    public async Task<IEnumerable<RelatedPublicationDto>> GetRelatedPublicationsAsync(int publicationId, int limit = 5)
     {
         var targetPub = await _context.Publications.FindAsync(publicationId);
         if (targetPub == null) return Enumerable.Empty<RelatedPublicationDto>();
@@ -67,7 +67,7 @@ public class RecommendationService : IRecommendationService
             .ToList();
     }
 
-    public async Task<IEnumerable<PublicationDto>> GetRecommendationsForUserAsync(Guid userId, int limit = 5)
+    public async Task<IEnumerable<PublicationDto>> GetRecommendationsForUserAsync(int userId, int limit = 5)
     {
         // Get user's bookmarked publication IDs
         var bookmarkedPubIds = await _context.Bookmarks
@@ -87,17 +87,7 @@ public class RecommendationService : IRecommendationService
             .Select(f => f.FollowTargetId)
             .ToListAsync();
 
-        // Parse followed target IDs (assuming they are stored as Guid strings or raw terms)
-        var followedGuids = new List<Guid>();
-        foreach (var fid in followedTargetIds)
-        {
-            if (Guid.TryParse(fid, out var guid))
-            {
-                followedGuids.Add(guid);
-            }
-        }
-
-        var allInterestKeywordIds = bookmarkedKeywordIds.Union(followedGuids).Distinct().ToList();
+        var allInterestKeywordIds = bookmarkedKeywordIds.Union(followedTargetIds).Distinct().ToList();
 
         if (!allInterestKeywordIds.Any())
         {

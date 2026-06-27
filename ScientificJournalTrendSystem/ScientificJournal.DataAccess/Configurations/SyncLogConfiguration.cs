@@ -10,5 +10,13 @@ public class SyncLogConfiguration : IEntityTypeConfiguration<SyncLog>
     {
         builder.ToTable("sync_logs");
         builder.HasKey(sl => sl.Id);
+
+        builder.Property(sl => sl.Status)
+            .HasConversion<string>();
+
+        builder.HasOne(sl => sl.TriggeredByUser)
+            .WithMany()
+            .HasForeignKey(sl => sl.TriggeredByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

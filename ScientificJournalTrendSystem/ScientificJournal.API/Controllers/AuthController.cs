@@ -38,7 +38,15 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto request)
     {
         await _authService.ForgotPasswordAsync(request);
-        return Ok(new { message = "Password reset request received." });
+        return Ok(new { message = "Password reset request received. If the account exists, an email has been sent." });
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto request)
+    {
+        await _authService.ResetPasswordAsync(request);
+        return Ok(new { message = "Password has been reset successfully." });
     }
 
     [HttpPost("refresh-token")]
@@ -47,6 +55,14 @@ public class AuthController : ControllerBase
     {
         var result = await _authService.RefreshTokenAsync(request.RefreshToken);
         return Ok(result);
+    }
+
+    [HttpPost("verify-email")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequestDto request)
+    {
+        await _authService.VerifyEmailAsync(request.Email, request.Token);
+        return Ok(new { message = "Email verified successfully. You can now log in." });
     }
 
     [HttpPost("logout")]

@@ -13,7 +13,7 @@ public class NotificationRepository : GenericRepository<Notification>, INotifica
 {
     public NotificationRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IEnumerable<Notification>> GetUnreadByUserAsync(Guid userId) =>
+    public async Task<IEnumerable<Notification>> GetUnreadByUserAsync(int userId) =>
         await _context.Notifications
             .Where(n => n.UserId == userId && !n.IsRead)
             .ToListAsync();

@@ -5,12 +5,12 @@ namespace ScientificJournal.DataAccess.Entities;
 
 public class Publication
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    public int Id { get; set; }
     public string Title { get; set; } = string.Empty;
     public string? Abstract { get; set; }
     public int Year { get; set; }
     public string DOI { get; set; } = string.Empty;
-    public Guid JournalId { get; set; }
+    public int? JournalId { get; set; }
     public Journal? Journal { get; set; }
     public int CitationCount { get; set; }
     public string SourceApi { get; set; } = string.Empty;

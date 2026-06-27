@@ -13,7 +13,7 @@ public class PublicationRepository : GenericRepository<Publication>, IPublicatio
 {
     public PublicationRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IEnumerable<Publication>> SearchAsync(string? keyword, int? year, Guid? journalId, int page, int pageSize)
+    public async Task<IEnumerable<Publication>> SearchAsync(string? keyword, int? year, int? journalId, int page, int pageSize)
     {
         IQueryable<Publication> query = _context.Publications.Include(p => p.Journal);
 

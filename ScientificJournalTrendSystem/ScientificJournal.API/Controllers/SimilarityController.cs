@@ -18,8 +18,8 @@ public class SimilarityController : ControllerBase
         _recommendationService = recommendationService;
     }
 
-    [HttpGet("{id:guid}/similar")]
-    public async Task<IActionResult> GetSimilar(Guid id, [FromQuery] int topN = 10)
+    [HttpGet("{id:int}/similar")]
+    public async Task<IActionResult> GetSimilar(int id, [FromQuery] int topN = 10)
     {
         var result = await _recommendationService.GetRelatedPublicationsAsync(id, topN);
         return Ok(result);

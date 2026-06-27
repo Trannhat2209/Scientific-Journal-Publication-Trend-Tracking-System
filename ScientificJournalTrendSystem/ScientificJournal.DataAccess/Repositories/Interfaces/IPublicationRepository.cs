@@ -7,6 +7,6 @@ namespace ScientificJournal.DataAccess.Repositories.Interfaces;
 
 public interface IPublicationRepository : IGenericRepository<Publication>
 {
-    Task<IEnumerable<Publication>> SearchAsync(string? keyword, int? year, Guid? journalId, int page, int pageSize);
+    Task<IEnumerable<Publication>> SearchAsync(string? keyword, int? year, int? journalId, int page, int pageSize);
     Task<Publication?> GetByDoiAsync(string doi);
 }

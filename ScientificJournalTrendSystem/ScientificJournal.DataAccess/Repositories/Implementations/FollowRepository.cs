@@ -13,6 +13,6 @@ public class FollowRepository : GenericRepository<Follow>, IFollowRepository
 {
     public FollowRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IEnumerable<Follow>> GetByUserAsync(Guid userId) =>
+    public async Task<IEnumerable<Follow>> GetByUserAsync(int userId) =>
         await _context.Follows.Where(f => f.UserId == userId).ToListAsync();
 }

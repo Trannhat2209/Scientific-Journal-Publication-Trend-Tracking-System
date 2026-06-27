@@ -17,11 +17,13 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _dbContext;
     private readonly JwtSettings _jwtSettings;
+    private readonly IEmailService _emailService;
 
-    public AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtSettings)
+    public AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtSettings, IEmailService emailService)
     {
         _dbContext = dbContext;
         _jwtSettings = jwtSettings.Value;
+        _emailService = emailService;
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request)
@@ -32,6 +34,8 @@ public class AuthService : IAuthService
             throw new InvalidOperationException("Email already exists.");
         }
 
+        var verificationToken = new Random().Next(100000, 999999).ToString();
+
         var user = new User
         {
             Email = request.Email,
@@ -40,11 +44,21 @@ public class AuthService : IAuthService
             Role = request.Role,
             IsActive = true,
             IsDeleted = false,
+            IsEmailVerified = false,
+            EmailVerificationToken = verificationToken,
+            EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24),
             CreatedAt = DateTime.UtcNow
         };
 
         _dbContext.Users.Add(user);
         await _dbContext.SaveChangesAsync();
+
+        // Send email with verification code/token
+        await _emailService.SendEmailAsync(
+            user.Email,
+            "Verify your Scientific Journal publication account",
+            $"Welcome to the Scientific Journal Publication Trend Tracking System!\n\nYour email verification token is: {verificationToken}\n\nPlease submit this code via the verify-email endpoint or UI to activate your account."
+        );
 
         return BuildAuthResponse(user);
     }
@@ -61,6 +75,11 @@ public class AuthService : IAuthService
         if (!user.IsActive)
         {
             throw new UnauthorizedAccessException("Account is disabled.");
+        }
+
+        if (!user.IsEmailVerified)
+        {
+            throw new UnauthorizedAccessException("Please verify your email address before logging in.");
         }
 
         return BuildAuthResponse(user);
@@ -87,6 +106,13 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("User is not allowed to refresh token.");
         }
 
+        // Send security alert email about token refresh
+        await _emailService.SendEmailAsync(
+            user.Email,
+            "Scientific Journal publication account security alert",
+            $"Hello {user.FullName},\n\nA security token refresh action was triggered for your account at {DateTime.UtcNow} UTC. If this was not you, please secure your credentials immediately."
+        );
+
         return BuildAuthResponse(user);
     }
 
@@ -95,9 +121,80 @@ public class AuthService : IAuthService
         return Task.CompletedTask;
     }
 
-    public Task ForgotPasswordAsync(ForgotPasswordRequestDto request)
+    public async Task ForgotPasswordAsync(ForgotPasswordRequestDto request)
     {
-        return Task.CompletedTask;
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted);
+        if (user == null)
+        {
+            throw new InvalidOperationException("User not found.");
+        }
+
+        var resetToken = new Random().Next(100000, 999999).ToString();
+        user.PasswordResetToken = resetToken;
+        user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddHours(1);
+
+        await _dbContext.SaveChangesAsync();
+
+        await _emailService.SendEmailAsync(
+            user.Email,
+            "Reset your Scientific Journal Publication account password",
+            $"Hello {user.FullName},\n\nWe received a request to reset your password.\nYour password reset code is: {resetToken}\n\nPlease submit this code via the reset-password endpoint to update your password."
+        );
+    }
+
+    public async Task ResetPasswordAsync(ResetPasswordRequestDto request)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted);
+        if (user == null)
+        {
+            throw new InvalidOperationException("User not found.");
+        }
+
+        if (user.PasswordResetToken != request.Token)
+        {
+            throw new InvalidOperationException("Invalid password reset token.");
+        }
+
+        if (user.PasswordResetTokenExpiresAt < DateTime.UtcNow)
+        {
+            throw new InvalidOperationException("Password reset token has expired.");
+        }
+
+        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+
+        await _dbContext.SaveChangesAsync();
+    }
+
+    public async Task VerifyEmailAsync(string email, string token)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
+        if (user == null)
+        {
+            throw new InvalidOperationException("User not found.");
+        }
+
+        if (user.IsEmailVerified)
+        {
+            throw new InvalidOperationException("Email is already verified.");
+        }
+
+        if (user.EmailVerificationToken != token)
+        {
+            throw new InvalidOperationException("Invalid verification token.");
+        }
+
+        if (user.EmailVerificationTokenExpiresAt < DateTime.UtcNow)
+        {
+            throw new InvalidOperationException("Verification token has expired.");
+        }
+
+        user.IsEmailVerified = true;
+        user.EmailVerificationToken = null;
+        user.EmailVerificationTokenExpiresAt = null;
+
+        await _dbContext.SaveChangesAsync();
     }
 
     private AuthResponseDto BuildAuthResponse(User user)

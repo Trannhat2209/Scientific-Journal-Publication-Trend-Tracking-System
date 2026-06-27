@@ -9,5 +9,7 @@ namespace ScientificJournal.Business.Services.Interfaces;
 public interface IPublicationService
 {
     Task<PaginatedResponse<PublicationDto>> SearchPublicationsAsync(PublicationSearchRequestDto request);
-    Task<PublicationDetailDto> GetPublicationDetailAsync(Guid id);
+    Task<PublicationDetailDto> GetPublicationDetailAsync(int id);
+    Task<object> GetPublicationsStatisticsAsync();
 }
+

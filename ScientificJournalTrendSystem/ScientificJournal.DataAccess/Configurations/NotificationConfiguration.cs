@@ -11,6 +11,9 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.ToTable("notifications");
         builder.HasKey(n => n.Id);
 
+        builder.Property(n => n.NotificationType)
+            .HasConversion<string>();
+
         builder.HasOne(n => n.User)
             .WithMany(u => u.Notifications)
             .HasForeignKey(n => n.UserId)

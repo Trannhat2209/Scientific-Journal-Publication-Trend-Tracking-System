@@ -7,7 +7,7 @@ namespace ScientificJournal.Business.Services.Interfaces;
 
 public interface IBookmarkService
 {
-    Task<IEnumerable<PublicationDto>> GetBookmarksAsync(Guid userId);
-    Task AddBookmarkAsync(Guid userId, Guid publicationId);
-    Task RemoveBookmarkAsync(Guid userId, Guid publicationId);
+    Task<IEnumerable<PublicationDto>> GetBookmarksAsync(int userId);
+    Task AddBookmarkAsync(int userId, int publicationId);
+    Task RemoveBookmarkAsync(int userId, int publicationId);
 }

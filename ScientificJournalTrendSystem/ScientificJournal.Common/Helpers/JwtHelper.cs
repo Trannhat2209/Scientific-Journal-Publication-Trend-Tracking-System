@@ -6,12 +6,12 @@ namespace ScientificJournal.Common.Helpers;
 
 public static class JwtHelper
 {
-    public static string GenerateAccessToken(Guid userId, string email, string fullName, string role, string secret, TimeSpan lifetime)
+    public static string GenerateAccessToken(int userId, string email, string fullName, string role, string secret, TimeSpan lifetime)
     {
         return GenerateToken(userId, email, fullName, role, secret, lifetime, "access");
     }
 
-    public static string GenerateRefreshToken(Guid userId, string email, string fullName, string role, string secret, TimeSpan lifetime)
+    public static string GenerateRefreshToken(int userId, string email, string fullName, string role, string secret, TimeSpan lifetime)
     {
         return GenerateToken(userId, email, fullName, role, secret, lifetime, "refresh");
     }
@@ -40,7 +40,7 @@ public static class JwtHelper
         return principal;
     }
 
-    private static string GenerateToken(Guid userId, string email, string fullName, string role, string secret, TimeSpan lifetime, string tokenType)
+    private static string GenerateToken(int userId, string email, string fullName, string role, string secret, TimeSpan lifetime, string tokenType)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
         var key = System.Text.Encoding.UTF8.GetBytes(secret);

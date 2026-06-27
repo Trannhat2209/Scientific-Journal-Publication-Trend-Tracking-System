@@ -20,7 +20,7 @@ public class RelationshipNetworkService : IRelationshipNetworkService
         _similarityService = similarityService;
     }
 
-    public async Task<RelationshipNetworkDto> GetRelationshipNetworkAsync(Guid publicationId, double similarityThreshold = 0.3)
+    public async Task<RelationshipNetworkDto> GetRelationshipNetworkAsync(int publicationId, double similarityThreshold = 0.3)
     {
         var network = new RelationshipNetworkDto();
 
@@ -56,7 +56,7 @@ public class RelationshipNetworkService : IRelationshipNetworkService
             .ToListAsync();
 
         // 3. Compute similarity and add nodes + edges from central
-        var nodesAdded = new HashSet<Guid> { publicationId };
+        var nodesAdded = new HashSet<int> { publicationId };
 
         foreach (var pub in relatedPubs)
         {

@@ -9,6 +9,7 @@ public class TrendingMetricConfiguration : IEntityTypeConfiguration<TrendingMetr
     public void Configure(EntityTypeBuilder<TrendingMetric> builder)
     {
         builder.ToTable("trending_metrics");
+        builder.Property(tm => tm.Year).HasColumnName("year");
         builder.HasIndex(tm => new { tm.KeywordId, tm.Year }).IsUnique();
     }
 }

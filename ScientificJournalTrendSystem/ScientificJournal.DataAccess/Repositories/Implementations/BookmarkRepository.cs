@@ -13,7 +13,7 @@ public class BookmarkRepository : GenericRepository<Bookmark>, IBookmarkReposito
 {
     public BookmarkRepository(AppDbContext context) : base(context) { }
 
-    public async Task<IEnumerable<Bookmark>> GetByUserAsync(Guid userId) =>
+    public async Task<IEnumerable<Bookmark>> GetByUserAsync(int userId) =>
         await _context.Bookmarks
             .Include(b => b.Publication)
             .Where(b => b.UserId == userId)

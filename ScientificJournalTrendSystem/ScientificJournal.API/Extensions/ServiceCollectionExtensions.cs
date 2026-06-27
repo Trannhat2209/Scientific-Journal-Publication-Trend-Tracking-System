@@ -39,6 +39,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISyncLogRepository, SyncLogRepository>();
 
         // 4. Business Services
+        services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IBookmarkService, BookmarkService>();
         services.AddScoped<IDashboardService, DashboardService>();
@@ -56,6 +57,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISimilarityService, SimilarityService>();
         services.AddScoped<IRecommendationService, RecommendationService>();
         services.AddScoped<IRelationshipNetworkService, RelationshipNetworkService>();
+        services.AddScoped<INotificationHubService, ScientificJournal.API.Services.NotificationHubService>();
+
 
         // 5. Hangfire Integration
         services.AddHangfire(config => config

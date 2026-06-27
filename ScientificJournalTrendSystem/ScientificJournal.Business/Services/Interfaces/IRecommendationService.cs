@@ -7,6 +7,6 @@ namespace ScientificJournal.Business.Services.Interfaces;
 
 public interface IRecommendationService
 {
-    Task<IEnumerable<PublicationDto>> GetRecommendationsForUserAsync(Guid userId, int limit = 5);
-    Task<IEnumerable<RelatedPublicationDto>> GetRelatedPublicationsAsync(Guid publicationId, int limit = 5);
+    Task<IEnumerable<PublicationDto>> GetRecommendationsForUserAsync(int userId, int limit = 5);
+    Task<IEnumerable<RelatedPublicationDto>> GetRelatedPublicationsAsync(int publicationId, int limit = 5);
 }
