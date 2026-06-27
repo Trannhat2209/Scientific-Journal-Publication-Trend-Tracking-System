@@ -436,5 +436,9 @@ build/
 .env
 .env.local
 
+# Local auth data
+server/data/*.json
+!server/data/.gitkeep
+
 # VS Code
 .vscode/
