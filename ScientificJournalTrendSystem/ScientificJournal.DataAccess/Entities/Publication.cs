@@ -16,6 +16,7 @@ public class Publication
     public string SourceApi { get; set; } = string.Empty;
     public string? MongoMetadataId { get; set; }
     public bool IsDeleted { get; set; } = false;
+    public bool IsOriginal { get; set; } = false;
     public DateTime SyncedAt { get; set; } = DateTime.UtcNow;
 
     // Navigation collections

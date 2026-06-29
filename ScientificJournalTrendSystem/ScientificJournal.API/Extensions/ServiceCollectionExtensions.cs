@@ -55,6 +55,7 @@ public static class ServiceCollectionExtensions
 
         // Core Refactoring Services
         services.AddScoped<ISimilarityService, SimilarityService>();
+        services.AddScoped<IPlagiarismCheckService, GoogleScholarAiService>();
         services.AddScoped<IRecommendationService, RecommendationService>();
         services.AddScoped<IRelationshipNetworkService, RelationshipNetworkService>();
         services.AddScoped<INotificationHubService, ScientificJournal.API.Services.NotificationHubService>();

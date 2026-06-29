@@ -87,5 +87,11 @@ public class NotificationService : INotificationService
             // Ignore SignalR client push errors if no client is listening/connected
         }
     }
+
+    public async Task<int> GetUnreadCountAsync(int userId)
+    {
+        return await _context.Notifications
+            .CountAsync(n => n.UserId == userId && !n.IsRead);
+    }
 }
 

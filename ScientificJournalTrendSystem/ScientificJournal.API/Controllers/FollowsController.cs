@@ -1,9 +1,12 @@
 using System;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
+using ScientificJournal.DataAccess.Context;
 
 namespace ScientificJournal.API.Controllers;
 
@@ -17,6 +20,29 @@ public class FollowsController : ControllerBase
     public FollowsController(IFollowService followService)
     {
         _followService = followService;
+    }
+
+    [HttpGet("suggestions")]
+    public async Task<IActionResult> GetSuggestions([FromServices] AppDbContext context)
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (!int.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var followedKeywordIds = await context.Follows
+            .Where(f => f.UserId == userId && f.FollowType == ScientificJournal.Common.Enums.FollowType.Keyword)
+            .Select(f => f.FollowTargetId)
+            .ToListAsync();
+
+        var suggestions = await context.Keywords
+            .Where(k => !followedKeywordIds.Contains(k.Id))
+            .Take(10)
+            .Select(k => new { k.Id, k.Term })
+            .ToListAsync();
+
+        return Ok(suggestions);
     }
 
     [HttpGet]

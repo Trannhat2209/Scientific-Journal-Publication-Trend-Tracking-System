@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
+using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Helpers;
 using ScientificJournal.DataAccess.Context;
 
@@ -43,6 +44,46 @@ public class SimilarityService : ISimilarityService
     {
         var score = await GetSimilarityScoreAsync(pubId1, pubId2);
         return score >= 0.5;
+    }
+
+    public async Task<CappedSimilarityDto> GetCappedSimilarityAsync(int pubId1, int pubId2, UserRole role, bool isPro)
+    {
+        double originalScore = await GetSimilarityScoreAsync(pubId1, pubId2);
+
+        // Determine limit
+        double limit = 1.0;
+        if (role == UserRole.Student)
+        {
+            limit = isPro ? 0.30 : 0.15;
+        }
+        else if (role == UserRole.Lecturer)
+        {
+            limit = isPro ? 0.40 : 0.20;
+        }
+        else if (role == UserRole.Researcher)
+        {
+            limit = isPro ? 0.45 : 0.25;
+        }
+        else if (role == UserRole.Admin)
+        {
+            limit = 1.0;
+        }
+
+        bool isCapped = originalScore > limit;
+        double displayScore = isCapped ? limit : originalScore;
+
+        string message = isCapped
+            ? $"Similarity score is capped at {(limit * 100)}% for {role} ({(isPro ? "Pro" : "Free")} tier). Upgrade to Pro package to view higher scores."
+            : $"Viewing similarity score (Limit is {(limit * 100)}% for {role}).";
+
+        return new CappedSimilarityDto
+        {
+            OriginalScore = Math.Round(originalScore * 100, 2),
+            DisplayScore = Math.Round(displayScore * 100, 2),
+            LimitApplied = Math.Round(limit * 100, 2),
+            IsCapped = isCapped,
+            Message = message
+        };
     }
 
     private HashSet<string> Tokenize(string text)
