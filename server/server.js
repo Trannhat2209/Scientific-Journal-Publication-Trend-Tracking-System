@@ -1052,7 +1052,19 @@ async function handleAdminCancelPayment(req, res, orderCode) {
     return;
   }
 
-  if (savedPayment.status !== "PAID" && savedPayment.status !== "CANCELLED") {
+  if (savedPayment.status === "PAID") {
+    sendJson(res, 409, { error: "Paid payments cannot be cancelled." });
+    return;
+  }
+
+  if (savedPayment.status === "CANCELLED") {
+    sendJson(res, 200, { payment: mapPaymentForAdmin(savedPayment) });
+    return;
+  }
+
+  if (savedPayment.status === "EXPIRED" || savedPayment.status === "FAILED") {
+    markPayment(orderCode, "CANCELLED");
+  } else {
     await payos.paymentRequests.cancel(orderCode, "Cancelled by admin");
     markPayment(orderCode, "CANCELLED");
   }

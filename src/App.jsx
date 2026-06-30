@@ -182,7 +182,12 @@ const apiFetch = async (path, options = {}) => {
     : await response.text();
 
   if (!response.ok) {
+    const validationMessage =
+      payload?.errors && typeof payload.errors === "object"
+        ? Object.values(payload.errors).flat().join(" ")
+        : "";
     const message =
+      validationMessage ||
       payload?.message ||
       payload?.error ||
       payload?.title ||
@@ -195,6 +200,54 @@ const apiFetch = async (path, options = {}) => {
 };
 
 const ACADEMIC_PROVIDER_TEST_PASSWORD = "Scholar2024";
+
+const getFriendlyRegisterError = (error) => {
+  let message = error?.message || "Registration failed. Please check your details.";
+
+  try {
+    const parsed = JSON.parse(message);
+    const validationMessages =
+      parsed?.errors && typeof parsed.errors === "object"
+        ? Object.values(parsed.errors).flat().join(" ")
+        : "";
+    message =
+      validationMessages || parsed?.message || parsed?.error || parsed?.title || message;
+  } catch {
+    // The backend usually returns plain English; JSON strings are normalized above.
+  }
+
+  if (/email already exists/i.test(message)) {
+    return {
+      type: "notice",
+      title: "This email is already registered.",
+      text: "Use Login to continue with this account, or register with a different email address.",
+      actionText: "Go to Login",
+      actionRoute: "/login",
+    };
+  }
+
+  if (/password/i.test(message) && /8/i.test(message)) {
+    return {
+      type: "error",
+      title: "Password is too short.",
+      text: "Use at least 8 characters for your password.",
+    };
+  }
+
+  if (/email/i.test(message)) {
+    return {
+      type: "error",
+      title: "Check your email address.",
+      text: message,
+    };
+  }
+
+  return {
+    type: "error",
+    title: "Registration could not be completed.",
+    text: message,
+  };
+};
 
 const getAcademicProviderEmail = ({ provider, role, email }) => {
   const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -3443,7 +3496,7 @@ function RegisterPage() {
         450,
       );
     } catch (error) {
-      setAuthFeedback({ type: "error", text: error.message });
+      setAuthFeedback(getFriendlyRegisterError(error));
     } finally {
       setIsRegistering(false);
     }
@@ -3718,12 +3771,18 @@ function RegisterPage() {
               </button>
             </div>
             {authFeedback && (
-              <p
-                className={`login-feedback ${authFeedback.type}`}
+              <div
+                className={`login-feedback register-feedback ${authFeedback.type}`}
                 role={authFeedback.type === "error" ? "alert" : "status"}
               >
-                {authFeedback.text}
-              </p>
+                {authFeedback.title ? <strong>{authFeedback.title}</strong> : null}
+                <span>{authFeedback.text}</span>
+                {authFeedback.actionRoute ? (
+                  <a href={authFeedback.actionRoute} onClick={navTo(authFeedback.actionRoute)}>
+                    {authFeedback.actionText || "Continue"}
+                  </a>
+                ) : null}
+              </div>
             )}
           </form>
 
@@ -16747,7 +16806,7 @@ function AdminUserManagementPage() {
   const [users, setUsers] = React.useState(getAdminManagedUsers);
   const [editor, setEditor] = React.useState(null);
   const [message, setMessage] = React.useState("");
-  const pageSize = 4;
+  const pageSize = 5;
 
   const persistUsers = (nextUsers) => {
     setUsers(nextUsers);
@@ -16763,7 +16822,7 @@ function AdminUserManagementPage() {
     return matchesQuery && matchesRole && matchesStatus;
   });
   const totalPages = Math.max(1, Math.ceil(visibleUsers.length / pageSize));
-  const safePage = Math.max(1, page);
+  const safePage = Math.min(Math.max(1, page), totalPages);
   const pagedUsers = visibleUsers.slice(
     (safePage - 1) * pageSize,
     safePage * pageSize,
@@ -17525,6 +17584,7 @@ function AdminPaymentManagementPage() {
   const [query, setQuery] = React.useState("");
   const [message, setMessage] = React.useState("");
   const [loadingOrderCode, setLoadingOrderCode] = React.useState(null);
+  const [paymentActionNotes, setPaymentActionNotes] = React.useState({});
 
   const loadPayments = React.useCallback(() => {
     return fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/payments`, {
@@ -17565,9 +17625,40 @@ function AdminPaymentManagementPage() {
     {},
   );
 
+  const canOpenPayment = (payment) => Boolean(payment.checkoutUrl);
+  const canVerifyPayment = (payment) => Boolean(payment.orderCode);
+  const canCancelPayment = (payment) => payment.status !== "PAID";
+
+  const openPaymentLink = (payment) => {
+    if (!canOpenPayment(payment)) {
+      setMessage(`Payment ${payment.orderCode} does not have a checkout link.`);
+      return;
+    }
+
+    const popup = window.open(payment.checkoutUrl, "_blank", "noopener,noreferrer");
+    setMessage(
+      popup
+        ? `Opened PayOS checkout for payment ${payment.orderCode}.`
+        : "Your browser blocked the PayOS popup. Allow popups or copy the checkout link.",
+    );
+  };
+
   const runPaymentAction = async (payment, action) => {
+    if (action === "cancel" && !canCancelPayment(payment)) {
+      setMessage(`Payment ${payment.orderCode} is PAID; it cannot be cancelled.`);
+      setPaymentActionNotes((current) => ({
+        ...current,
+        [payment.orderCode]: "Paid payments cannot be cancelled.",
+      }));
+      return;
+    }
+
     setLoadingOrderCode(payment.orderCode);
     setMessage("");
+    setPaymentActionNotes((current) => ({
+      ...current,
+      [payment.orderCode]: action === "verify" ? "Checking PayOS..." : "Cancelling...",
+    }));
     try {
       const response = await fetch(
         `${GOOGLE_AUTH_BASE_URL}/api/admin/payments/${payment.orderCode}/${action}`,
@@ -17588,11 +17679,23 @@ function AdminPaymentManagementPage() {
             : item,
         ),
       );
-      setMessage(
+      const nextStatus = payload.payment?.status || payment.status;
+      const nextMessage =
         action === "verify"
-          ? `Payment ${payment.orderCode} verified.`
-          : `Payment ${payment.orderCode} cancelled.`,
-      );
+          ? nextStatus === "PAID"
+            ? `Payment ${payment.orderCode} is PAID. Pro was activated.`
+            : `Payment ${payment.orderCode} is still ${nextStatus}.`
+          : `Payment ${payment.orderCode} is ${nextStatus}.`;
+      setMessage(nextMessage);
+      setPaymentActionNotes((current) => ({
+        ...current,
+        [payment.orderCode]:
+          action === "verify"
+            ? `Status: ${nextStatus}`
+            : nextStatus === "CANCELLED"
+              ? "Cancelled"
+              : `Status: ${nextStatus}`,
+      }));
       sendAdminAuditLog(
         action === "verify"
           ? `Verified payment ${payment.orderCode} for ${payment.email}.`
@@ -17602,6 +17705,10 @@ function AdminPaymentManagementPage() {
       );
     } catch (error) {
       setMessage(error.message);
+      setPaymentActionNotes((current) => ({
+        ...current,
+        [payment.orderCode]: error.message,
+      }));
     } finally {
       setLoadingOrderCode(null);
     }
@@ -17722,39 +17829,56 @@ function AdminPaymentManagementPage() {
                           : "N/A"}
                     </td>
                     <td>
-                      {payment.checkoutUrl ? (
-                        <a
+                      <div className="admin-payment-actions">
+                        <button
+                          type="button"
                           className="admin-payment-link"
-                          href={payment.checkoutUrl}
-                          target="_blank"
-                          rel="noreferrer"
+                          disabled={!canOpenPayment(payment)}
+                          onClick={() => openPaymentLink(payment)}
+                          title={
+                            canOpenPayment(payment)
+                              ? "Open PayOS checkout link"
+                              : "No checkout link available"
+                          }
                         >
                           Open
-                        </a>
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-user-action edit"
+                          disabled={
+                            loadingOrderCode === payment.orderCode ||
+                            !canVerifyPayment(payment)
+                          }
+                          onClick={() => runPaymentAction(payment, "verify")}
+                          title="Check payment status"
+                          aria-label={`Check payment ${payment.orderCode}`}
+                        >
+                          {loadingOrderCode === payment.orderCode ? (
+                            <span className="admin-payment-action-spinner" aria-hidden="true" />
+                          ) : (
+                            <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-user-action delete"
+                          disabled={
+                            loadingOrderCode === payment.orderCode ||
+                            !canCancelPayment(payment)
+                          }
+                          onClick={() => runPaymentAction(payment, "cancel")}
+                          title="Cancel payment"
+                          aria-label={`Cancel payment ${payment.orderCode}`}
+                        >
+                          <MiniIcon path="M6 6l12 12M18 6 6 18" />
+                        </button>
+                      </div>
+                      {paymentActionNotes[payment.orderCode] ? (
+                        <small className="admin-payment-action-note">
+                          {paymentActionNotes[payment.orderCode]}
+                        </small>
                       ) : null}
-                      <button
-                        type="button"
-                        className="admin-user-action edit"
-                        disabled={loadingOrderCode === payment.orderCode}
-                        onClick={() => runPaymentAction(payment, "verify")}
-                        title="Verify with PayOS"
-                      >
-                        <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-user-action delete"
-                        disabled={
-                          loadingOrderCode === payment.orderCode ||
-                          payment.status === "PAID" ||
-                          payment.status === "CANCELLED" ||
-                          payment.status === "EXPIRED"
-                        }
-                        onClick={() => runPaymentAction(payment, "cancel")}
-                        title="Cancel payment link"
-                      >
-                        <MiniIcon path="M6 6l12 12M18 6 6 18" />
-                      </button>
                     </td>
                   </tr>
                 ))}
