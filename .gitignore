@@ -444,3 +444,7 @@ server/data/*.json
 .vscode/
 
 .fake
+
+# ASP.NET runtime/generated files
+ScientificJournalTrendSystem/ScientificJournal.API/App_Data/DataProtectionKeys/
+ScientificJournalTrendSystem/ScientificJournal.API/wwwroot/emails/*.html

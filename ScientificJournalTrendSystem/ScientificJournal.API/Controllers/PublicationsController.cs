@@ -13,10 +13,14 @@ namespace ScientificJournal.API.Controllers;
 public class PublicationsController : ControllerBase
 {
     private readonly IPublicationService _publicationService;
+    private readonly ISerpApiScholarSimilarityService _scholarSimilarityService;
 
-    public PublicationsController(IPublicationService publicationService)
+    public PublicationsController(
+        IPublicationService publicationService,
+        ISerpApiScholarSimilarityService scholarSimilarityService)
     {
         _publicationService = publicationService;
+        _scholarSimilarityService = scholarSimilarityService;
     }
 
     [HttpGet]
@@ -39,6 +43,15 @@ public class PublicationsController : ControllerBase
     public async Task<IActionResult> GetStatistics()
     {
         var result = await _publicationService.GetPublicationsStatisticsAsync();
+        return Ok(result);
+    }
+
+    [HttpPost("similarity-check")]
+    public async Task<IActionResult> CheckSimilarity(
+        [FromBody] PublicationSimilarityCheckRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _scholarSimilarityService.CheckSimilarityAsync(request, cancellationToken);
         return Ok(result);
     }
 

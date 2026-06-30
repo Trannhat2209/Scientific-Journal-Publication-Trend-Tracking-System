@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.DTOs.Request.Export;
+using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 
 namespace ScientificJournal.API.Controllers;
@@ -55,6 +56,8 @@ public class DashboardController : ControllerBase
             fullName = dbUser.FullName,
             role = dbUser.Role.ToString(),
             isPro = dbUser.IsPro,
+            plan = dbUser.IsPro ? "Pro" : "Free",
+            searchAccuracy = PlanPolicy.GetSearchAccuracy(dbUser.Role, dbUser.IsPro),
             bookmarksCount,
             followsCount,
             unreadAlerts,

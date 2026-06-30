@@ -49,6 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicationService, PublicationService>();
         services.AddScoped<ISyncService, SyncService>();
         services.AddScoped<ITrendingService, TrendingService>();
+        services.AddHttpClient<ISerpApiScholarSimilarityService, SerpApiScholarSimilarityService>();
 
         // 4a. FluentValidation validators
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
@@ -62,14 +63,17 @@ public static class ServiceCollectionExtensions
 
 
         // 5. Hangfire Integration
-        services.AddHangfire(config => config
-            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-            .UseSimpleAssemblyNameTypeSerializer()
-            .UseRecommendedSerializerSettings()
-            .UseSqlServerStorage(configuration.GetConnectionString("DefaultConnection") 
-                                 ?? configuration[AppSettings.SqlConnectionString]));
+        if (configuration.GetValue("Hangfire:Enabled", true))
+        {
+            services.AddHangfire(config => config
+                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UseSqlServerStorage(configuration.GetConnectionString("DefaultConnection")
+                                     ?? configuration[AppSettings.SqlConnectionString]));
 
-        services.AddHangfireServer();
+            services.AddHangfireServer();
+        }
 
         return services;
     }

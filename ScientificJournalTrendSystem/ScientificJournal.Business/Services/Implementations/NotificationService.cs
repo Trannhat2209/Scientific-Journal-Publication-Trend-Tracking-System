@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
+using ScientificJournal.Common.Enums;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
 
@@ -86,6 +87,59 @@ public class NotificationService : INotificationService
         {
             // Ignore SignalR client push errors if no client is listening/connected
         }
+    }
+
+    public async Task<Notification?> CreateNotificationForEmailAsync(
+        string recipientEmail,
+        string message,
+        NotificationType notificationType = NotificationType.SYSTEM,
+        int? publicationId = null)
+    {
+        var normalizedEmail = recipientEmail.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedEmail) || string.IsNullOrWhiteSpace(message))
+        {
+            return null;
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == normalizedEmail && !u.IsDeleted);
+
+        if (user == null)
+        {
+            return null;
+        }
+
+        var notification = new Notification
+        {
+            UserId = user.Id,
+            Message = message,
+            IsRead = false,
+            PublicationId = publicationId,
+            NotificationType = notificationType,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Notifications.Add(notification);
+        await _context.SaveChangesAsync();
+
+        try
+        {
+            await _notificationHubService.SendNotificationAsync(user.Id.ToString(), new
+            {
+                id = notification.Id,
+                message = notification.Message,
+                isRead = notification.IsRead,
+                publicationId = notification.PublicationId,
+                notificationType = notification.NotificationType.ToString(),
+                createdAt = notification.CreatedAt
+            });
+        }
+        catch
+        {
+            // Ignore SignalR client push errors if no client is listening/connected
+        }
+
+        return notification;
     }
 
     public async Task<int> GetUnreadCountAsync(int userId)
