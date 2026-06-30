@@ -32,6 +32,19 @@ public class NotificationsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("unread-count")]
+    public async Task<IActionResult> GetUnreadCount()
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (!int.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var count = await _notificationService.GetUnreadCountAsync(userId);
+        return Ok(new { count });
+    }
+
     [HttpPut("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id)
     {

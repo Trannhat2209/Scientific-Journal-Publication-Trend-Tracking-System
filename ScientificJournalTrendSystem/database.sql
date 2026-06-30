@@ -24,12 +24,15 @@ GO
 
 USE ScientificJournalDB;
 GO
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
 
 PRINT '>> Creating tables...';
 GO
 
 -- ================================================================
---  1. USERS (Bổ sung các trường xác thực Email)
+--  1. USERS (Bổ sung các trường xác thực Email & Premium)
 -- ================================================================
 CREATE TABLE users (
     id              INT                 IDENTITY(1,1)   NOT NULL,
@@ -40,8 +43,11 @@ CREATE TABLE users (
     is_active       BIT                 NOT NULL        CONSTRAINT df_users_active  DEFAULT 1,
     is_deleted      BIT                 NOT NULL        CONSTRAINT df_users_del     DEFAULT 0,
     is_email_verified BIT               NOT NULL        CONSTRAINT df_users_verified DEFAULT 0,
+    is_pro          BIT                 NOT NULL        CONSTRAINT df_users_pro      DEFAULT 0,
     email_verification_token NVARCHAR(100) NULL,
     email_verification_token_expires_at DATETIME2 NULL,
+    password_reset_token NVARCHAR(100) NULL,
+    password_reset_token_expires_at DATETIME2 NULL,
     last_login_at   DATETIME2           NULL,
     created_at      DATETIME2           NOT NULL        CONSTRAINT df_users_cat     DEFAULT GETUTCDATE(),
     updated_at      DATETIME2           NULL,
@@ -86,6 +92,7 @@ CREATE TABLE publications (
     mongo_metadata_id   NVARCHAR(100)       NULL,
     synced_at           DATETIME2           NOT NULL        CONSTRAINT df_pub_sync  DEFAULT GETUTCDATE(),
     is_deleted          BIT                 NOT NULL        CONSTRAINT df_pub_del   DEFAULT 0,
+    is_original         BIT                 NOT NULL        CONSTRAINT df_pub_orig  DEFAULT 0,
     created_at          DATETIME2           NOT NULL        CONSTRAINT df_pub_cat   DEFAULT GETUTCDATE(),
     updated_at          DATETIME2           NULL,
 
@@ -221,7 +228,7 @@ GO
 CREATE TABLE notifications (
     id              INT                 IDENTITY(1,1)   NOT NULL,
     user_id         INT                 NOT NULL,
-    publication_id  NULL,
+    publication_id  INT                 NULL,
     message         NVARCHAR(500)       NOT NULL,
     notification_type NVARCHAR(50)      NOT NULL        CONSTRAINT df_nf_type   DEFAULT 'NEW_PUBLICATION',
     is_read         BIT                 NOT NULL        CONSTRAINT df_nf_read   DEFAULT 0,
@@ -295,11 +302,11 @@ PRINT '>> Seeding data...';
 GO
 
 SET IDENTITY_INSERT users ON;
-INSERT INTO users (id, full_name, email, password_hash, role, is_email_verified) VALUES
-(1, N'Nguyen Van Admin',  'admin@scijtrend.io',              '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Admin', 1),
-(2, N'Le Thi Minh',       'le.researcher@uni.edu.vn',        '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Researcher', 1),
-(3, N'Tran Quoc Binh',    'tran.lecturer@hcmus.edu.vn',      '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Lecturer', 1),
-(4, N'Pham Thi Lan',      'student01@student.hcmus.edu.vn',  '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Student', 1);
+INSERT INTO users (id, full_name, email, password_hash, role, is_email_verified, is_pro) VALUES
+(1, N'Nguyen Van Admin',  'admin@scijtrend.io',              '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Admin', 1, 1),
+(2, N'Le Thi Minh',       'le.researcher@uni.edu.vn',        '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Researcher', 1, 0),
+(3, N'Tran Quoc Binh',    'tran.lecturer@hcmus.edu.vn',      '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Lecturer', 1, 0),
+(4, N'Pham Thi Lan',      'student01@student.hcmus.edu.vn',  '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Student', 1, 0);
 SET IDENTITY_INSERT users OFF;
 
 SET IDENTITY_INSERT journals ON;
@@ -311,25 +318,25 @@ SET IDENTITY_INSERT journals OFF;
 
 SET IDENTITY_INSERT publications ON;
 INSERT INTO publications
-    (id, journal_id, title, abstract, publication_year, doi, citation_count, source_api, external_paper_id)
+    (id, journal_id, title, abstract, publication_year, doi, citation_count, source_api, external_paper_id, is_original)
 VALUES
 (
     1, 2,
     N'Attention Is All You Need',
     N'The dominant sequence transduction models are based on complex recurrent or convolutional neural networks that include an encoder and a decoder. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.',
-    2017, '10.48550/arXiv.1706.03762', 98420, 'SemanticScholar', 'paper_transformer_01'
+    2017, '10.48550/arXiv.1706.03762', 98420, 'SemanticScholar', 'paper_transformer_01', 1
 ),
 (
     2, 1,
     N'BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding',
     N'We introduce a new language representation model called BERT, which stands for Bidirectional Encoder Representations from Transformers. Unlike recent language representation models, BERT is designed to pre-train deep bidirectional representations from unlabeled text.',
-    2019, '10.18653/v1/N19-1423', 68310, 'SemanticScholar', 'paper_bert_01'
+    2019, '10.18653/v1/N19-1423', 68310, 'SemanticScholar', 'paper_bert_01', 1
 ),
 (
     3, 1,
     N'GPT-4 Technical Report',
     N'We report the development of GPT-4, a large-scale, multimodal model which can accept image and text inputs and produce text outputs. GPT-4 exhibits human-level performance on various professional and academic benchmarks.',
-    2023, '10.48550/arXiv.2303.08774', 12540, 'SemanticScholar', 'paper_gpt4_01'
+    2023, '10.48550/arXiv.2303.08774', 12540, 'SemanticScholar', 'paper_gpt4_01', 1
 );
 SET IDENTITY_INSERT publications OFF;
 
