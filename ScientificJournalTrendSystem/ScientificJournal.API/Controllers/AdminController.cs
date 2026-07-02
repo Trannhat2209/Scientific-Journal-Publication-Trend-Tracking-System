@@ -24,13 +24,15 @@ public class AdminController : ControllerBase
     private readonly ITrendingService _trendingService;
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly INotificationHubService _notificationHubService;
 
-    public AdminController(ISyncService syncService, ITrendingService trendingService, AppDbContext context, IConfiguration configuration)
+    public AdminController(ISyncService syncService, ITrendingService trendingService, AppDbContext context, IConfiguration configuration, INotificationHubService notificationHubService)
     {
         _syncService = syncService;
         _trendingService = trendingService;
         _context = context;
         _configuration = configuration;
+        _notificationHubService = notificationHubService;
     }
 
     [HttpGet("overview")]
@@ -338,6 +340,22 @@ public class AdminController : ControllerBase
 
         _context.Notifications.AddRange(notifications);
         await _context.SaveChangesAsync();
+
+        for (var index = 0; index < users.Count; index++)
+        {
+            var user = users[index];
+            var notification = notifications[index];
+            await _notificationHubService.SendNotificationAsync(user.Id.ToString(), new
+            {
+                type = "broadcast",
+                notificationId = notification.Id,
+                title = "Admin Notification",
+                message = notification.Message,
+                notificationType = notification.NotificationType.ToString(),
+                createdAt = notification.CreatedAt
+            });
+        }
+
         await LogAuditAsync("Notification Management", $"Broadcast notification to {users.Count} users. Target role: {request.RecipientRole ?? "All"}.", "Success", "ADMIN-NOTIFICATION-BROADCAST");
 
         return Ok(new
