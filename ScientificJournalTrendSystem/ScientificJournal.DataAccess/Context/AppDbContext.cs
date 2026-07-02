@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<SyncLog> SyncLogs => Set<SyncLog>();
+    public DbSet<PublicationSubmission> PublicationSubmissions => Set<PublicationSubmission>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

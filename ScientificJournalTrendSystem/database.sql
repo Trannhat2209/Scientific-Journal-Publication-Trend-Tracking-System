@@ -11,6 +11,12 @@
 USE master;
 GO
 
+SET ANSI_NULLS ON;
+GO
+
+SET QUOTED_IDENTIFIER ON;
+GO
+
 -- Xóa DB cũ nếu tồn tại (tiện cho lần chạy lại)
 IF EXISTS (SELECT 1 FROM sys.databases WHERE name = N'ScientificJournalDB')
 BEGIN
@@ -296,6 +302,27 @@ CREATE INDEX ix_sl_started      ON sync_logs (started_at DESC);
 GO
 
 -- ================================================================
+--  13. PUBLICATION_SUBMISSIONS
+-- ================================================================
+CREATE TABLE publication_submissions (
+    id                   INT IDENTITY(1,1),
+    title                NVARCHAR(1000)      NOT NULL,
+    abstract             NVARCHAR(MAX)       NULL,
+    doi                  NVARCHAR(300)       NULL,
+    authors              NVARCHAR(1000)      NOT NULL,
+    keywords             NVARCHAR(1000)      NULL,
+    status               NVARCHAR(50)        NOT NULL,
+    submitted_by_user_id INT                 NOT NULL,
+    rejected_reason      NVARCHAR(1000)      NULL,
+    created_at           DATETIME2           NOT NULL,
+    updated_at           DATETIME2           NULL,
+    CONSTRAINT pk_publication_submissions PRIMARY KEY (id),
+    CONSTRAINT fk_pub_submissions_users FOREIGN KEY (submitted_by_user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT ck_pub_submissions_status CHECK (status IN ('Pending', 'Approved', 'Rejected'))
+);
+GO
+
+-- ================================================================
 --  SEED DATA
 -- ================================================================
 PRINT '>> Seeding data...';
@@ -306,7 +333,8 @@ INSERT INTO users (id, full_name, email, password_hash, role, is_email_verified,
 (1, N'Nguyen Van Admin',  'admin@scijtrend.io',              '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Admin', 1, 1),
 (2, N'Le Thi Minh',       'le.researcher@uni.edu.vn',        '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Researcher', 1, 0),
 (3, N'Tran Quoc Binh',    'tran.lecturer@hcmus.edu.vn',      '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Lecturer', 1, 0),
-(4, N'Pham Thi Lan',      'student01@student.hcmus.edu.vn',  '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Student', 1, 0);
+(4, N'Pham Thi Lan',      'student01@student.hcmus.edu.vn',  '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Student', 1, 0),
+(5, N'Demo Researcher',   'demo.researcher@local.test',      '$2a$11$0NK5SsVUz4joZ4n2biOdzemEsmchErWdWn.VZnbk1awoF3mspueCi', 'Researcher', 1, 0);
 SET IDENTITY_INSERT users OFF;
 
 SET IDENTITY_INSERT journals ON;

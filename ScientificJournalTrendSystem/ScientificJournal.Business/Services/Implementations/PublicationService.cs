@@ -48,9 +48,10 @@ public class PublicationService : IPublicationService
 
         if (!string.IsNullOrWhiteSpace(request.Keyword))
         {
-            query = query.Where(p => p.Title.Contains(request.Keyword)
-                                    || (p.Abstract != null && p.Abstract.Contains(request.Keyword))
-                                    || p.PublicationKeywords.Any(pk => pk.Keyword.Term.Contains(request.Keyword)));
+            var keyword = request.Keyword.ToLower().Trim();
+            query = query.Where(p => p.Title.ToLower().Contains(keyword)
+                                    || (p.Abstract != null && p.Abstract.ToLower().Contains(keyword))
+                                    || p.PublicationKeywords.Any(pk => pk.Keyword.Term.ToLower().Contains(keyword)));
         }
 
         if (request.Year > 0)

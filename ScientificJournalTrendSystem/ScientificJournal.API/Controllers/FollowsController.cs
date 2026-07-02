@@ -109,5 +109,50 @@ public class FollowsController : ControllerBase
         await _followService.UnfollowJournalAsync(userId, journalId);
         return Ok(new { message = "Journal unfollowed successfully." });
     }
+
+    [HttpPost("keyword/term")]
+    public async Task<IActionResult> FollowKeywordByTerm([FromBody] FollowTermRequest request, [FromServices] AppDbContext context)
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (!int.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var norm = request.Term.ToLowerInvariant().Trim();
+        var keyword = await context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
+        if (keyword == null)
+        {
+            keyword = new ScientificJournal.DataAccess.Entities.Keyword { Term = request.Term, NormalizedTerm = norm };
+            context.Keywords.Add(keyword);
+            await context.SaveChangesAsync();
+        }
+
+        await _followService.FollowKeywordAsync(userId, keyword.Id);
+        return Ok(new { message = $"Keyword '{request.Term}' followed successfully.", keywordId = keyword.Id });
+    }
+
+    [HttpDelete("keyword/term")]
+    public async Task<IActionResult> UnfollowKeywordByTerm([FromBody] FollowTermRequest request, [FromServices] AppDbContext context)
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        if (!int.TryParse(userIdValue, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var norm = request.Term.ToLowerInvariant().Trim();
+        var keyword = await context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
+        if (keyword != null)
+        {
+            await _followService.UnfollowKeywordAsync(userId, keyword.Id);
+        }
+        return Ok(new { message = $"Keyword '{request.Term}' unfollowed successfully." });
+    }
+}
+
+public class FollowTermRequest
+{
+    public string Term { get; set; } = string.Empty;
 }
 

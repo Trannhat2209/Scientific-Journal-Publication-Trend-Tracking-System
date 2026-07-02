@@ -4,6 +4,6 @@ namespace ScientificJournal.Business.Services.Interfaces;
 
 public interface ISyncService
 {
-    Task SyncFromSemanticScholarAsync();
+    Task SyncFromSemanticScholarAsync(string? specificKeyword = null);
     Task SyncFromOpenAlexAsync();
 }

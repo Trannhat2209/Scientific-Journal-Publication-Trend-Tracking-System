@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.Configurations;
@@ -8,6 +9,7 @@ using ScientificJournal.Common.DTOs.Request.Auth;
 using ScientificJournal.Common.DTOs.Response.Auth;
 using ScientificJournal.Common.DTOs.Response.User;
 using ScientificJournal.Common.Helpers;
+using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
 
@@ -18,12 +20,17 @@ public class AuthService : IAuthService
     private readonly AppDbContext _dbContext;
     private readonly JwtSettings _jwtSettings;
     private readonly IEmailService _emailService;
+    private readonly bool _requireEmailVerification;
 
-    public AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtSettings, IEmailService emailService)
+    public AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtSettings, IEmailService emailService, IConfiguration configuration)
     {
         _dbContext = dbContext;
         _jwtSettings = jwtSettings.Value;
         _emailService = emailService;
+        _requireEmailVerification = !string.Equals(
+            configuration["Auth:RequireEmailVerification"],
+            "false",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request)
@@ -44,7 +51,7 @@ public class AuthService : IAuthService
             Role = request.Role,
             IsActive = true,
             IsDeleted = false,
-            IsEmailVerified = false,
+            IsEmailVerified = !_requireEmailVerification,
             EmailVerificationToken = verificationToken,
             EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24),
             CreatedAt = DateTime.UtcNow
@@ -77,7 +84,7 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Account is disabled.");
         }
 
-        if (!user.IsEmailVerified)
+        if (_requireEmailVerification && !user.IsEmailVerified)
         {
             throw new UnauthorizedAccessException("Please verify your email address before logging in.");
         }
@@ -119,6 +126,48 @@ public class AuthService : IAuthService
     public Task LogoutAsync()
     {
         return Task.CompletedTask;
+    }
+
+    public async Task<UserProfileDto> GetProfileAsync(int userId)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+        if (user == null)
+        {
+            throw new InvalidOperationException("User not found.");
+        }
+
+        return MapProfile(user);
+    }
+
+    public async Task<UserProfileDto> UpdateProfileAsync(int userId, UpdateProfileRequestDto request)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+        if (user == null)
+        {
+            throw new InvalidOperationException("User not found.");
+        }
+
+        user.FullName = request.FullName.Trim();
+        await _dbContext.SaveChangesAsync();
+
+        return MapProfile(user);
+    }
+
+    public async Task ChangePasswordAsync(int userId, ChangePasswordRequestDto request)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+        if (user == null)
+        {
+            throw new InvalidOperationException("User not found.");
+        }
+
+        if (!PasswordHasher.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+        {
+            throw new UnauthorizedAccessException("Current password is incorrect.");
+        }
+
+        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        await _dbContext.SaveChangesAsync();
     }
 
     public async Task ForgotPasswordAsync(ForgotPasswordRequestDto request)
@@ -204,13 +253,21 @@ public class AuthService : IAuthService
             AccessToken = JwtHelper.GenerateAccessToken(user.Id, user.Email, user.FullName, user.Role.ToString(), _jwtSettings.Secret, TimeSpan.FromHours(1)),
             RefreshToken = JwtHelper.GenerateRefreshToken(user.Id, user.Email, user.FullName, user.Role.ToString(), _jwtSettings.Secret, TimeSpan.FromDays(_jwtSettings.ExpiryInDays)),
             ExpiresAt = DateTime.UtcNow.AddHours(1),
-            User = new UserProfileDto
-            {
-                Id = user.Id,
-                Email = user.Email,
-                FullName = user.FullName,
-                Role = user.Role
-            }
+            User = MapProfile(user)
+        };
+    }
+
+    private static UserProfileDto MapProfile(User user)
+    {
+        return new UserProfileDto
+        {
+            Id = user.Id,
+            Email = user.Email,
+            FullName = user.FullName,
+            Role = user.Role,
+            IsPro = user.IsPro,
+            Plan = user.IsPro ? "Pro" : "Free",
+            SearchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro)
         };
     }
 }

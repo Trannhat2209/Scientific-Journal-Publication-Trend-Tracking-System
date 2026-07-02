@@ -95,7 +95,42 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 401, { authenticated: false });
         return;
       }
-      sendJson(res, 200, { authenticated: true, user: session.user });
+      const enrichedUser = session.user;
+      
+      const DOTNET_API_BASE_URL = process.env.DOTNET_API_BASE_URL || "http://localhost:5227";
+      const PAYMENT_SYNC_SECRET = process.env.PAYMENT_SYNC_SECRET || "dev-payment-sync-secret";
+      
+      let dotnetTokens = null;
+      try {
+        const syncResponse = await fetch(`${DOTNET_API_BASE_URL}/api/admin/users/sync-external`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": PAYMENT_SYNC_SECRET,
+          },
+          body: JSON.stringify({
+            fullName: enrichedUser.name || enrichedUser.fullName || enrichedUser.email,
+            email: enrichedUser.email,
+            role: enrichedUser.role,
+            provider: enrichedUser.provider || "Google",
+            externalId: enrichedUser.googleId || enrichedUser.id || "",
+            isPro: Boolean(enrichedUser.isPro),
+            plan: enrichedUser.plan || "Free",
+          }),
+        });
+        if (syncResponse.ok) {
+          dotnetTokens = await syncResponse.json();
+        }
+      } catch (err) {
+        console.error("Failed to sync with dotnet backend in /api/auth/me:", err.message);
+      }
+
+      sendJson(res, 200, {
+        authenticated: true,
+        user: dotnetTokens?.user || enrichedUser,
+        accessToken: dotnetTokens?.accessToken || session.accessToken || "",
+        refreshToken: dotnetTokens?.refreshToken || session.refreshToken || "",
+      });
       return;
     }
 
@@ -280,9 +315,40 @@ async function handleGoogleCallback(req, res, requestUrl) {
     const tokenSet = await exchangeCodeForTokens(code);
     const googleUser = await fetchGoogleUser(tokenSet);
     const user = upsertUser(googleUser, statePayload.role);
+
+    const DOTNET_API_BASE_URL = process.env.DOTNET_API_BASE_URL || "http://localhost:5227";
+    const PAYMENT_SYNC_SECRET = process.env.PAYMENT_SYNC_SECRET || "dev-payment-sync-secret";
+    
+    let dotnetTokens = null;
+    try {
+      const syncResponse = await fetch(`${DOTNET_API_BASE_URL}/api/admin/users/sync-external`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Secret": PAYMENT_SYNC_SECRET,
+        },
+        body: JSON.stringify({
+          fullName: user.name || user.fullName || user.email,
+          email: user.email,
+          role: user.role,
+          provider: "Google",
+          externalId: user.googleId || user.id || "",
+          isPro: Boolean(user.isPro),
+          plan: user.plan || "Free",
+        }),
+      });
+      if (syncResponse.ok) {
+        dotnetTokens = await syncResponse.json();
+      }
+    } catch (err) {
+      console.error("Failed to sync with dotnet backend in google callback:", err.message);
+    }
+
     const sessionToken = signToken({
       purpose: "session",
-      user,
+      user: dotnetTokens?.user || user,
+      accessToken: dotnetTokens?.accessToken || "",
+      refreshToken: dotnetTokens?.refreshToken || "",
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
     });
 

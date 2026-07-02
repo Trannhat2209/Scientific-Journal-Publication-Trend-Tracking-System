@@ -4,13 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5173",
+    "dev": "vite --host 0.0.0.0 --port 5174",
     "dev:api": "node server/server.js",
     "start": "node server/server.js",
-    "build": "vite build",
+    "build": "vite build --configLoader runner",
     "preview": "vite preview --host 0.0.0.0 --port 4173"
   },
   "dependencies": {
+    "@payos/node": "^2.0.5",
     "@vitejs/plugin-react": "^5.0.0",
     "chart.js": "^4.5.1",
     "react": "^19.0.0",

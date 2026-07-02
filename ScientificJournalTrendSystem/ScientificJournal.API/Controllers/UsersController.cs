@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
+using ScientificJournal.Common.Policies;
 
 namespace ScientificJournal.API.Controllers;
 
@@ -47,6 +48,8 @@ public class UsersController : ControllerBase
             Role = user.Role.ToString(),
             user.IsActive,
             user.IsPro,
+            Plan = user.IsPro ? "Pro" : "Free",
+            SearchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro),
             user.CreatedAt
         });
     }

@@ -3,7 +3,9 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Services.Interfaces;
+using ScientificJournal.Common.DTOs.Request.Notification;
 
 namespace ScientificJournal.API.Controllers;
 
@@ -63,6 +65,42 @@ public class NotificationsController : ControllerBase
 
         await _notificationService.MarkAllReadAsync(userId);
         return Ok(new { message = "All notifications marked as read." });
+    }
+
+    [HttpPost("review-result")]
+    [AuthorizeRoles("Admin")]
+    public async Task<IActionResult> CreateReviewResultNotification([FromBody] ReviewNotificationRequestDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.RecipientEmail))
+        {
+            return BadRequest(new { message = "Recipient email is required." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            return BadRequest(new { message = "Notification message is required." });
+        }
+
+        var notification = await _notificationService.CreateNotificationForEmailAsync(
+            request.RecipientEmail,
+            request.Message,
+            request.NotificationType,
+            request.PublicationId);
+
+        if (notification == null)
+        {
+            return NotFound(new { message = "Recipient user was not found." });
+        }
+
+        return Ok(new
+        {
+            notification.Id,
+            notification.Message,
+            notification.IsRead,
+            NotificationType = notification.NotificationType.ToString(),
+            notification.PublicationId,
+            notification.CreatedAt
+        });
     }
 }
 

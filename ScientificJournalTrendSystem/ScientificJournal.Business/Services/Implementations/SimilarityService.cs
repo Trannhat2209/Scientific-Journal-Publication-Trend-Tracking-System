@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Helpers;
+using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 
 namespace ScientificJournal.Business.Services.Implementations;
@@ -50,24 +51,7 @@ public class SimilarityService : ISimilarityService
     {
         double originalScore = await GetSimilarityScoreAsync(pubId1, pubId2);
 
-        // Determine limit
-        double limit = 1.0;
-        if (role == UserRole.Student)
-        {
-            limit = isPro ? 0.30 : 0.15;
-        }
-        else if (role == UserRole.Lecturer)
-        {
-            limit = isPro ? 0.40 : 0.20;
-        }
-        else if (role == UserRole.Researcher)
-        {
-            limit = isPro ? 0.45 : 0.25;
-        }
-        else if (role == UserRole.Admin)
-        {
-            limit = 1.0;
-        }
+        var limit = PlanPolicy.GetSearchAccuracy(role, isPro) / 100.0;
 
         bool isCapped = originalScore > limit;
         double displayScore = isCapped ? limit : originalScore;

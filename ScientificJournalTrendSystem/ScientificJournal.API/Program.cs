@@ -2,8 +2,10 @@ using System.Text;
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using ScientificJournal.API.Extensions;
 using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Jobs;
@@ -13,8 +15,14 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
+
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<SmtpSettings>(builder.Configuration.GetSection("Smtp"));
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys")));
 
 // Add services to the container.
 builder.Services.AddControllers(options => options.Filters.Add(new ValidateModelFilter()))
@@ -74,6 +82,7 @@ builder.Services.AddAuthorization();
 
 // Register SQL database, MongoDB, repositories, business services, and Hangfire
 builder.Services.AddApplicationServices(builder.Configuration);
+var hangfireEnabled = builder.Configuration.GetValue("Hangfire:Enabled", true);
 
 var app = builder.Build();
 
@@ -86,7 +95,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -94,36 +106,39 @@ app.MapControllers();
 app.MapHub<ScientificJournal.API.Hubs.NotificationHub>("/notificationHub");
 
 
-// Enable Hangfire dashboard middleware
-app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
+if (hangfireEnabled)
 {
-    Authorization = new[] { new ScientificJournal.API.Middleware.HangfireAuthorizationFilter() }
-});
+    // Enable Hangfire dashboard middleware
+    app.UseHangfireDashboard("/hangfire", new Hangfire.DashboardOptions
+    {
+        Authorization = new[] { new ScientificJournal.API.Middleware.HangfireAuthorizationFilter() }
+    });
 
-// Schedule recurring background jobs
-using (var scope = app.Services.CreateScope())
-{
-    var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-    
-    recurringJobManager.AddOrUpdate<SemanticScholarSyncJob>(
-        "semantic-scholar-sync",
-        job => job.ExecuteAsync(),
-        Cron.Daily);
+    // Schedule recurring background jobs
+    using (var scope = app.Services.CreateScope())
+    {
+        var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
 
-    recurringJobManager.AddOrUpdate<RecommendationJob>(
-        "recommendation-processing",
-        job => job.ExecuteAsync(),
-        Cron.Daily);
+        recurringJobManager.AddOrUpdate<SemanticScholarSyncJob>(
+            "semantic-scholar-sync",
+            job => job.ExecuteAsync(),
+            Cron.Daily);
 
-    recurringJobManager.AddOrUpdate<NotificationJob>(
-        "notification-processing",
-        job => job.ExecuteAsync(),
-        Cron.Hourly);
+        recurringJobManager.AddOrUpdate<RecommendationJob>(
+            "recommendation-processing",
+            job => job.ExecuteAsync(),
+            Cron.Daily);
 
-    recurringJobManager.AddOrUpdate<TrendRecalculateJob>(
-        "weekly-trend-recalculate",
-        job => job.ExecuteAsync(),
-        Cron.Weekly);
+        recurringJobManager.AddOrUpdate<NotificationJob>(
+            "notification-processing",
+            job => job.ExecuteAsync(),
+            Cron.Hourly);
+
+        recurringJobManager.AddOrUpdate<TrendRecalculateJob>(
+            "weekly-trend-recalculate",
+            job => job.ExecuteAsync(),
+            Cron.Weekly);
+    }
 }
 
 app.Run();
