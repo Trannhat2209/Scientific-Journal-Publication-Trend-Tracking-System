@@ -436,5 +436,15 @@ build/
 .env
 .env.local
 
+# Local auth data
+server/data/*.json
+!server/data/.gitkeep
+
 # VS Code
 .vscode/
+
+.fake
+
+# ASP.NET runtime/generated files
+ScientificJournalTrendSystem/ScientificJournal.API/App_Data/DataProtectionKeys/
+ScientificJournalTrendSystem/ScientificJournal.API/wwwroot/emails/*.html
