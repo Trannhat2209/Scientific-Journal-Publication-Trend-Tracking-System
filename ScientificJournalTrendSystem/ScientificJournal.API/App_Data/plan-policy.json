@@ -1,0 +1,20 @@
+{
+  "MonthlyPrice": 5,
+  "YearlyPrice": 49,
+  "MonthlyAmountVnd": 125000,
+  "YearlyAmountVnd": 1225000,
+  "YearlySavingsPercent": 2,
+  "CheckoutHoldMinutes": 15,
+  "FreeAccuracy": {
+    "Student": 15,
+    "Lecturer": 20,
+    "Researcher": 25,
+    "Admin": 100
+  },
+  "ProAccuracy": {
+    "Student": 35,
+    "Lecturer": 40,
+    "Researcher": 45,
+    "Admin": 100
+  }
+}
