@@ -5,9 +5,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ScientificJournal.Business.Services.Implementations;
 using ScientificJournal.Business.Services.Interfaces;
+using ScientificJournal.API.Services;
 using ScientificJournal.Common.Constants;
 using ScientificJournal.Business.Validators;
 using ScientificJournal.DataAccess.Context;
+using ScientificJournal.DataAccess.External;
 using ScientificJournal.DataAccess.Mongo;
 using ScientificJournal.DataAccess.Repositories.Implementations;
 using ScientificJournal.DataAccess.Repositories.Interfaces;
@@ -50,6 +52,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISyncService, SyncService>();
         services.AddScoped<ITrendingService, TrendingService>();
         services.AddHttpClient<ISerpApiScholarSimilarityService, SerpApiScholarSimilarityService>();
+        services.AddHttpClient<SemanticScholarClient>();
+        services.AddHttpClient<OpenAlexClient>();
+        services.AddHttpClient<SerpApiScholarSearchClient>();
+        services.AddHttpClient<PayosMerchantClient>();
 
         // 4a. FluentValidation validators
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();

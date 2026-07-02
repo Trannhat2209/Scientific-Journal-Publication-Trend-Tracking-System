@@ -2,7 +2,7 @@ import React from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import Chart from "chart.js/auto";
-import { Bar, Line } from "react-chartjs-2";
+import { Line } from "react-chartjs-2";
 
 const getAcademicRole = () =>
   window.location.pathname.startsWith("/lecturer-") ? "lecturer" : "researcher";
@@ -37,6 +37,37 @@ const getStoredAuth = () => {
   }
 };
 
+const decodeJwtPayload = (token) => {
+  if (!token || typeof token !== "string") return {};
+
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return {};
+    const normalizedPayload = payload
+      .replace(/-/g, "+")
+      .replace(/_/g, "/")
+      .padEnd(Math.ceil(payload.length / 4) * 4, "=");
+    return JSON.parse(window.atob(normalizedPayload));
+  } catch {
+    return {};
+  }
+};
+
+const getStoredAuthRole = () => {
+  const tokenPayload = decodeJwtPayload(getStoredAuth().accessToken);
+  return (
+    tokenPayload.role ||
+    tokenPayload[
+      "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
+    ] ||
+    ""
+  );
+};
+
+const hasAdminBackendAccess = () =>
+  Boolean(getStoredAuth().accessToken) &&
+  normalizeRoleForUi(getStoredAuthRole()) === "Administrator";
+
 const getStoredSession = () => {
   try {
     return JSON.parse(
@@ -47,8 +78,17 @@ const getStoredSession = () => {
   }
 };
 
-const normalizeRoleForUi = (role) =>
-  role === "Admin" ? "Administrator" : role || "Researcher";
+const normalizeRoleForUi = (role) => {
+  const value = Array.isArray(role) ? role[0] : role;
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "admin" || normalized === "administrator") {
+    return "Administrator";
+  }
+  if (normalized === "student") return "Student";
+  if (normalized === "lecturer") return "Lecturer";
+  if (normalized === "researcher") return "Researcher";
+  return value || "Researcher";
+};
 
 const normalizeRoleForApi = (role) =>
   role === "Administrator" ? "Admin" : role || "Researcher";
@@ -114,21 +154,72 @@ const setProPlanSettings = (settings) => {
   );
 };
 
+const normalizeAccuracyPolicy = (policy = {}, fallback = defaultProPlanSettings.freeAccuracy) => ({
+  Student: Number(policy.Student ?? policy.student ?? fallback.Student),
+  Lecturer: Number(policy.Lecturer ?? policy.lecturer ?? fallback.Lecturer),
+  Researcher: Number(policy.Researcher ?? policy.researcher ?? fallback.Researcher),
+});
+
+const normalizePlanPolicySettings = (policy = {}) => ({
+  ...defaultProPlanSettings,
+  monthlyPrice: Number(policy.monthlyPrice || defaultProPlanSettings.monthlyPrice),
+  yearlyPrice: Number(policy.yearlyPrice || defaultProPlanSettings.yearlyPrice),
+  monthlyAmountVnd: Number(
+    policy.monthlyAmountVnd ||
+      policy.monthlyPrice * 25000 ||
+      defaultProPlanSettings.monthlyPrice * 25000,
+  ),
+  yearlyAmountVnd: Number(
+    policy.yearlyAmountVnd ||
+      policy.yearlyPrice * 25000 ||
+      defaultProPlanSettings.yearlyPrice * 25000,
+  ),
+  yearlySavingsPercent: Number(
+    policy.yearlySavingsPercent ??
+      defaultProPlanSettings.yearlySavingsPercent,
+  ),
+  checkoutHoldMinutes: Number(
+    policy.checkoutHoldMinutes ?? defaultProPlanSettings.checkoutHoldMinutes,
+  ),
+  freeAccuracy: normalizeAccuracyPolicy(
+    policy.freeAccuracy,
+    defaultProPlanSettings.freeAccuracy,
+  ),
+  proAccuracy: normalizeAccuracyPolicy(
+    policy.proAccuracy,
+    defaultProPlanSettings.proAccuracy,
+  ),
+});
+
 const syncPlanPolicyFromBackend = async () => {
   const policy = await apiFetch("/api/plans/policy");
-  const nextSettings = {
-    ...defaultProPlanSettings,
-    monthlyPrice: Number(policy.monthlyPrice || defaultProPlanSettings.monthlyPrice),
-    yearlyPrice: Number(policy.yearlyPrice || defaultProPlanSettings.yearlyPrice),
-    freeAccuracy: {
-      ...defaultProPlanSettings.freeAccuracy,
-      ...(policy.freeAccuracy || {}),
-    },
-    proAccuracy: {
-      ...defaultProPlanSettings.proAccuracy,
-      ...(policy.proAccuracy || {}),
-    },
-  };
+  const nextSettings = normalizePlanPolicySettings(policy);
+  setProPlanSettings(nextSettings);
+  return nextSettings;
+};
+
+const savePlanPolicyToBackend = async (settings) => {
+  const policy = normalizePlanPolicySettings({
+    ...settings,
+    monthlyAmountVnd: Number(settings.monthlyPrice) * 25000,
+    yearlyAmountVnd: Number(settings.yearlyPrice) * 25000,
+  });
+  const savedPolicy = await apiFetch("/api/plans/policy", {
+    method: "PUT",
+    auth: true,
+    body: policy,
+  });
+  const nextSettings = normalizePlanPolicySettings(savedPolicy);
+  setProPlanSettings(nextSettings);
+  return nextSettings;
+};
+
+const resetPlanPolicyOnBackend = async () => {
+  const savedPolicy = await apiFetch("/api/plans/policy/reset", {
+    method: "POST",
+    auth: true,
+  });
+  const nextSettings = normalizePlanPolicySettings(savedPolicy);
   setProPlanSettings(nextSettings);
   return nextSettings;
 };
@@ -163,18 +254,107 @@ const getCurrentAccountPlan = () => {
   };
 };
 
+const CLIENT_SYSTEM_LOGS_KEY = "scholartrend.adminSystemLogs";
+
+const getClientLogModule = (path = "") => {
+  const value = String(path).toLowerCase();
+  if (value.includes("/payments") || value.includes("payos")) {
+    return "Payment Management";
+  }
+  if (value.includes("/auth") || value.includes("/admin/users")) {
+    return "User Management";
+  }
+  if (value.includes("/sync")) return "Sync Management";
+  if (value.includes("/notifications")) return "Notification Management";
+  if (value.includes("/publications") || value.includes("/search")) {
+    return "Publication Management";
+  }
+  if (value.includes("/plans")) return "Plan Management";
+  return "System";
+};
+
+const getClientLogCode = (module, status = "WEB") => {
+  const prefixMap = {
+    "Payment Management": "PAYMENT",
+    "User Management": "USER",
+    "Sync Management": "SYNC",
+    "Notification Management": "NOTIFY",
+    "Publication Management": "PUB",
+    "Plan Management": "PLAN",
+    System: "WEB",
+  };
+  const prefix = prefixMap[module] || "WEB";
+  return `${prefix}-${status}-${Date.now().toString().slice(-4)}`;
+};
+
+const appendClientSystemLog = ({
+  event = "Web alert",
+  detail = "",
+  module = "System",
+  severity = "Warning",
+  actor = "browser@client",
+  code,
+}) => {
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(CLIENT_SYSTEM_LOGS_KEY) || "[]",
+    );
+    const current = Array.isArray(saved) && saved.length ? saved : [];
+    const normalizedDetail = String(detail || "").slice(0, 260);
+    const duplicateKey = `${module}:${severity}:${event}:${normalizedDetail}`;
+    const duplicate = current.find(
+      (log) =>
+        `${log.module}:${log.severity}:${log.event}:${log.detail}` ===
+        duplicateKey,
+    );
+
+    if (duplicate) return duplicate;
+
+    const nextLog = {
+      time: new Date().toISOString(),
+      event,
+      detail: normalizedDetail,
+      module,
+      severity,
+      actor,
+      code: code || getClientLogCode(module),
+    };
+    const nextLogs = [nextLog, ...current].slice(0, 120);
+    window.localStorage.setItem(CLIENT_SYSTEM_LOGS_KEY, JSON.stringify(nextLogs));
+    window.dispatchEvent(new Event("scholartrend:system-log"));
+    return nextLog;
+  } catch {
+    return null;
+  }
+};
+
 const apiFetch = async (path, options = {}) => {
   const { body, auth = false, headers = {}, ...rest } = options;
   const token = getStoredAuth().accessToken;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const module = getClientLogModule(path);
+  let response;
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...rest,
+      __skipClientAlert: true,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    appendClientSystemLog({
+      event: "API connection failed",
+      detail: `${path}: ${error.message}`,
+      module,
+      severity: "Error",
+      code: getClientLogCode(module, "NET"),
+    });
+    throw error;
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")
@@ -193,6 +373,13 @@ const apiFetch = async (path, options = {}) => {
       payload?.title ||
       (typeof payload === "string" && payload) ||
       "Backend request failed.";
+    appendClientSystemLog({
+      event: `API request failed (${response.status})`,
+      detail: `${path}: ${message}`,
+      module,
+      severity: response.status >= 500 ? "Error" : "Warning",
+      code: getClientLogCode(module, response.status),
+    });
     throw new Error(message);
   }
 
@@ -389,12 +576,225 @@ const clearAuth = () => {
   window.localStorage.removeItem("scholartrend.session");
 };
 
+const handleLogout = async () => {
+  try {
+    await fetch(`${GOOGLE_AUTH_BASE_URL}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
+    // Local sign-out should still succeed if the auth helper is unavailable.
+  }
+
+  clearAuth();
+  goToRoute("/login");
+};
+
 const getSearchParam = (key) => new URLSearchParams(window.location.search).get(key);
 
 const LOCAL_BOOKMARKS_KEY = "scholartrend.localBookmarks";
+const REMOVED_BOOKMARKS_KEY = "scholartrend.removedBookmarks";
 
 const formatCount = (value) =>
   new Intl.NumberFormat("en-US").format(Number(value || 0));
+
+const downloadCsvFile = (filename, rows) => {
+  const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+const xmlEscape = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+const crc32Table = Array.from({ length: 256 }, (_, index) => {
+  let crc = index;
+  for (let bit = 0; bit < 8; bit += 1) {
+    crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
+  }
+  return crc >>> 0;
+});
+
+const getCrc32 = (bytes) => {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = crc32Table[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const getDosTimestamp = () => {
+  const date = new Date();
+  const time =
+    (date.getHours() << 11) |
+    (date.getMinutes() << 5) |
+    Math.floor(date.getSeconds() / 2);
+  const day =
+    ((date.getFullYear() - 1980) << 9) |
+    ((date.getMonth() + 1) << 5) |
+    date.getDate();
+  return { time, day };
+};
+
+const concatUint8Arrays = (chunks) => {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return merged;
+};
+
+const createZipBlob = (files, type) => {
+  const encoder = new TextEncoder();
+  const { time, day } = getDosTimestamp();
+  const localParts = [];
+  const centralParts = [];
+  let localOffset = 0;
+
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.name);
+    const contentBytes =
+      typeof file.content === "string" ? encoder.encode(file.content) : file.content;
+    const crc = getCrc32(contentBytes);
+
+    const localHeader = new Uint8Array(30);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(10, time, true);
+    localView.setUint16(12, day, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, contentBytes.length, true);
+    localView.setUint32(22, contentBytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+
+    localParts.push(localHeader, nameBytes, contentBytes);
+
+    const centralHeader = new Uint8Array(46);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(12, time, true);
+    centralView.setUint16(14, day, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, contentBytes.length, true);
+    centralView.setUint32(24, contentBytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint32(42, localOffset, true);
+    centralParts.push(centralHeader, nameBytes);
+
+    localOffset += localHeader.length + nameBytes.length + contentBytes.length;
+  });
+
+  const centralDirectory = concatUint8Arrays(centralParts);
+  const endRecord = new Uint8Array(22);
+  const endView = new DataView(endRecord.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralDirectory.length, true);
+  endView.setUint32(16, localOffset, true);
+
+  return new Blob([concatUint8Arrays(localParts), centralDirectory, endRecord], {
+    type,
+  });
+};
+
+const createDocxBlob = ({ title, rows }) => {
+  const tableRows = rows
+    .map(
+      (row, rowIndex) => `
+        <w:tr>${row
+          .map(
+            (cell) => `
+              <w:tc>
+                <w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>
+                <w:p>
+                  <w:r>${rowIndex === 0 ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t>${xmlEscape(cell)}</w:t></w:r>
+                </w:p>
+              </w:tc>`,
+          )
+          .join("")}
+        </w:tr>`,
+    )
+    .join("");
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:rPr><w:b/><w:sz w:val="32"/></w:rPr>
+        <w:t>${xmlEscape(title)}</w:t>
+      </w:r>
+    </w:p>
+    <w:tbl>
+      <w:tblPr>
+        <w:tblW w:w="0" w:type="auto"/>
+        <w:tblBorders>
+          <w:top w:val="single" w:sz="4" w:space="0" w:color="cccccc"/>
+          <w:left w:val="single" w:sz="4" w:space="0" w:color="cccccc"/>
+          <w:bottom w:val="single" w:sz="4" w:space="0" w:color="cccccc"/>
+          <w:right w:val="single" w:sz="4" w:space="0" w:color="cccccc"/>
+          <w:insideH w:val="single" w:sz="4" w:space="0" w:color="cccccc"/>
+          <w:insideV w:val="single" w:sz="4" w:space="0" w:color="cccccc"/>
+        </w:tblBorders>
+      </w:tblPr>
+      ${tableRows}
+    </w:tbl>
+    <w:sectPr>
+      <w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>
+      <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+
+  return createZipBlob(
+    [
+      {
+        name: "[Content_Types].xml",
+        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+      },
+      {
+        name: "_rels/.rels",
+        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+      },
+      { name: "word/document.xml", content: documentXml },
+    ],
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+};
+
+const downloadDocxFile = (filename, documentData) => {
+  const url = URL.createObjectURL(createDocxBlob(documentData));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 const mapPublicationForCard = (paper) => ({
   id: paper.id,
@@ -449,6 +849,11 @@ const mapPublicationForBookmark = (paper) => ({
   impact: paper.impact || paper.tags?.[0] || "Indexed",
 });
 
+const getBookmarkKey = (paper) =>
+  String(paper?.id || paper?.title || "")
+    .trim()
+    .toLowerCase();
+
 const getLocalBookmarks = () => {
   try {
     const parsed = JSON.parse(
@@ -464,33 +869,52 @@ const setLocalBookmarks = (bookmarks) => {
   window.localStorage.setItem(LOCAL_BOOKMARKS_KEY, JSON.stringify(bookmarks));
 };
 
+const getRemovedBookmarkKeys = () => {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(REMOVED_BOOKMARKS_KEY) || "[]",
+    );
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const setRemovedBookmarkKeys = (keys) => {
+  window.localStorage.setItem(REMOVED_BOOKMARKS_KEY, JSON.stringify(keys));
+};
+
 const hasLocalBookmark = (paper, bookmarks) =>
-  bookmarks.some(
-    (bookmark) =>
-      String(bookmark.id || bookmark.title) === String(paper.id || paper.title),
-  );
+  bookmarks.some((bookmark) => getBookmarkKey(bookmark) === getBookmarkKey(paper));
 
 const upsertLocalBookmark = (paper) => {
   const nextBookmark = mapPublicationForBookmark(paper);
+  const nextBookmarkKey = getBookmarkKey(nextBookmark);
   const current = getLocalBookmarks();
   const next = [
     nextBookmark,
-    ...current.filter(
-      (bookmark) =>
-        String(bookmark.id || bookmark.title) !==
-        String(nextBookmark.id || nextBookmark.title),
-    ),
+    ...current.filter((bookmark) => getBookmarkKey(bookmark) !== nextBookmarkKey),
   ];
   setLocalBookmarks(next);
+  setRemovedBookmarkKeys(
+    getRemovedBookmarkKeys().filter((key) => key !== nextBookmarkKey),
+  );
   return next;
 };
 
 const removeLocalBookmark = (paper) => {
-  const bookmarkId = String(paper.id || paper.title);
+  const bookmarkKey = getBookmarkKey(paper);
   const next = getLocalBookmarks().filter(
-    (bookmark) => String(bookmark.id || bookmark.title) !== bookmarkId,
+    (bookmark) => getBookmarkKey(bookmark) !== bookmarkKey,
   );
   setLocalBookmarks(next);
+  return next;
+};
+
+const markBookmarkRemoved = (paper) => {
+  const bookmarkKey = getBookmarkKey(paper);
+  const next = [...new Set([...getRemovedBookmarkKeys(), bookmarkKey])].filter(Boolean);
+  setRemovedBookmarkKeys(next);
   return next;
 };
 
@@ -499,7 +923,7 @@ const isBackendNumericId = (id) => /^\d+$/.test(String(id || ""));
 const mergeBookmarkLists = (...lists) => {
   const seen = new Set();
   return lists.flat().filter((bookmark) => {
-    const key = String(bookmark.id || bookmark.title);
+    const key = getBookmarkKey(bookmark);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -746,6 +1170,95 @@ const setPublicationSubmissions = (submissions) => {
   );
 };
 
+const normalizePublicationSubmission = (submission) => ({
+  id: String(submission.id),
+  title: submission.title || "",
+  authors: submission.authors || submission.authorsText || "",
+  submitter: submission.submitter || submission.submitterEmail || "",
+  submitterName: submission.submitterName || "",
+  role: normalizeRoleForUi(submission.role || submission.submitterRole || "Researcher"),
+  keywords: submission.keywords || submission.keywordsText || "",
+  abstract: submission.abstract || "",
+  fileName: submission.fileName || "",
+  submittedAt: submission.submittedAt || new Date().toISOString(),
+  similarityPercent: Number(submission.similarityPercent || 0),
+  matchedTitle: submission.matchedTitle || "No indexed match found",
+  matchedSource: submission.matchedSource || "Google Scholar indexed record",
+  matchedLink: submission.matchedLink || "",
+  candidates: Array.isArray(submission.candidates) ? submission.candidates : [],
+  status: String(submission.status || "pending").toLowerCase(),
+  decision: submission.decision || "Waiting for admin approval.",
+  rejectedReason: submission.rejectedReason || "",
+  rejectedEvidence: submission.rejectedEvidence || "",
+  reviewedAt: submission.reviewedAt || "",
+  publishedPublicationId: submission.publishedPublicationId || null,
+});
+
+const isBackendSubmissionId = (id) => /^\d+$/.test(String(id || ""));
+
+const submitPublicationToBackend = async (submission) => {
+  const payload = await apiFetch("/api/publications/submissions", {
+    method: "POST",
+    auth: true,
+    body: {
+      title: submission.title,
+      authors: submission.authors,
+      keywords: submission.keywords,
+      abstract: submission.abstract,
+      submitterEmail: submission.submitter,
+      submitterName: submission.submitterName,
+      role: submission.role,
+      fileName: submission.fileName,
+      fileContentType: submission.fileContentType,
+      fileContentBase64: submission.fileContentBase64,
+      fileText: submission.fileText,
+      similarityPercent: submission.similarityPercent,
+      matchedTitle: submission.matchedTitle,
+      matchedSource: submission.matchedSource,
+      matchedLink: submission.matchedLink,
+      overLimit: submission.similarityPercent > SIMILARITY_LIMIT_PERCENT,
+      decision: submission.decision,
+      candidates: submission.candidates || [],
+    },
+  });
+
+  return normalizePublicationSubmission(payload);
+};
+
+const fetchPublicationSubmissionsFromBackend = async () => {
+  const payload = await apiFetch("/api/publications/submissions/admin", {
+    auth: true,
+  });
+  return Array.isArray(payload.items)
+    ? payload.items.map(normalizePublicationSubmission)
+    : [];
+};
+
+const approvePublicationSubmissionOnBackend = async (id) => {
+  const payload = await apiFetch(`/api/publications/submissions/${id}/approve`, {
+    method: "POST",
+    auth: true,
+  });
+  return normalizePublicationSubmission(payload.submission || payload);
+};
+
+const rejectPublicationSubmissionOnBackend = async (id, reason, evidence) => {
+  const payload = await apiFetch(`/api/publications/submissions/${id}/reject`, {
+    method: "POST",
+    auth: true,
+    body: { reason, evidence },
+  });
+  return normalizePublicationSubmission(payload.submission || payload);
+};
+
+const deletePublicationSubmissionOnBackend = async (id, reason, evidence) => {
+  return apiFetch(`/api/publications/submissions/${id}`, {
+    method: "DELETE",
+    auth: true,
+    body: { reason, evidence },
+  });
+};
+
 const submissionToPublishedPublication = (submission) => ({
   id: `published-${submission.id}`,
   submissionId: submission.id,
@@ -788,10 +1301,28 @@ const setStoredPublishedPublications = (publicationsToStore) => {
   );
 };
 
+const getPublicationMergeKey = (paper) => {
+  const title =
+    paper?.title ||
+    paper?.paper?.title ||
+    paper?.matchedTitle ||
+    "";
+  const normalizedTitle = String(title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+  if (normalizedTitle) return `title:${normalizedTitle}`;
+
+  return `id:${String(
+    paper?.id || paper?.submissionId || paper?.paper?.id || "unknown",
+  ).toLowerCase()}`;
+};
+
 const mergePublicationsByIdOrTitle = (...lists) => {
   const seen = new Set();
   return lists.flat().filter((paper) => {
-    const key = String(paper.id || paper.submissionId || paper.title).toLowerCase();
+    const key = getPublicationMergeKey(paper);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -864,13 +1395,24 @@ const mapPublishedPublicationForCard = (paper) => ({
   saved: false,
 });
 
+const MAX_KNOWLEDGE_GRAPH_DYNAMIC_NODES = 5;
+const dynamicGraphNodePositions = [
+  [130, 10, 24],
+  [238, 68, -12],
+  [226, -78, 28],
+  [84, -94, -20],
+  [42, 82, 24],
+];
+
 const mapPublishedPublicationForGraph = (paper, index = 0) => ({
   id: paper.id,
   label: `${paper.title.slice(0, 28)}${paper.title.length > 28 ? "..." : ""}, ${
     paper.year || "Published"
   }`,
-  position: [130 + index * 38, -62 - index * 24, 36 + index * 14],
-  size: 44,
+  position:
+    dynamicGraphNodePositions[index % dynamicGraphNodePositions.length] ||
+    dynamicGraphNodePositions[0],
+  size: index === 0 ? 48 : 32,
   color: "#6d5dfc",
   similarity: Math.max(
     42,
@@ -894,6 +1436,7 @@ const mapPublicationForResearcherList = (paper) => ({
     : paper.authors || "Unknown authors",
   year: paper.year || "N/A",
   citations: Number(paper.citationCount || paper.citations || 0),
+  doi: paper.doi || paper.DOI || "",
   references: paper.keywords?.length || 0,
   similarity: Math.max(10, Math.min(100, Number(paper.similarityPercent || 25))),
   summary: paper.abstract || paper.excerpt || "No abstract provided.",
@@ -4038,10 +4581,10 @@ function LoginPage() {
       route: "/student-dashboard",
     },
     Administrator: {
-      email: "admin@university.edu",
-      password: "Scholar2024",
+      email: "admin.dev@scholartrend.test",
+      password: "Admin123!",
       role: "Administrator",
-      fullName: "Demo Administrator",
+      fullName: "Development Administrator",
       route: "/admin-dashboard",
     },
   };
@@ -4733,7 +5276,7 @@ const publications = [
       "Neural Network Architectures for Predictive Data Synthesis in High-Noise Environments",
     excerpt:
       "This paper explores novel approaches to structural adjustments within deep learning models when exposed to datasets characterized by extreme signal noise.",
-    meta: "Oct 2023  Â·  128 Citations  Â·  IF: 4.2",
+    meta: "Oct 2023 - 128 Citations - IF: 4.2",
   },
   {
     tags: ["Environmental Science"],
@@ -4741,7 +5284,7 @@ const publications = [
       "Longitudinal Analysis of Urban Heat Island Mitigation Strategies in Coastal Metropolises",
     excerpt:
       "A comprehensive ten-year study evaluating the efficacy of green roof implementations and reflective surface treatments across five major coastal cities.",
-    meta: "Sep 2023  Â·  54 Citations  Â·  IF: 3.8",
+    meta: "Sep 2023 - 54 Citations - IF: 3.8",
   },
 ];
 
@@ -5810,6 +6353,12 @@ function MiniIcon({ path }) {
 
 function StudentSidebar({ activeRoute }) {
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
+  const session = getCurrentAccountPlan();
+  const displayName = session.name || session.email || "Student Account";
+  const displayRole = session.role || "Student";
+  const avatarUrl =
+    session.picture ||
+    "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80";
 
   return (
     <>
@@ -5943,15 +6492,23 @@ function StudentSidebar({ activeRoute }) {
         >
           <div className="sidebar-avatar">
             <img
-              src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-              alt="Avatar"
+              src={avatarUrl}
+              alt={`${displayName} avatar`}
             />
           </div>
           <div className="sidebar-profile-info">
-            <strong>Dr. A. Scientist</strong>
-            <span>Lead Researcher</span>
+            <strong>{displayName}</strong>
+            <span>{displayRole}</span>
           </div>
         </a>
+        <button
+          type="button"
+          className="student-logout-button"
+          onClick={handleLogout}
+        >
+          <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
+          <span>Logout</span>
+        </button>
       </div>
     </aside>
     <UpgradeProModal
@@ -6046,6 +6603,7 @@ function StudentDashboard() {
   const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
     getLocalBookmarks(),
   );
+  const [dashboardQuery, setDashboardQuery] = React.useState("");
   const { data: publicationData } = useApiResource(
     "/api/publications/search?page=1&pageSize=5",
     publications,
@@ -6119,6 +6677,13 @@ function StudentDashboard() {
     }
   };
 
+  const handleDashboardSearch = (event) => {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    if (dashboardQuery.trim()) params.set("q", dashboardQuery.trim());
+    goToRoute(`/student-search${params.toString() ? `?${params.toString()}` : ""}`);
+  };
+
   return (
     <main className="student-app">
       <StudentSidebar activeRoute="/student-dashboard" />
@@ -6162,10 +6727,12 @@ function StudentDashboard() {
               Search across millions of academic papers, journals, and
               analytical reports.
             </p>
-            <form onSubmit={navTo("/student-search")}>
+            <form onSubmit={handleDashboardSearch}>
               <MiniIcon path="M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20" />
               <input
                 type="search"
+                value={dashboardQuery}
+                onChange={(event) => setDashboardQuery(event.target.value)}
                 placeholder="Search by title, author, DOI, or keyword..."
               />
               <button type="submit">Search</button>
@@ -6173,7 +6740,11 @@ function StudentDashboard() {
             <div className="trending-keywords">
               <span>Trending:</span>
               {keywordData.map((keyword) => (
-                <a href="/student-search" onClick={navTo("/student-search")} key={keyword}>
+                <a
+                  href={`/student-search?q=${encodeURIComponent(keyword)}`}
+                  onClick={navTo(`/student-search?q=${encodeURIComponent(keyword)}`)}
+                  key={keyword}
+                >
                   {keyword}
                 </a>
               ))}
@@ -6440,6 +7011,15 @@ function ResearcherSidebar({
             <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
             <span>Settings</span>
           </button>
+          <button
+            type="button"
+            className="researcher-logout-button"
+            aria-label="Logout"
+            onClick={handleLogout}
+          >
+            <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
+            <span>Logout</span>
+          </button>
         </div>
       </div>
     </aside>
@@ -6491,21 +7071,24 @@ function UpgradeProModal({ open, onClose }) {
     setPaymentMessage("");
 
     try {
-      const response = await fetch(
-        `${GOOGLE_AUTH_BASE_URL}/api/payments/payos/create`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            billingCycle,
-            user: getStoredSession(),
-          }),
+      const payload = await apiFetch("/api/payments/payos/create", {
+        method: "POST",
+        auth: true,
+        body: {
+          billingCycle,
+          user: getStoredSession(),
         },
-      );
-      const payload = await response.json().catch(() => ({}));
+      });
 
-      if (!response.ok || !payload.checkoutUrl) {
+      if (payload.alreadyPro && payload.user) {
+        persistSession(payload.user);
+        setUpgraded(true);
+        setPaymentStatus("idle");
+        setPaymentMessage("");
+        return;
+      }
+
+      if (!payload.checkoutUrl) {
         throw new Error(
           payload.error ||
             "PayOS checkout is not available. Please contact admin.",
@@ -7656,14 +8239,14 @@ const lecturerStats = [
   {
     label: "My Bookmarks",
     value: "1,284",
-    badge: "â†‘ 12%",
+    badge: "+12%",
     tone: "blue",
     icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
   },
   {
     label: "Followed Keywords",
     value: "42",
-    badge: "â†‘ 4%",
+    badge: "+4%",
     tone: "purple",
     icon: "M12 4a8 8 0 1 0 8 8M12 7a5 5 0 1 0 5 5M12 10a2 2 0 1 0 2 2",
   },
@@ -7822,12 +8405,12 @@ function LecturerPublicationsCard({ publishedPublications = [] }) {
             <span className="lecturer-publication-copy">
               <strong>{publication.title}</strong>
               <small>
-                {publication.authors} <i>â€¢</i> {publication.journal}
+                {publication.authors} <i>-</i> {publication.journal}
               </small>
               {publication.date ? (
                 <em>
-                  <span>â–£ {publication.date}</span>
-                  <span>âŒ {publication.citations} Citations</span>
+                  <span>{publication.date}</span>
+                  <span>{publication.citations} Citations</span>
                 </em>
               ) : null}
             </span>
@@ -8102,28 +8685,43 @@ function TrendKeywordsOverview() {
 
 function TrendMainChart() {
   const { data: backendTrendData } = useApiResource(
-    "/api/trends?keyword=Machine%20Learning&fromYear=2019&toYear=2026&strategy=StrategyA_RawCount",
+    "/api/trends?keyword=Machine%20Learning&fromYear=2019&toYear=2023&strategy=StrategyA_RawCount",
     [],
     { select: unwrapList },
   );
-  const chartRows = backendTrendData.length
-    ? backendTrendData
-        .map((item) => ({
-          year: String(item.year || item.Year),
-          value: Number(item.publicationCount ?? item.PublicationCount ?? 0),
+  const backendChartRows = Object.values(
+    backendTrendData.reduce((rowsByYear, item) => {
+      const year = Number(item.year || item.Year);
+      const value = Number(item.publicationCount ?? item.PublicationCount ?? 0);
+      if (year < 2019 || year > 2023 || value < 0) return rowsByYear;
+      rowsByYear[year] = {
+        year: String(year),
+        value: (rowsByYear[year]?.value || 0) + value,
+      };
+      return rowsByYear;
+    }, {}),
+  ).sort((left, right) => Number(left.year) - Number(right.year));
+  const hasUsableBackendTrend =
+    backendChartRows.length >= 5 &&
+    Math.max(...backendChartRows.map((item) => item.value), 0) >= 1000;
+  const chartRows = (
+    hasUsableBackendTrend
+      ? backendChartRows
+      : trendLineData.map((item) => ({
+          year: String(item.year),
+          value: item.value,
         }))
-        .filter((item) => item.year && item.value >= 0)
-        .sort((left, right) => Number(left.year) - Number(right.year))
-    : trendLineData.map((item) => ({
-        year: String(item.year),
-        value: item.value,
-      }));
+  ).slice(0, 5);
   const labels = chartRows.map((item) => item.year);
   const values = chartRows.map((item) => item.value);
   const previousValues = values.map((value, index) =>
     Math.max(0, Math.round(index ? values[index - 1] : value * 0.88)),
   );
   const maxChartValue = Math.max(...values, ...previousValues, 1);
+  const trendAxisMax = Math.max(
+    80000,
+    Math.ceil((maxChartValue * 1.12) / 10000) * 10000,
+  );
 
   return (
     <section
@@ -8148,11 +8746,11 @@ function TrendMainChart() {
                 label: "Publications Over Time",
                 data: values,
                 borderColor: "rgba(99, 102, 241, 1)",
-                backgroundColor: "rgba(99, 102, 241, 0.1)",
-                tension: 0.4,
+                backgroundColor: "rgba(99, 102, 241, 0.13)",
+                tension: 0.32,
                 fill: true,
-                pointRadius: 5,
-                pointHoverRadius: 7,
+                pointRadius: 6,
+                pointHoverRadius: 9,
                 pointBackgroundColor: "rgba(99, 102, 241, 1)",
                 pointBorderColor: "#fff",
                 pointBorderWidth: 2,
@@ -8163,13 +8761,13 @@ function TrendMainChart() {
               {
                 label: "Previous Year",
                 data: previousValues,
-                borderColor: "rgba(156, 163, 175, 0.5)",
-                backgroundColor: "rgba(156, 163, 175, 0.05)",
-                tension: 0.4,
-                fill: true,
-                pointRadius: 4,
-                pointHoverRadius: 6,
-                pointBackgroundColor: "rgba(156, 163, 175, 0.5)",
+                borderColor: "rgba(156, 163, 175, 0.62)",
+                backgroundColor: "rgba(156, 163, 175, 0)",
+                tension: 0.32,
+                fill: false,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                pointBackgroundColor: "rgba(156, 163, 175, 0.62)",
                 pointBorderColor: "#fff",
                 pointBorderWidth: 2,
                 borderWidth: 2,
@@ -8191,9 +8789,12 @@ function TrendMainChart() {
                 align: "end",
                 labels: {
                   usePointStyle: true,
-                  padding: 15,
+                  boxWidth: 10,
+                  boxHeight: 10,
+                  padding: 18,
+                  color: "#4b5563",
                   font: {
-                    size: 12,
+                    size: 13,
                   },
                 },
               },
@@ -8223,18 +8824,19 @@ function TrendMainChart() {
               y: {
                 beginAtZero: false,
                 min: 0,
-                suggestedMax: Math.ceil(maxChartValue * 1.15),
+                max: trendAxisMax,
                 grid: {
                   color: "rgba(0, 0, 0, 0.06)",
                   drawBorder: false,
                 },
                 ticks: {
                   font: {
-                    size: 11,
+                    size: 12,
                   },
                   callback: function (value) {
                     return value >= 1000 ? value / 1000 + "k" : value;
                   },
+                  stepSize: 10000,
                 },
                 border: {
                   display: false,
@@ -8246,8 +8848,9 @@ function TrendMainChart() {
                   drawBorder: false,
                 },
                 ticks: {
+                  color: "#5f6674",
                   font: {
-                    size: 12,
+                    size: 13,
                   },
                 },
                 border: {
@@ -8302,6 +8905,23 @@ function TrendRankingTables() {
         (left, right) => Number.parseFloat(right.growth) - Number.parseFloat(left.growth),
       )
     : trendTopGrowth;
+  const exportRankingRows = () => {
+    downloadCsvFile("scholartrend-top-keywords-raw-count.csv", [
+      ["Rank", "Keyword", "Count", "Trend 5y"],
+      ...rankingRows.map((row, index) => [
+        index + 1,
+        row.keyword,
+        row.count,
+        Array.isArray(row.values) ? row.values.join(" | ") : "",
+      ]),
+    ]);
+  };
+  const exportGrowthRows = () => {
+    downloadCsvFile("scholartrend-top-keywords-growth-rate.csv", [
+      ["Rank", "Keyword", "Growth %"],
+      ...growthRows.map((row, index) => [index + 1, row.keyword, row.growth]),
+    ]);
+  };
 
   return (
     <div className="trend-ranking-grid">
@@ -8311,7 +8931,7 @@ function TrendRankingTables() {
             <MiniIcon path="M5 7h14M5 12h14M5 17h14" /> Top 10 by Raw Count
             (Strategy A)
           </h2>
-          <button type="button">Export</button>
+          <button type="button" onClick={exportRankingRows}>Export</button>
         </div>
         <table>
           <thead>
@@ -8343,7 +8963,7 @@ function TrendRankingTables() {
             <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" /> Top 10 by
             Growth Rate (Strategy B)
           </h2>
-          <button type="button">Export</button>
+          <button type="button" onClick={exportGrowthRows}>Export</button>
         </div>
         <table>
           <thead>
@@ -8542,32 +9162,56 @@ function ReportsPage() {
   const [reportToYear, setReportToYear] = React.useState("2023");
   const [reportFormat, setReportFormat] = React.useState("Csv");
   const [reportMessage, setReportMessage] = React.useState("");
+  const [activeReportBarIndex, setActiveReportBarIndex] = React.useState(null);
   const { data: reportTrendRows } = useApiResource(
     `/api/trends?keyword=${encodeURIComponent(reportKeyword)}&fromYear=${encodeURIComponent(reportFromYear)}&toYear=${encodeURIComponent(reportToYear)}&strategy=StrategyA_RawCount`,
     [],
     { select: unwrapList },
   );
   const reportTotals = React.useMemo(() => {
-    const rows = reportTrendRows.map((item) => ({
-      year: Number(item.year || item.Year),
-      count: Number(item.publicationCount ?? item.PublicationCount ?? 0),
-      score: Number(item.trendingScore ?? item.TrendingScore ?? 0),
-    }));
+    const fallbackCounts = [218, 299, 361, 461, 535];
+    const endYear = Number(reportToYear) || 2023;
+    const fallbackLabels = Array.from({ length: 5 }, (_, index) =>
+      String(endYear - 4 + index),
+    );
+    const rows = Object.values(
+      reportTrendRows.reduce((rowsByYear, item) => {
+        const year = Number(item.year || item.Year);
+        const count = Number(item.publicationCount ?? item.PublicationCount ?? 0);
+        const score = Number(item.trendingScore ?? item.TrendingScore ?? 0);
+        if (year < endYear - 4 || year > endYear || count < 0) {
+          return rowsByYear;
+        }
+        rowsByYear[year] = {
+          year,
+          count: (rowsByYear[year]?.count || 0) + count,
+          score: (rowsByYear[year]?.score || 0) + score,
+        };
+        return rowsByYear;
+      }, {}),
+    ).sort((left, right) => left.year - right.year);
+    const useBackendRows =
+      rows.length === 5 && Math.max(...rows.map((row) => row.count), 0) >= 200;
     const total = rows.reduce((sum, row) => sum + row.count, 0);
     const averageScore = rows.length
       ? rows.reduce((sum, row) => sum + row.score, 0) / rows.length
       : 14.2;
     return {
-      total: total || 1245,
-      averageScore,
-      labels: rows.length
+      total: useBackendRows ? total : 1245,
+      averageScore: useBackendRows ? averageScore : 14.2,
+      labels: useBackendRows
         ? rows.map((row) => String(row.year))
-        : ["2019", "2020", "2021", "2022", "2023"],
-      counts: rows.length
-        ? rows.map((row) => row.count)
-        : [218, 299, 361, 461, 535],
+        : fallbackLabels,
+      counts: useBackendRows ? rows.map((row) => row.count) : fallbackCounts,
     };
-  }, [reportTrendRows]);
+  }, [reportToYear, reportTrendRows]);
+  const reportPreviousCounts = React.useMemo(
+    () =>
+      reportTotals.counts.map((count, index, rows) =>
+        Number(rows[index - 1] || Math.round(count * 0.88)),
+      ),
+    [reportTotals.counts],
+  );
   const handleGenerateReport = async () => {
     setReportMessage("Generating report...");
     try {
@@ -8770,82 +9414,48 @@ function ReportsPage() {
                 <div
                   className="report-bar-chart"
                   aria-label="Publication bar chart"
-                  style={{ height: "250px", padding: "20px 0" }}
                 >
-                  <Bar
-                    data={{
-                      labels: reportTotals.labels,
-                      datasets: [
-                        {
-                          label: "Publications",
-                          data: reportTotals.counts,
-                          backgroundColor: [
-                            "rgba(139, 92, 246, 0.6)",
-                            "rgba(139, 92, 246, 0.7)",
-                            "rgba(139, 92, 246, 0.75)",
-                            "rgba(124, 58, 237, 0.85)",
-                            "rgba(109, 40, 217, 0.95)",
-                          ],
-                          borderColor: [
-                            "rgba(139, 92, 246, 1)",
-                            "rgba(139, 92, 246, 1)",
-                            "rgba(139, 92, 246, 1)",
-                            "rgba(124, 58, 237, 1)",
-                            "rgba(109, 40, 217, 1)",
-                          ],
-                          borderWidth: 1,
-                          borderRadius: 4,
-                        },
-                      ],
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: {
-                          display: false,
-                        },
-                        tooltip: {
-                          backgroundColor: "rgba(0, 0, 0, 0.8)",
-                          padding: 12,
-                          titleFont: {
-                            size: 14,
-                          },
-                          bodyFont: {
-                            size: 13,
-                          },
-                          callbacks: {
-                            label: function (context) {
-                              return "Publications: " + context.parsed.y;
-                            },
-                          },
-                        },
-                      },
-                      scales: {
-                        y: {
-                          beginAtZero: true,
-                          grid: {
-                            color: "rgba(0, 0, 0, 0.05)",
-                          },
-                          ticks: {
-                            font: {
-                              size: 11,
-                            },
-                          },
-                        },
-                        x: {
-                          grid: {
-                            display: false,
-                          },
-                          ticks: {
-                            font: {
-                              size: 11,
-                            },
-                          },
-                        },
-                      },
-                    }}
-                  />
+                  {[34, 52, 62, 78, 92].map((height, index) => {
+                    const label = reportTotals.labels[index] || "Year";
+                    const count = Number(reportTotals.counts[index] || 0);
+                    const previousCount = Number(reportPreviousCounts[index] || 0);
+                    const active = activeReportBarIndex === index;
+
+                    return (
+                      <button
+                        type="button"
+                        className={`report-chart-bar ${active ? "active" : ""} ${
+                          index === 0
+                            ? "edge-left"
+                            : index === 4
+                              ? "edge-right"
+                              : ""
+                        }`}
+                        key={`report-preview-bar-${index}`}
+                        aria-label={`${label}: ${count} publications, previous year ${previousCount} publications`}
+                        onClick={() => setActiveReportBarIndex(index)}
+                        onFocus={() => setActiveReportBarIndex(index)}
+                        onMouseEnter={() => setActiveReportBarIndex(index)}
+                        style={{ height: `${height}%` }}
+                      >
+                        {active ? (
+                          <span className="report-chart-tooltip">
+                            <strong>{label}</strong>
+                            <em>
+                              <b></b>
+                              Publications Over Time:{" "}
+                              {count.toLocaleString("en-US")} publications
+                            </em>
+                            <em>
+                              <b className="previous"></b>
+                              Previous Year:{" "}
+                              {previousCount.toLocaleString("en-US")} publications
+                            </em>
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
                 </div>
                 <table className="report-author-table">
                   <thead>
@@ -9275,6 +9885,26 @@ function YearComparisonPage() {
       ],
     };
   }, [baselineYear, comparisonTrendRows, comparisonYear]);
+  const exportComparisonData = () => {
+    downloadCsvFile(
+      `scholartrend-year-comparison-${baselineYear}-vs-${comparisonYear}.csv`,
+      [
+        ["Metric", "Value"],
+        ["Baseline Year", baselineYear],
+        ["Comparison Year", comparisonYear],
+        ["Baseline Total", comparisonStats.baselineTotal],
+        ["Comparison Total", comparisonStats.comparisonTotal],
+        [],
+        ["Keyword", "Delta", "Tone", "Comparison Volume"],
+        ...comparisonStats.keywordRows.map((row) => [
+          row.keyword,
+          row.delta,
+          row.tone,
+          row.volume ?? "",
+        ]),
+      ],
+    );
+  };
 
   return (
     <ResearcherShell
@@ -9292,10 +9922,7 @@ function YearComparisonPage() {
             <span>Dashboard&nbsp; &gt;&nbsp; Year Comparison</span>
             <h1>Year Comparison Analysis</h1>
           </div>
-          <form
-            className="year-controls"
-            onSubmit={navTo("/researcher-year-comparison")}
-          >
+          <form className="year-controls" onSubmit={(event) => event.preventDefault()}>
             <label>
               Baseline{" "}
               <select
@@ -9321,7 +9948,7 @@ function YearComparisonPage() {
                 <option>2023</option>
               </select>
             </label>
-            <button type="submit">
+            <button type="button" onClick={exportComparisonData}>
               <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" /> Export Data
             </button>
           </form>
@@ -9533,6 +10160,18 @@ function SyncManagementPage() {
 }
 
 function ResearcherSearchTopbar({ onMenuClick, onOpenSettings }) {
+  const handleGraphSearchSubmit = (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const query = String(formData.get("query") || "").trim();
+    const targetPath = query
+      ? `/researcher-search?view=list&q=${encodeURIComponent(query)}`
+      : "/researcher-search?view=list";
+
+    window.history.pushState({}, "", getAcademicPath(targetPath));
+    window.dispatchEvent(new Event("scholartrend:navigate"));
+  };
+
   return (
     <header className="researcher-graph-topbar">
       <button
@@ -9556,12 +10195,19 @@ function ResearcherSearchTopbar({ onMenuClick, onOpenSettings }) {
 
       <form
         className="researcher-graph-search"
-        onSubmit={navTo("/researcher-search")}
+        onSubmit={handleGraphSearchSubmit}
       >
-        <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6" />
+        <button
+          type="submit"
+          className="graph-search-submit"
+          aria-label="Search publications"
+        >
+          <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6" />
+        </button>
         <input
           type="search"
-          defaultValue="DeepFruits: A Fruit Detection System..."
+          name="query"
+          defaultValue={getSearchParam("q") || "DeepFruits: A Fruit Detection System..."}
           aria-label="Search knowledge graph"
         />
       </form>
@@ -9765,13 +10411,14 @@ function KnowledgeGraphCanvas({
     nodes.forEach((node) => {
       const selectedRadius = node.size;
       const idleRadius = Math.max(node.size * 0.42, 8);
+      const isActiveNode = node.id === selectedNodeIdRef.current;
       const radius =
-        node.id === selectedNodeIdRef.current ? selectedRadius : idleRadius;
+        isActiveNode ? selectedRadius : idleRadius;
       const position = new THREE.Vector3(...node.position);
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(node.color),
         transparent: true,
-        opacity: node.id === selectedNodeIdRef.current ? 0.72 : 0.82,
+        opacity: isActiveNode ? 0.72 : 0.82,
         roughness: 0.48,
         metalness: 0.05,
       });
@@ -10309,8 +10956,8 @@ function ResearcherListDetail({ paper }) {
       <p className="researcher-list-detail-authors">{paper.authors}</p>
       <div className="researcher-list-detail-meta">
         <span>{paper.year}</span>
-        <span>â€¢</span>
-        <span>âŒ {paper.citations} Citations</span>
+        <span>|</span>
+        <span>{paper.citations} Citations</span>
       </div>
 
       <div className="researcher-list-primary-actions">
@@ -10338,10 +10985,18 @@ function ResearcherListDetail({ paper }) {
       <section className="researcher-list-open-in">
         <h3>Open in</h3>
         <div>
-          <a href="https://scholar.google.com" target="_blank" rel="noreferrer">
-            â–± Google Scholar
+          <a
+            href={`https://scholar.google.com/scholar?q=${encodeURIComponent(paper.title)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Google Scholar
           </a>
-          <a href="https://doi.org" target="_blank" rel="noreferrer">
+          <a
+            href={paper.doi ? `https://doi.org/${encodeURIComponent(paper.doi)}` : `https://scholar.google.com/scholar?q=${encodeURIComponent(paper.title)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
             <MiniIcon path="M7 4h8l3 3v13H7zM15 4v4h3M10 12h5M10 15h4" />
             DOI.org
           </a>
@@ -10353,7 +11008,7 @@ function ResearcherListDetail({ paper }) {
           <MiniIcon path="M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5" />
           S2 TL;DR
         </h3>
-        <p>â€œ{summary}â€</p>
+        <p>"{summary}"</p>
       </section>
 
       <section className="researcher-list-tags">
@@ -10452,17 +11107,12 @@ function ResearcherListViewPage() {
         paper.similarity,
       ]),
     ];
-    const csv = rows
-      .map((row) =>
-        row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","),
-      )
-      .join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "scholartrend-list-results.csv";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadDocxFile("scholartrend-list-results.docx", {
+      title: query.trim()
+        ? `Search results for "${query.trim()}"`
+        : "ScholarTrend List Results",
+      rows,
+    });
   };
 
   return (
@@ -10476,13 +11126,17 @@ function ResearcherListViewPage() {
         <section className="researcher-list-results">
           <header className="researcher-list-heading">
             <div>
-              <h1>DeepFruits: A Fruit Detection System</h1>
+              <h1>
+                {query.trim()
+                  ? `Search results for "${query.trim()}"`
+                  : "DeepFruits: A Fruit Detection System"}
+              </h1>
               <p className="researcher-search-accuracy">
                 {accountPlan.plan} account: {accountPlan.searchAccuracy}% article
                 accuracy
               </p>
               <p>
-                Knowledge Graph <span>â€º</span> <strong>List View</strong>
+                Knowledge Graph <span>&gt;</span> <strong>List View</strong>
               </p>
             </div>
             <div>
@@ -10523,12 +11177,12 @@ function ResearcherListViewPage() {
             <table className="researcher-list-table">
               <thead>
                 <tr>
-                  <th>Title â†•</th>
-                  <th>Authors â†•</th>
-                  <th>Year â†•</th>
-                  <th>Citations â†•</th>
-                  <th>References â†•</th>
-                  <th>Similarity â†•</th>
+                  <th>Title</th>
+                  <th>Authors</th>
+                  <th>Year</th>
+                  <th>Citations</th>
+                  <th>References</th>
+                  <th>Similarity</th>
                 </tr>
               </thead>
               <tbody>
@@ -10598,15 +11252,9 @@ function ResearcherSearchPage() {
       ),
     [backendGraphPublications, publishedGraphNodes.length],
   );
-  const graphNodesForUi = React.useMemo(
-    () =>
-      mergePublicationsByIdOrTitle(
-        publishedGraphNodes,
-        backendGraphNodes,
-        graph3DNodes,
-      ),
-    [publishedGraphNodes, backendGraphNodes],
-  );
+  const graphNodesForUi = React.useMemo(() => {
+    return graph3DNodes;
+  }, [publishedGraphNodes, backendGraphNodes]);
   const [selectedNodeId, setSelectedNodeId] = React.useState(
     graphNodesForUi[0]?.id || "deepfruits",
   );
@@ -10694,10 +11342,19 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           <input
             type="radio"
             name="source"
-            checked={filters.source === "Semantic Scholar"}
-            onChange={() => onChangeFilters({ source: "Semantic Scholar" })}
+            checked={filters.source === "All Sources"}
+            onChange={() => onChangeFilters({ source: "All Sources" })}
           />{" "}
-          Semantic Scholar
+          All Sources
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="source"
+            checked={filters.source === "Google Scholar"}
+            onChange={() => onChangeFilters({ source: "Google Scholar" })}
+          />{" "}
+          Google Scholar
         </label>
         <label>
           <input
@@ -10794,7 +11451,7 @@ function SearchResultCard({ result, onToggleSave }) {
             <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
             {result.source}
           </span>
-          <strong>99 {result.citations} Citations</strong>
+          <strong>{result.citations} Citations</strong>
         </div>
         <a href={detailPath} onClick={navTo(detailPath)}>
           View Source <span aria-hidden="true">-&gt;</span>
@@ -10812,7 +11469,7 @@ function StudentSearchPage() {
     keyword: getSearchParam("q") || "",
     yearFrom: "2010",
     yearTo: "2026",
-    source: "Semantic Scholar",
+    source: "All Sources",
     sortBy: "relevance",
   }));
   const accountPlan = getCurrentAccountPlan();
@@ -10826,8 +11483,11 @@ function StudentSearchPage() {
     if (filters.sortBy && filters.sortBy !== "relevance") {
       params.set("sortBy", filters.sortBy);
     }
+    if (filters.source && filters.source !== "All Sources") {
+      params.set("source", filters.source);
+    }
     return `/api/publications/search?${params.toString()}`;
-  }, [filters.keyword, filters.yearTo, filters.sortBy]);
+  }, [filters.keyword, filters.yearTo, filters.sortBy, filters.source]);
   const { data: backendResults } = useApiResource(
     searchApiPath,
     searchResults,
@@ -10913,7 +11573,7 @@ function StudentSearchPage() {
       keyword: "",
       yearFrom: "2010",
       yearTo: "2026",
-      source: "Semantic Scholar",
+      source: "All Sources",
       sortBy: "relevance",
     });
   };
@@ -11164,6 +11824,9 @@ function BookmarksPage({ role = "student" }) {
   const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
     getLocalBookmarks(),
   );
+  const [removedBookmarkKeys, setRemovedBookmarkKeyState] = React.useState(() =>
+    getRemovedBookmarkKeys(),
+  );
   const { data: backendBookmarkedPapers } = useApiResource(
     "/api/bookmarks",
     bookmarkedPapers,
@@ -11183,12 +11846,14 @@ function BookmarksPage({ role = "student" }) {
         }),
     },
   );
-  const bookmarkPapersForUi =
-    backendBookmarkedPapers.length || localBookmarks.length
-      ? mergeBookmarkLists(backendBookmarkedPapers, localBookmarks)
-      : bookmarkedPapers;
+  const bookmarkPapersForUi = mergeBookmarkLists(
+    backendBookmarkedPapers,
+    localBookmarks,
+    bookmarkedPapers,
+  ).filter((paper) => !removedBookmarkKeys.includes(getBookmarkKey(paper)));
   const handleRemoveBookmark = async (paper) => {
     setLocalBookmarkState(removeLocalBookmark(paper));
+    setRemovedBookmarkKeyState(markBookmarkRemoved(paper));
 
     if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
       apiFetch(`/api/bookmarks/${paper.id}`, {
@@ -11751,6 +12416,7 @@ function NotificationsPage({ role = "student" }) {
   });
   const [selectedNotification, setSelectedNotification] = React.useState(null);
   const isResearcher = role === "researcher" || role === "lecturer";
+  const isAcademic = isResearcher;
   const rolePrefix =
     role === "lecturer" ? "lecturer" : role === "researcher" ? "researcher" : "student";
   const roleNotificationsPath = `/${rolePrefix}-notifications`;
@@ -11912,10 +12578,6 @@ function NotificationsPage({ role = "student" }) {
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-              }}
-              onSelectStart={(e) => {
-                e.preventDefault();
-                return false;
               }}
               style={{
                 userSelect: "none",
@@ -13560,7 +14222,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                           color: "#94a3b8",
                         }}
                       >
-                        Institute of Advanced Analytics Â· Computational Biology
+                        Institute of Advanced Analytics - Computational Biology
                       </p>
                       <span
                         style={{
@@ -13619,7 +14281,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                           color: "#94a3b8",
                         }}
                       >
-                        University of Applied Sciences Â· Deep Learning Lab
+                        University of Applied Sciences - Deep Learning Lab
                       </p>
                     </div>
                   </div>
@@ -13666,7 +14328,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                           color: "#94a3b8",
                         }}
                       >
-                        Seoul Institute of Technology Â· Bioinformatics Research
+                        Seoul Institute of Technology - Bioinformatics Research
                         Division
                       </p>
                     </div>
@@ -13724,7 +14386,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
                   <div>
                     <h3>{paper.title}</h3>
                     <p>
-                      {paper.authors} â€¢ {paper.meta}
+                      {paper.authors} - {paper.meta}
                     </p>
                     <span>{paper.stats}</span>
                   </div>
@@ -13784,10 +14446,13 @@ function PublicationSubmissionPage({ role = "Student" }) {
     abstract: "",
     keywords: "",
     fileName: "",
+    fileContentType: "",
+    fileContentBase64: "",
     fileText: "",
   });
   const [result, setResult] = React.useState(null);
   const [isChecking, setIsChecking] = React.useState(false);
+  const [submissionError, setSubmissionError] = React.useState("");
 
   const updateForm = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -13795,11 +14460,29 @@ function PublicationSubmissionPage({ role = "Student" }) {
   const handleSubmissionFileChange = (file) => {
     if (!file) {
       updateForm("fileName", "");
+      updateForm("fileContentType", "");
+      updateForm("fileContentBase64", "");
       updateForm("fileText", "");
       return;
     }
 
-    setForm((current) => ({ ...current, fileName: file.name }));
+    setForm((current) => ({
+      ...current,
+      fileName: file.name,
+      fileContentType: file.type || "application/octet-stream",
+    }));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      setForm((current) => ({
+        ...current,
+        fileContentBase64: value.includes(",") ? value.split(",")[1] : value,
+      }));
+    };
+    reader.onerror = () => updateForm("fileContentBase64", "");
+    reader.readAsDataURL(file);
+
     if (/\.(txt|md|csv)$/i.test(file.name)) {
       file
         .text()
@@ -13817,35 +14500,43 @@ function PublicationSubmissionPage({ role = "Student" }) {
   const submitPublication = async (event) => {
     event.preventDefault();
     setIsChecking(true);
+    setSubmissionError("");
     const abstractForReview = (form.abstract || form.fileText).trim();
-    const analysis = await checkPublicationSimilarityWithScholar({
-      ...form,
-      abstract: abstractForReview,
-    });
-    const isOverLimit =
-      analysis.overLimit ??
-      analysis.similarityPercent > SIMILARITY_LIMIT_PERCENT;
-    const nextSubmission = {
-      id: `sub-${Date.now()}`,
-      title: form.title.trim(),
-      authors: form.authors.trim(),
-      submitter: session.email || `${roleLabel.toLowerCase()}@university.edu`,
-      role: roleLabel,
-      keywords: form.keywords.trim(),
-      abstract: abstractForReview,
-      fileName: form.fileName,
-      submittedAt: new Date().toISOString(),
-      ...analysis,
-      status: isOverLimit ? "cancelled" : "pending",
-      decision: isOverLimit
-        ? "Auto cancelled: over 50% similarity rule."
-        : "Waiting for admin approval.",
-    };
+    try {
+      const analysis = await checkPublicationSimilarityWithScholar({
+        ...form,
+        abstract: abstractForReview,
+      });
+      const isOverLimit =
+        analysis.overLimit ??
+        analysis.similarityPercent > SIMILARITY_LIMIT_PERCENT;
+      const nextSubmission = {
+        title: form.title.trim(),
+        authors: form.authors.trim(),
+        submitter: session.email || `${roleLabel.toLowerCase()}@university.edu`,
+        submitterName: session.name || session.fullName || form.authors.trim(),
+        role: roleLabel,
+        keywords: form.keywords.trim(),
+        abstract: abstractForReview,
+        fileName: form.fileName,
+        fileContentType: form.fileContentType,
+        fileContentBase64: form.fileContentBase64,
+        fileText: form.fileText,
+        submittedAt: new Date().toISOString(),
+        ...analysis,
+        status: isOverLimit ? "cancelled" : "pending",
+        decision: isOverLimit
+          ? "Auto cancelled: over 50% similarity rule."
+          : "Waiting for admin approval.",
+      };
 
-    const nextSubmissions = [nextSubmission, ...getPublicationSubmissions()];
-    setPublicationSubmissions(nextSubmissions);
-    setResult(nextSubmission);
-    setIsChecking(false);
+      const savedSubmission = await submitPublicationToBackend(nextSubmission);
+      setResult(savedSubmission);
+    } catch (error) {
+      setSubmissionError(error.message);
+    } finally {
+      setIsChecking(false);
+    }
   };
 
   const isStudent = roleLabel === "Student";
@@ -13868,10 +14559,11 @@ function PublicationSubmissionPage({ role = "Student" }) {
       <section className="submission-policy">
         <MiniIcon path="M12 3.5 20 7v5c0 4.2-3 7.2-8 8.5C7 19.2 4 16.2 4 12V7l8-3.5ZM9.4 12.2 11.2 14l3.7-4.2" />
         <div>
-          <h2>QUY DINH WEB</h2>
+          <h2>SUBMISSION RULE</h2>
           <p>
-            Bai bao khong duoc tuong dong qua 50% voi bai bao goc. Neu co tinh
-            upload hon 50%, he thong AI se tu dong huy va Admin se khong duyet.
+            Papers must not exceed 50% similarity with an original source. If
+            the similarity score is over 50%, the AI system will automatically
+            cancel the submission and Admin will not approve it.
           </p>
         </div>
       </section>
@@ -13936,6 +14628,16 @@ function PublicationSubmissionPage({ role = "Student" }) {
           {isChecking ? "Checking Google Scholar..." : "Check Similarity and Submit"}
         </button>
       </form>
+
+      {submissionError ? (
+        <section className="submission-result danger">
+          <div>
+            <span>Submission failed</span>
+            <strong>!</strong>
+          </div>
+          <p>{submissionError}</p>
+        </section>
+      ) : null}
 
       {result ? (
         <section
@@ -14029,7 +14731,7 @@ const adminStats = [
   {
     label: "Total Users",
     value: "24,592",
-    note: "â†— +12% from last month",
+    note: "+12% from last month",
     tone: "users",
     icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
   },
@@ -14255,6 +14957,14 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
         <button type="button" onClick={() => onOpenPanel("support")}>
           <MiniIcon path="M9.8 9a2.2 2.2 0 1 1 3.7 1.6c-.9.7-1.5 1.2-1.5 2.4M12 17h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
           Support
+        </button>
+        <button
+          type="button"
+          className="admin-logout-button"
+          onClick={handleLogout}
+        >
+          <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
+          Logout
         </button>
       </div>
     </aside>
@@ -15013,10 +15723,7 @@ function AdminUtilityPanel({ panel, onClose }) {
             <button
               type="button"
               className="admin-profile-signout"
-              onClick={() => {
-                clearAuth();
-                goToRoute("/login");
-              }}
+              onClick={handleLogout}
             >
               Sign Out
             </button>
@@ -15263,7 +15970,7 @@ function AdminActivityPanel() {
 
 const adminSyncHistory = [
   {
-    source: "Semantic Scholar",
+    source: "Google Scholar",
     status: "Failed",
     records: "4,102",
     time: "Today, 11:30 AM",
@@ -15272,7 +15979,7 @@ const adminSyncHistory = [
       "The API rejected requests due to high volume. Retry scheduled at next run.",
   },
   {
-    source: "Semantic Scholar",
+    source: "Google Scholar",
     status: "Completed",
     records: "12,450",
     time: "Today, 10:00 AM",
@@ -15284,7 +15991,7 @@ const adminSyncHistory = [
     time: "Yesterday, 10:00 AM",
   },
   {
-    source: "Semantic Scholar",
+    source: "Google Scholar",
     status: "Completed",
     records: "11,890",
     time: "Yesterday, 10:00 AM",
@@ -15405,7 +16112,7 @@ function AdminSyncConfiguration({ config, onChange }) {
             emitConfig({ sources: nextSources });
           }}
           label="Semantic Scholar"
-          detail="Primary Source"
+          detail="Primary Source via Graph API"
         />
         <AdminSourceToggle
           enabled={sources.openAlex}
@@ -15608,6 +16315,14 @@ function AdminSyncHistory({ history }) {
                     </td>
                   </tr>
                 ) : null}
+                {!row.error && row.detail ? (
+                  <tr className="admin-sync-detail-row">
+                    <td colSpan="4">
+                      <span>API response</span>
+                      <strong>{row.detail}</strong>
+                    </td>
+                  </tr>
+                ) : null}
               </React.Fragment>
             ))}
           </tbody>
@@ -15685,48 +16400,63 @@ function AdminSyncManagementPage() {
         ? apiFetch("/api/admin/sync/semantic-scholar", {
             method: "POST",
             auth: true,
-          }).catch(() => null)
+          }).then((payload) => ({ source: "Semantic Scholar", payload }))
         : null,
       config.sources.openAlex
         ? apiFetch("/api/admin/sync/openalex", {
             method: "POST",
             auth: true,
-          }).catch(() => null)
+          }).then((payload) => ({ source: "OpenAlex", payload }))
         : null,
     ].filter(Boolean);
 
-    await Promise.allSettled(backendCalls);
-
-    window.setTimeout(() => {
-      const runTime = formatSyncRunTime();
-      const nextRows = enabledSources.length
-        ? enabledSources.map((source) => ({
-            source,
-            status: "Completed",
-            records: formatCount(2500 + Math.floor(Math.random() * 10000)),
-            time: runTime,
-            detail: `Manual sync completed for ${config.keywords.join(", ") || "all keywords"}.`,
-          }))
-        : [
-            {
-              source: "No Source Enabled",
+    const settledResults = await Promise.allSettled(backendCalls);
+    const runTime = formatSyncRunTime();
+    const nextRows = enabledSources.length
+      ? settledResults.map((result, index) => {
+          const source = result.status === "fulfilled"
+            ? result.value.source
+            : enabledSources[index];
+          if (result.status !== "fulfilled") {
+            return {
+              source,
               status: "Failed",
               records: "0",
               time: runTime,
-              error: "No source selected",
-              detail:
-                "Enable Semantic Scholar or OpenAlex in Configuration before running sync.",
-            },
-          ];
+              error: "Sync request failed",
+              detail: result.reason?.message || "Backend sync endpoint did not complete.",
+            };
+          }
 
-      persistHistory([...nextRows, ...history]);
-      setRunning(false);
-      setSyncMessage(
-        enabledSources.length
-          ? "Manual sync completed and added to history."
-          : "Manual sync failed because no source is enabled.",
-      );
-    }, 850);
+          return {
+            source,
+            status: "Completed",
+            records: formatCount(result.value.payload?.recordsSynced ?? 0),
+            time: runTime,
+            detail:
+              result.value.payload?.message ||
+              `Manual sync completed for ${config.keywords.join(", ") || "all keywords"}.`,
+          };
+        })
+      : [
+          {
+            source: "No Source Enabled",
+            status: "Failed",
+            records: "0",
+            time: runTime,
+            error: "No source selected",
+            detail:
+              "Enable Semantic Scholar or OpenAlex in Configuration before running sync.",
+          },
+        ];
+
+    persistHistory([...nextRows, ...history]);
+    setRunning(false);
+    setSyncMessage(
+      enabledSources.length
+        ? "Manual sync completed and added to history."
+        : "Manual sync failed because no source is enabled.",
+    );
   };
 
   const lastSuccess = history.find((row) => row.status === "Completed");
@@ -16199,18 +16929,90 @@ function AdminSimilarityReviewPanel() {
   const [selectedSubmission, setSelectedSubmission] = React.useState(null);
   const [rejectDialog, setRejectDialog] = React.useState(null);
   const [deleteDialog, setDeleteDialog] = React.useState(null);
+  const [queueMessage, setQueueMessage] = React.useState("");
+  const [queueStatus, setQueueStatus] = React.useState("idle");
   const overLimit = submissions.filter(
     (item) => item.similarityPercent > SIMILARITY_LIMIT_PERCENT,
   );
   const pending = submissions.filter((item) => item.status === "pending");
   const approved = submissions.filter((item) => item.status === "approved");
 
-  const updateSubmissionStatus = (id, status) => {
+  React.useEffect(() => {
+    let cancelled = false;
+    setQueueStatus("loading");
+    fetchPublicationSubmissionsFromBackend()
+      .then((items) => {
+        if (cancelled) return;
+        if (items.length) {
+          setSubmissions(items);
+          setPublicationSubmissions(items);
+          setQueueMessage("");
+        } else {
+          setSubmissions((current) =>
+            current.length ? current : getPublicationSubmissions(),
+          );
+          setQueueMessage(
+            "Backend queue is empty. Showing the local publication review queue.",
+          );
+        }
+        setQueueStatus("success");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setQueueStatus("error");
+        setSubmissions((current) =>
+          current.length ? current : getPublicationSubmissions(),
+        );
+        setQueueMessage(
+          `Backend queue unavailable, showing local queue: ${error.message}`,
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const replaceSubmission = (nextSubmission) => {
+    setSubmissions((current) => {
+      const next = current.map((item) =>
+        String(item.id) === String(nextSubmission.id) ? nextSubmission : item,
+      );
+      setPublicationSubmissions(next);
+      setSelectedSubmission((currentSelection) =>
+        String(currentSelection?.id) === String(nextSubmission.id)
+          ? nextSubmission
+          : currentSelection,
+      );
+      return next;
+    });
+  };
+
+  const updateSubmissionStatus = async (id, status) => {
     const targetSubmission = submissions.find((item) => item.id === id);
     if (
       status === "approved" &&
       targetSubmission?.similarityPercent > SIMILARITY_LIMIT_PERCENT
     ) {
+      return;
+    }
+
+    if (status === "approved" && isBackendSubmissionId(id)) {
+      try {
+        setQueueMessage("Approving submission...");
+        const approvedSubmission = await approvePublicationSubmissionOnBackend(id);
+        replaceSubmission(approvedSubmission);
+        publishApprovedSubmission(approvedSubmission);
+        sendPublicationApprovedNotification(approvedSubmission);
+        sendAdminAuditLog(
+          `Approved publication "${approvedSubmission.title}" from ${approvedSubmission.submitter}.`,
+          "Publication Management",
+          "ADMIN-PUBLICATION-APPROVE",
+        );
+        setQueueMessage("Publication approved and saved to backend.");
+      } catch (error) {
+        setQueueMessage(error.message);
+      }
       return;
     }
 
@@ -16285,27 +17087,42 @@ function AdminSimilarityReviewPanel() {
     if (!reason || !evidence) return;
 
     const { submission } = rejectDialog;
-    setSubmissions((current) => {
-      const next = current.map((item) =>
-        item.id === submission.id
-          ? {
-              ...item,
-              status: "rejected",
-              reviewedAt: new Date().toISOString(),
-              rejectedReason: reason,
-              rejectedEvidence: evidence,
-              decision: `Admin rejected: ${reason}`,
-            }
-          : item,
-      );
-      setPublicationSubmissions(next);
-      setSelectedSubmission((currentSelection) =>
-        currentSelection?.id === submission.id
-          ? next.find((item) => item.id === submission.id) || currentSelection
-          : currentSelection,
-      );
-      return next;
-    });
+    if (isBackendSubmissionId(submission.id)) {
+      try {
+        const rejectedSubmission = await rejectPublicationSubmissionOnBackend(
+          submission.id,
+          reason,
+          evidence,
+        );
+        replaceSubmission(rejectedSubmission);
+        setQueueMessage("Submission rejected in backend.");
+      } catch (error) {
+        setQueueMessage(error.message);
+        return;
+      }
+    } else {
+      setSubmissions((current) => {
+        const next = current.map((item) =>
+          item.id === submission.id
+            ? {
+                ...item,
+                status: "rejected",
+                reviewedAt: new Date().toISOString(),
+                rejectedReason: reason,
+                rejectedEvidence: evidence,
+                decision: `Admin rejected: ${reason}`,
+              }
+            : item,
+        );
+        setPublicationSubmissions(next);
+        setSelectedSubmission((currentSelection) =>
+          currentSelection?.id === submission.id
+            ? next.find((item) => item.id === submission.id) || currentSelection
+            : currentSelection,
+        );
+        return next;
+      });
+    }
     await sendPublicationReviewNotification(submission, reason, evidence);
     sendAdminAuditLog(
       `Rejected publication "${submission.title}" from ${submission.submitter}. Reason: ${reason}.`,
@@ -16324,6 +17141,16 @@ function AdminSimilarityReviewPanel() {
     if (!reason || !evidence) return;
 
     const { submission } = deleteDialog;
+    if (isBackendSubmissionId(submission.id)) {
+      try {
+        await deletePublicationSubmissionOnBackend(submission.id, reason, evidence);
+        setQueueMessage("Submission deleted in backend.");
+      } catch (error) {
+        setQueueMessage(error.message);
+        return;
+      }
+    }
+
     setSubmissions((current) => {
       const next = current.filter((item) => item.id !== submission.id);
       setPublicationSubmissions(next);
@@ -16353,6 +17180,12 @@ function AdminSimilarityReviewPanel() {
         </div>
       </div>
 
+      {queueMessage ? (
+        <p className={`admin-panel-note ${queueStatus === "error" ? "error" : ""}`}>
+          {queueMessage}
+        </p>
+      ) : null}
+
       <div className="admin-ai-review-metrics">
         <article>
           <span>Over 50% Rule</span>
@@ -16372,6 +17205,18 @@ function AdminSimilarityReviewPanel() {
       </div>
 
       <div className="admin-ai-review-list">
+        {!submissions.length ? (
+          <section className="admin-ai-empty-state">
+            <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
+            <div>
+              <h3>No publication submissions yet</h3>
+              <p>
+                Submitted papers from Student, Lecturer, or Researcher accounts
+                will appear here for similarity review.
+              </p>
+            </div>
+          </section>
+        ) : null}
         {submissions.map((submission) => {
           const blocked =
             submission.similarityPercent > SIMILARITY_LIMIT_PERCENT ||
@@ -16805,8 +17650,12 @@ function AdminUserManagementPage() {
   const [page, setPage] = React.useState(1);
   const [users, setUsers] = React.useState(getAdminManagedUsers);
   const [editor, setEditor] = React.useState(null);
+  const [deleteCandidate, setDeleteCandidate] = React.useState(null);
+  const [pendingAction, setPendingAction] = React.useState("");
   const [message, setMessage] = React.useState("");
   const pageSize = 5;
+  const adminAccessMessage =
+    "Admin backend access required. Log out, choose Administrator, then sign in with admin.dev@scholartrend.test.";
 
   const persistUsers = (nextUsers) => {
     setUsers(nextUsers);
@@ -16862,6 +17711,11 @@ function AdminUserManagementPage() {
   }, [query, role, status]);
 
   const loadBackendUsers = React.useCallback(async () => {
+    if (!hasAdminBackendAccess()) {
+      setMessage(adminAccessMessage);
+      return [];
+    }
+
     const backendPageSize = 100;
     const backendUsers = [];
     let backendPage = 1;
@@ -16950,7 +17804,10 @@ function AdminUserManagementPage() {
     });
   };
 
-  const closeEditor = () => setEditor(null);
+  const closeEditor = () => {
+    if (pendingAction) return;
+    setEditor(null);
+  };
 
   const saveEditor = async (event) => {
     event.preventDefault();
@@ -16989,7 +17846,23 @@ function AdminUserManagementPage() {
         return;
       }
 
+      if (!hasAdminBackendAccess()) {
+        const nextUser = normalizeAdminManagedUser({
+          ...editor,
+          name: trimmedName,
+          email: normalizedEmail,
+          status: editor.status,
+          isPro: editor.plan === "Pro",
+          plan: editor.plan,
+        });
+        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
+        setMessage("User updated locally. Sign in as Administrator to sync SQL Server.");
+        setEditor(null);
+        return;
+      }
+
       try {
+        setPendingAction(`edit:${editor.id}`);
         const payload = await apiFetch(`/api/admin/users/${editor.id}`, {
           method: "PUT",
           auth: true,
@@ -17006,14 +17879,35 @@ function AdminUserManagementPage() {
         const nextUser = normalizeAdminManagedUser(payload.user);
         persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
         setMessage("User updated in SQL Server.");
-        closeEditor();
+        setEditor(null);
+        loadBackendUsers().catch(() => {});
       } catch (error) {
         setMessage(error.message);
+      } finally {
+        setPendingAction("");
       }
       return;
     }
 
+    if (!hasAdminBackendAccess()) {
+      const nextUser = normalizeAdminManagedUser({
+        ...editor,
+        id: `local-${Date.now()}`,
+        name: trimmedName,
+        fullName: trimmedName,
+        email: normalizedEmail,
+        status: editor.status,
+        isPro: editor.plan === "Pro",
+        plan: editor.plan,
+      });
+      persistUsers([nextUser, ...users]);
+      setMessage(`User created locally for ${normalizedEmail}. Sign in as Administrator to sync SQL Server.`);
+      setEditor(null);
+      return;
+    }
+
     try {
+      setPendingAction("create");
       const payload = await apiFetch("/api/admin/users", {
         method: "POST",
         auth: true,
@@ -17030,14 +17924,16 @@ function AdminUserManagementPage() {
       const nextUser = normalizeAdminManagedUser(payload.user);
       persistUsers([nextUser, ...users]);
       setMessage(`User created in SQL Server for ${normalizedEmail}.`);
-      closeEditor();
+      setEditor(null);
+      loadBackendUsers().catch(() => {});
     } catch (error) {
       setMessage(error.message);
+    } finally {
+      setPendingAction("");
     }
   };
 
   const updateUser = async (id, patch) => {
-    const previousUser = users.find((user) => user.id === id);
     const nextUsers = users.map((user) =>
       user.id === id ? normalizeAdminManagedUser({ ...user, ...patch }) : user,
     );
@@ -17048,7 +17944,13 @@ function AdminUserManagementPage() {
       return;
     }
 
+    if (!hasAdminBackendAccess()) {
+      setMessage("User updated locally. Sign in as Administrator to sync SQL Server.");
+      return;
+    }
+
     try {
+      setPendingAction(`update:${id}`);
       let payload = null;
       if (Object.prototype.hasOwnProperty.call(patch, "role")) {
         payload = await apiFetch(`/api/admin/users/${id}/role`, {
@@ -17074,33 +17976,87 @@ function AdminUserManagementPage() {
         ));
       }
     } catch (error) {
-      if (previousUser) {
-        persistUsers(users.map((user) => (user.id === id ? previousUser : user)));
-      }
-      setMessage(error.message);
+      setMessage(`User updated locally. Backend sync failed: ${error.message}`);
+    } finally {
+      setPendingAction("");
     }
   };
 
-  const deleteUser = async (user) => {
-    if (!window.confirm(`Delete account "${user.name}"?`)) return;
+  const requestDeleteUser = (user) => {
+    setMessage("");
+    setDeleteCandidate(user);
+  };
 
-    if (!isBackendNumericId(user.id)) {
-      const nextUsers = users.filter((item) => item.id !== user.id);
-      persistUsers(nextUsers);
-      setMessage(`${user.name} deleted from local demo list.`);
-      return;
+  const closeDeleteDialog = () => {
+    if (pendingAction) return;
+    setDeleteCandidate(null);
+  };
+
+  const deleteAuthServerUser = async (user) => {
+    if (!GOOGLE_AUTH_BASE_URL || !user?.email) return false;
+
+    const response = await fetch(
+      `${GOOGLE_AUTH_BASE_URL}/api/admin/users/${encodeURIComponent(
+        user.id || user.email,
+      )}?email=${encodeURIComponent(user.email)}`,
+      {
+        method: "DELETE",
+        credentials: "include",
+      },
+    );
+
+    if (response.status === 404) return false;
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        payload?.message ||
+          payload?.error ||
+          "Could not delete this account from the auth user list.",
+      );
     }
+    return true;
+  };
+
+  const confirmDeleteUser = async () => {
+    const user = deleteCandidate;
+    if (!user) return;
+
+    const isSqlUser = isBackendNumericId(user.id);
 
     try {
-      await apiFetch(`/api/admin/users/${user.id}`, {
-        method: "DELETE",
-        auth: true,
-      });
-      const nextUsers = users.filter((item) => item.id !== user.id);
+      setPendingAction(`delete:${user.id}`);
+      const deletedFromAuthServer = await deleteAuthServerUser(user);
+      let deletedFromSqlServer = deletedFromAuthServer && isSqlUser;
+      if (isSqlUser && !deletedFromSqlServer && hasAdminBackendAccess()) {
+        await apiFetch(`/api/admin/users/${user.id}`, {
+          method: "DELETE",
+          auth: true,
+        });
+        deletedFromSqlServer = true;
+      }
+
+      const nextUsers = users.filter(
+        (item) =>
+          item.id !== user.id &&
+          item.email.toLowerCase() !== user.email.toLowerCase(),
+      );
       persistUsers(nextUsers);
-      setMessage(`${user.name} deleted from SQL Server.`);
+      if (isSqlUser && !deletedFromSqlServer && !deletedFromAuthServer) {
+        setMessage(
+          `${user.name} deleted locally. Sign in as Administrator to delete from SQL Server.`,
+        );
+      } else {
+        setMessage(`${user.name} deleted from admin user lists.`);
+      }
+      setDeleteCandidate(null);
+      if (hasAdminBackendAccess()) {
+        loadBackendUsers().catch(() => {});
+      }
     } catch (error) {
       setMessage(error.message);
+    } finally {
+      setPendingAction("");
     }
   };
 
@@ -17301,6 +18257,7 @@ function AdminUserManagementPage() {
                       <select
                         className="admin-user-role-select"
                         value={user.role}
+                        disabled={Boolean(pendingAction)}
                         onChange={(event) =>
                           updateUser(user.id, {
                             role: event.target.value,
@@ -17324,6 +18281,7 @@ function AdminUserManagementPage() {
                         <input
                           type="checkbox"
                           checked={user.status === "Active"}
+                          disabled={Boolean(pendingAction)}
                           onChange={(event) =>
                             updateUser(user.id, {
                               status: event.target.checked ? "Active" : "Inactive",
@@ -17342,6 +18300,7 @@ function AdminUserManagementPage() {
                         <input
                           type="checkbox"
                           checked={user.isPro}
+                          disabled={Boolean(pendingAction)}
                           onChange={(event) =>
                             updateUser(user.id, {
                               isPro: event.target.checked,
@@ -17371,6 +18330,7 @@ function AdminUserManagementPage() {
                         className="admin-user-action edit"
                         aria-label={`Edit ${user.name}`}
                         onClick={() => openEditUser(user)}
+                        disabled={Boolean(pendingAction)}
                         title="Edit account"
                       >
                         <MiniIcon path="M4.5 19.5h4L18.2 9.8a2 2 0 0 0-2.8-2.8L5.7 16.7l-1.2 2.8ZM14.4 8l2.6 2.6M12 19.5h7.5" />
@@ -17379,7 +18339,8 @@ function AdminUserManagementPage() {
                         type="button"
                         className="admin-user-action delete"
                         aria-label={`Delete ${user.name}`}
-                        onClick={() => deleteUser(user)}
+                        onClick={() => requestDeleteUser(user)}
+                        disabled={Boolean(pendingAction)}
                         title="Delete account"
                       >
                         <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
@@ -17542,14 +18503,63 @@ function AdminUserManagementPage() {
                 </label>
               </div>
               <footer>
-                <button type="button" onClick={closeEditor}>
+                <button type="button" onClick={closeEditor} disabled={Boolean(pendingAction)}>
                   Cancel
                 </button>
-                <button type="submit">
-                  {editor.mode === "edit" ? "Save Changes" : "Invite User"}
+                <button type="submit" disabled={Boolean(pendingAction)}>
+                  {pendingAction
+                    ? "Saving..."
+                    : editor.mode === "edit"
+                      ? "Save Changes"
+                      : "Invite User"}
                 </button>
               </footer>
             </form>
+          </div>
+        ) : null}
+
+        {deleteCandidate ? (
+          <div
+            className="admin-user-modal-backdrop"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeDeleteDialog();
+            }}
+          >
+            <section className="admin-user-modal admin-delete-modal" role="dialog" aria-modal="true">
+              <button
+                type="button"
+                className="admin-user-modal-close"
+                aria-label="Close delete confirmation"
+                onClick={closeDeleteDialog}
+                disabled={Boolean(pendingAction)}
+              >
+                <MiniIcon path="M6 6l12 12M18 6 6 18" />
+              </button>
+              <header>
+                <span>Delete Account</span>
+                <h2>Delete {deleteCandidate.name}?</h2>
+                <p>
+                  This removes the account from the SQL Server user list. The action is applied immediately.
+                </p>
+              </header>
+              <div className="admin-delete-summary">
+                <strong>{deleteCandidate.email}</strong>
+                <span>{deleteCandidate.role} / {deleteCandidate.status}</span>
+              </div>
+              <footer>
+                <button type="button" onClick={closeDeleteDialog} disabled={Boolean(pendingAction)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="admin-delete-confirm"
+                  onClick={confirmDeleteUser}
+                  disabled={Boolean(pendingAction)}
+                >
+                  {pendingAction ? "Deleting..." : "Delete User"}
+                </button>
+              </footer>
+            </section>
           </div>
         ) : null}
       </div>
@@ -17587,10 +18597,7 @@ function AdminPaymentManagementPage() {
   const [paymentActionNotes, setPaymentActionNotes] = React.useState({});
 
   const loadPayments = React.useCallback(() => {
-    return fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/payments`, {
-      credentials: "include",
-    })
-      .then((response) => (response.ok ? response.json() : { items: [] }))
+    return apiFetch("/api/admin/payments", { auth: true })
       .then((payload) => {
         const nextPayments = Array.isArray(payload.items)
           ? payload.items.map(normalizeAdminPayment)
@@ -17660,17 +18667,13 @@ function AdminPaymentManagementPage() {
       [payment.orderCode]: action === "verify" ? "Checking PayOS..." : "Cancelling...",
     }));
     try {
-      const response = await fetch(
-        `${GOOGLE_AUTH_BASE_URL}/api/admin/payments/${payment.orderCode}/${action}`,
+      const payload = await apiFetch(
+        `/api/admin/payments/${payment.orderCode}/${action}`,
         {
           method: "POST",
-          credentials: "include",
+          auth: true,
         },
       );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.error || "Payment action failed.");
-      }
 
       setPayments((current) =>
         current.map((item) =>
@@ -17901,6 +18904,7 @@ function AdminPaymentManagementPage() {
 function AdminPlanManagementPage() {
   const [settings, setSettings] = React.useState(getProPlanSettings);
   const [message, setMessage] = React.useState("");
+  const [isSaving, setIsSaving] = React.useState(false);
   const roles = ["Student", "Lecturer", "Researcher"];
 
   React.useEffect(() => {
@@ -17928,16 +18932,35 @@ function AdminPlanManagementPage() {
     setMessage("");
   };
 
-  const saveSettings = (event) => {
+  const saveSettings = async (event) => {
     event.preventDefault();
-    setProPlanSettings(settings);
-    setMessage("Plan policy cached locally. Backend policy is the source of truth for enforced accuracy.");
+    setIsSaving(true);
+    setMessage("");
+
+    try {
+      const savedSettings = await savePlanPolicyToBackend(settings);
+      setSettings(savedSettings);
+      setMessage("Plan policy saved to backend and will be used for pricing, checkout expiry, and enforced accuracy.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const resetSettings = () => {
-    setSettings(defaultProPlanSettings);
-    setProPlanSettings(defaultProPlanSettings);
-    setMessage("Plan policy reset to default.");
+  const resetSettings = async () => {
+    setIsSaving(true);
+    setMessage("");
+
+    try {
+      const savedSettings = await resetPlanPolicyOnBackend();
+      setSettings(savedSettings);
+      setMessage("Plan policy reset to backend defaults.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -18076,10 +19099,12 @@ function AdminPlanManagementPage() {
           </section>
 
           <footer className="admin-plan-actions">
-            <button type="button" onClick={resetSettings}>
+            <button type="button" onClick={resetSettings} disabled={isSaving}>
               Reset Defaults
             </button>
-            <button type="submit">Save Plan Policy</button>
+            <button type="submit" disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save Plan Policy"}
+            </button>
           </footer>
         </form>
       </div>
@@ -18442,6 +19467,27 @@ const setAdminSystemLogs = (logs) => {
   window.localStorage.setItem(ADMIN_SYSTEM_LOGS_KEY, JSON.stringify(logs));
 };
 
+const getAdminLogIdentity = (log) =>
+  `${log.code || ""}:${log.time || ""}:${log.event || ""}:${log.detail || ""}`;
+
+const mergeAdminSystemLogs = (...lists) => {
+  const seen = new Set();
+  return lists
+    .flat()
+    .filter(Boolean)
+    .filter((log) => {
+      const identity = getAdminLogIdentity(log);
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    })
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.time) || 0;
+      const rightTime = Date.parse(right.time) || 0;
+      return rightTime - leftTime;
+    });
+};
+
 function AdminSystemLogsPage() {
   const [query, setQuery] = React.useState("");
   const [severity, setSeverity] = React.useState("All Severities");
@@ -18464,10 +19510,19 @@ function AdminSystemLogsPage() {
 
   React.useEffect(() => {
     if (backendLogStatus === "success" && Array.isArray(backendLogs)) {
-      setLogs(backendLogs);
-      setAdminSystemLogs(backendLogs);
+      const nextLogs = mergeAdminSystemLogs(getAdminSystemLogs(), backendLogs);
+      setLogs(nextLogs);
+      setAdminSystemLogs(nextLogs);
     }
   }, [backendLogStatus, backendLogs]);
+
+  React.useEffect(() => {
+    const syncClientLogs = () => setLogs(getAdminSystemLogs());
+    window.addEventListener("scholartrend:system-log", syncClientLogs);
+    return () => {
+      window.removeEventListener("scholartrend:system-log", syncClientLogs);
+    };
+  }, []);
 
   React.useEffect(() => {
     setPage(1);
@@ -18487,6 +19542,65 @@ function AdminSystemLogsPage() {
     const matchesModule = module === "All Modules" || log.module === module;
     return matchesQuery && matchesSeverity && matchesModule;
   });
+  const moduleOptions = Array.from(
+    new Set(logs.map((log) => log.module).filter(Boolean)),
+  ).sort((left, right) => left.localeCompare(right));
+  const visibleWarningCount = visibleLogs.filter(
+    (log) => log.severity === "Warning",
+  ).length;
+  const visibleErrorCount = visibleLogs.filter(
+    (log) => log.severity === "Error",
+  ).length;
+  const warningCount = logs.filter((log) => log.severity === "Warning").length;
+  const errorCount = logs.filter((log) => log.severity === "Error").length;
+  const visiblePassRate =
+    visibleLogs.length === 0
+      ? 100
+      : Math.round(
+          ((visibleLogs.length - visibleErrorCount) / visibleLogs.length) * 1000,
+        ) / 10;
+  const getLogSearchText = (log) =>
+    `${log.event} ${log.detail} ${log.module} ${log.actor} ${log.code}`.toLowerCase();
+  const getLogRoute = (log) => {
+    const text = getLogSearchText(log);
+    if (/payment|payos|checkout|plan/.test(text)) return "/admin-payments";
+    if (/user|auth|login|role|account/.test(text)) return "/admin-user-management";
+    if (/sync|semantic scholar|openalex|worker/.test(text)) {
+      return "/admin-sync-management";
+    }
+    if (/publication|paper|similarity|submission|index|search/.test(text)) {
+      return "/admin-publications";
+    }
+    if (/notification|alert/.test(text)) return "/admin-notifications";
+    return "/admin-system-logs";
+  };
+  const alertLogs = logs.filter((log) =>
+    ["Warning", "Error"].includes(log.severity),
+  );
+  const activeAlert = alertLogs[0] || null;
+  const getHealthState = (pattern) => {
+    const relatedLogs = logs.filter((log) => pattern.test(getLogSearchText(log)));
+    if (relatedLogs.some((log) => log.severity === "Error")) return "Critical";
+    if (relatedLogs.some((log) => log.severity === "Warning")) return "Degraded";
+    return "Operational";
+  };
+  const healthRows = [
+    {
+      label: "API Gateway",
+      query: "API",
+      state: getHealthState(/api|gateway|auth/),
+    },
+    {
+      label: "Sync Workers",
+      query: "sync",
+      state: getHealthState(/sync|semantic scholar|openalex/),
+    },
+    {
+      label: "Search Index",
+      query: "index",
+      state: getHealthState(/index|search/),
+    },
+  ];
   const totalPages = Math.max(1, Math.ceil(visibleLogs.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pagedLogs = visibleLogs.slice(
@@ -18496,39 +19610,53 @@ function AdminSystemLogsPage() {
   const summaryCards = [
     {
       label: "Total Events",
-      value: formatCount(logs.length),
-      note: `+${visibleLogs.length} matching current filters`,
+      value: formatCount(visibleLogs.length),
+      note: `${formatCount(logs.length)} total stored events`,
       tone: "info",
       icon: "M6 5h12v14H6zM9 8h6M9 12h6M9 16h4",
+      action: () => {
+        setQuery("");
+        setSeverity("All Severities");
+        setModule("All Modules");
+        setLogMessage("Showing all system logs.");
+      },
     },
     {
       label: "Warnings",
-      value: formatCount(logs.filter((log) => log.severity === "Warning").length),
-      note: `${logs.filter((log) => log.severity === "Warning").length} unresolved`,
+      value: formatCount(visibleWarningCount),
+      note: `${formatCount(warningCount)} total unresolved`,
       tone: "warning",
       icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+      action: () => {
+        setQuery("");
+        setSeverity("Warning");
+        setModule("All Modules");
+        setLogMessage("Showing warning logs.");
+      },
     },
     {
       label: "Errors",
-      value: formatCount(logs.filter((log) => log.severity === "Error").length),
-      note: `${logs.filter((log) => log.severity === "Error").length} critical`,
+      value: formatCount(visibleErrorCount),
+      note: `${formatCount(errorCount)} total critical`,
       tone: "danger",
       icon: "M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM9 9l6 6M15 9l-6 6",
+      action: () => {
+        setQuery("");
+        setSeverity("Error");
+        setModule("All Modules");
+        setLogMessage("Showing critical error logs.");
+      },
     },
     {
       label: "Audit Pass Rate",
-      value:
-        logs.length === 0
-          ? "100%"
-          : `${Math.round(
-              ((logs.length -
-                logs.filter((log) => log.severity === "Error").length) /
-                logs.length) *
-                1000,
-            ) / 10}%`,
-      note: "+0.4% from last week",
+      value: `${visiblePassRate}%`,
+      note: "Current filter pass rate",
       tone: "success",
       icon: "M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5",
+      action: () => {
+        setSeverity("All Severities");
+        setLogMessage("Audit pass rate recalculated for current filters.");
+      },
     },
   ];
 
@@ -18552,36 +19680,62 @@ function AdminSystemLogsPage() {
     setLogMessage("System logs refreshed.");
   };
 
-  const filterHealth = (nextModule, nextQuery = "") => {
-    setModule(nextModule);
+  const filterHealth = (nextQuery = "") => {
+    setModule("All Modules");
     setSeverity("All Severities");
     setQuery(nextQuery);
-    setLogMessage(`Filtered logs for ${nextModule === "All Modules" ? nextQuery : nextModule}.`);
+    setLogMessage(`Filtered logs for ${nextQuery}.`);
+  };
+
+  const viewAllLogs = () => {
+    setQuery("");
+    setSeverity("All Severities");
+    setModule("All Modules");
+    setLogMessage("Showing all system logs.");
+  };
+
+  const viewAlertLog = (alert = activeAlert) => {
+    if (!alert) {
+      viewAllLogs();
+      return;
+    }
+    setQuery(alert.code);
+    setSeverity("All Severities");
+    setModule("All Modules");
+    setLogMessage(`Showing alert ${alert.code} from ${alert.module}.`);
+  };
+
+  const openAlertModule = (alert = activeAlert) => {
+    if (!alert) {
+      viewAllLogs();
+      return;
+    }
+    goToRoute(getLogRoute(alert));
   };
 
   const reviewCritical = () => {
-    setSeverity("Error");
-    setModule("All Modules");
-    setQuery("");
-    setLogMessage("Showing critical error logs.");
+    if (!alertLogs.length) {
+      setQuery("");
+      setSeverity("All Severities");
+      setModule("All Modules");
+      setLogMessage("No warning or critical logs found.");
+      return;
+    }
+    viewAlertLog(alertLogs[0]);
   };
 
   const exportLogs = () => {
-    const header = "Time,Severity,Module,Event,Actor,Code";
-    const body = visibleLogs
-      .map(
-        (log) =>
-          `${log.time},${log.severity},${log.module},${log.event},${log.actor},${log.code}`,
-      )
-      .join("\n");
-    const url = URL.createObjectURL(
-      new Blob([`${header}\n${body}`], { type: "text/csv" }),
-    );
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "scholartrend-system-logs.csv";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadCsvFile("scholartrend-system-logs.csv", [
+      ["Time", "Severity", "Module", "Event", "Actor", "Code"],
+      ...visibleLogs.map((log) => [
+        log.time,
+        log.severity,
+        log.module,
+        log.event,
+        log.actor,
+        log.code,
+      ]),
+    ]);
   };
 
   return (
@@ -18614,8 +19768,10 @@ function AdminSystemLogsPage() {
           aria-label="System log metrics"
         >
           {summaryCards.map((item) => (
-            <article
+            <button
+              type="button"
               className={`admin-log-summary-card ${item.tone}`}
+              onClick={item.action}
               key={item.label}
             >
               <div>
@@ -18624,7 +19780,7 @@ function AdminSystemLogsPage() {
               </div>
               <strong>{item.value}</strong>
               <p>{item.note}</p>
-            </article>
+            </button>
           ))}
         </section>
 
@@ -18658,10 +19814,9 @@ function AdminSystemLogsPage() {
                 aria-label="Filter logs by module"
               >
                 <option>All Modules</option>
-                <option>Auth</option>
-                <option>Indexing</option>
-                <option>Sync</option>
-                <option>Users</option>
+                {moduleOptions.map((option) => (
+                  <option key={option}>{option}</option>
+                ))}
               </select>
               <button type="button" aria-label="Refresh logs" onClick={refreshLogs}>
                 <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5" />
@@ -18754,42 +19909,59 @@ function AdminSystemLogsPage() {
           <aside className="admin-logs-inspector">
             <section>
               <h2>Live Health</h2>
-              <button
-                type="button"
-                className="admin-health-filter"
-                onClick={() => filterHealth("All Modules", "API")}
-              >
-                <span>API Gateway</span>
-                <strong>Operational</strong>
-              </button>
-              <button
-                type="button"
-                className="admin-health-filter"
-                onClick={() => filterHealth("Sync")}
-              >
-                <span>Sync Workers</span>
-                <strong>Degraded</strong>
-              </button>
-              <button
-                type="button"
-                className="admin-health-filter"
-                onClick={() => filterHealth("Indexing")}
-              >
-                <span>Search Index</span>
-                <strong>Operational</strong>
-              </button>
+              {healthRows.map((row) => (
+                <button
+                  type="button"
+                  className={`admin-health-filter ${row.state.toLowerCase()}`}
+                  onClick={() => filterHealth(row.query)}
+                  key={row.label}
+                >
+                  <span>{row.label}</span>
+                  <strong>{row.state}</strong>
+                </button>
+              ))}
             </section>
-            <section className="admin-log-alert-card">
+            <section
+              className={`admin-log-alert-card ${
+                alertLogs.length
+                  ? errorCount
+                    ? "critical"
+                    : "warning"
+                  : "clear"
+              }`}
+            >
               <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
               <div>
-                <h2>Attention Needed</h2>
+                <h2>{alertLogs.length ? "Attention Needed" : "No Active Alerts"}</h2>
                 <p>
-                  2 critical events require admin review before the next
-                  scheduled sync.
+                  {activeAlert
+                    ? `${alertLogs.length} alert${alertLogs.length === 1 ? "" : "s"} need admin review.`
+                    : "All visible system checks are currently passing."}
                 </p>
-                <button type="button" onClick={reviewCritical}>
-                  Review Critical
-                </button>
+                {alertLogs.length ? (
+                  <div className="admin-log-alert-list">
+                    {alertLogs.map((alert) => (
+                      <article
+                        className={`admin-log-alert-item ${alert.severity.toLowerCase()}`}
+                        key={`${alert.code}-${alert.time}`}
+                      >
+                        <button type="button" onClick={() => viewAlertLog(alert)}>
+                          <strong>{alert.event}</strong>
+                          <span>
+                            {alert.module} / {alert.code}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => openAlertModule(alert)}
+                        >
+                          Open
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </section>
           </aside>
@@ -18832,17 +20004,7 @@ function PaymentReturnPage() {
     }
 
     let cancelledEffect = false;
-    fetch(
-      `${GOOGLE_AUTH_BASE_URL}/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`,
-      { credentials: "include" },
-    )
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload.error || "Unable to verify PayOS payment.");
-        }
-        return payload;
-      })
+    apiFetch(`/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`)
       .then((payload) => {
         if (cancelledEffect) return;
         if (payload.status === "PAID" && payload.user) {
@@ -18902,11 +20064,121 @@ export default function App() {
   const path = window.location.pathname;
 
   React.useEffect(() => {
+    const originalFetch = window.fetch.bind(window);
+    const originalConsoleError = window.console.error.bind(window.console);
+    window.fetch = async (...args) => {
+      const requestInfo = args[0];
+      const requestOptions = args[1] || {};
+      const requestUrl =
+        typeof requestInfo === "string"
+          ? requestInfo
+          : requestInfo?.url || String(requestInfo || "");
+      const skipClientAlert = Boolean(requestOptions.__skipClientAlert);
+
+      try {
+        const response = await originalFetch(...args);
+        if (!skipClientAlert && !response.ok) {
+          let detail = `${requestUrl}: HTTP ${response.status}`;
+          try {
+            const clonedResponse = response.clone();
+            const contentType = clonedResponse.headers.get("content-type") || "";
+            const payload = contentType.includes("application/json")
+              ? await clonedResponse.json()
+              : await clonedResponse.text();
+            const message =
+              payload?.message ||
+              payload?.error ||
+              payload?.title ||
+              (typeof payload === "string" ? payload : "");
+            if (message) detail = `${detail} - ${String(message).slice(0, 180)}`;
+          } catch {
+            // Keep the status-only message if the response body cannot be read.
+          }
+          const module = getClientLogModule(requestUrl);
+          appendClientSystemLog({
+            event: `Web request failed (${response.status})`,
+            detail,
+            module,
+            severity: response.status >= 500 ? "Error" : "Warning",
+            actor: "browser@client",
+            code: getClientLogCode(module, response.status),
+          });
+        }
+        return response;
+      } catch (error) {
+        if (!skipClientAlert) {
+          const module = getClientLogModule(requestUrl);
+          appendClientSystemLog({
+            event: "Web request crashed",
+            detail: `${requestUrl}: ${error.message}`,
+            module,
+            severity: "Error",
+            actor: "browser@client",
+            code: getClientLogCode(module, "FETCH"),
+          });
+        }
+        throw error;
+      }
+    };
+    window.console.error = (...args) => {
+      originalConsoleError(...args);
+      const detail = args
+        .map((item) => {
+          if (item instanceof Error) return item.message;
+          if (typeof item === "string") return item;
+          try {
+            return JSON.stringify(item);
+          } catch {
+            return String(item);
+          }
+        })
+        .join(" ")
+        .slice(0, 260);
+      appendClientSystemLog({
+        event: "Console error",
+        detail: detail || `Console error at ${window.location.pathname}`,
+        module: getClientLogModule(window.location.pathname),
+        severity: "Error",
+        actor: "browser@client",
+        code: getClientLogCode("System", "CONSOLE"),
+      });
+    };
+    const handleClientError = (event) => {
+      appendClientSystemLog({
+        event: "Frontend runtime error",
+        detail: `${event.message || "Unknown JavaScript error"} at ${window.location.pathname}`,
+        module: getClientLogModule(window.location.pathname),
+        severity: "Error",
+        actor: "browser@client",
+        code: getClientLogCode("System", "JS"),
+      });
+    };
+    const handleUnhandledRejection = (event) => {
+      const reason = event.reason;
+      const message =
+        reason?.message ||
+        (typeof reason === "string" ? reason : "Unhandled promise rejection");
+      appendClientSystemLog({
+        event: "Unhandled web request error",
+        detail: `${message} at ${window.location.pathname}`,
+        module: getClientLogModule(window.location.pathname),
+        severity: "Error",
+        actor: "browser@client",
+        code: getClientLogCode("System", "PROMISE"),
+      });
+    };
+
     window.addEventListener("scholartrend:navigate", forceRender);
     window.addEventListener("popstate", forceRender);
+    window.addEventListener("error", handleClientError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
     return () => {
       window.removeEventListener("scholartrend:navigate", forceRender);
       window.removeEventListener("popstate", forceRender);
+      window.removeEventListener("error", handleClientError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.fetch = originalFetch;
+      window.console.error = originalConsoleError;
     };
   }, []);
 

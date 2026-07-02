@@ -14,5 +14,9 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.Role)
             .HasConversion<string>();
+
+        builder.Property(u => u.Plan)
+            .HasMaxLength(20)
+            .HasDefaultValue("Free");
     }
 }

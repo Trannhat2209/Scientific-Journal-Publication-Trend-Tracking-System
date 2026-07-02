@@ -82,7 +82,7 @@ const server = http.createServer(async (req, res) => {
 
     if (requestUrl.pathname === "/api/auth/google/url") {
       requireGoogleConfig();
-      const { url, stateToken } = createGoogleAuthUrl(requestUrl);
+      const { url, stateToken } = createGoogleAuthUrl(requestUrl, req.headers.origin);
       sendJson(
         res,
         200,
@@ -98,7 +98,7 @@ const server = http.createServer(async (req, res) => {
 
     if (requestUrl.pathname === "/api/auth/google/start") {
       requireGoogleConfig();
-      const { url, stateToken } = createGoogleAuthUrl(requestUrl);
+      const { url, stateToken } = createGoogleAuthUrl(requestUrl, req.headers.origin);
       redirect(res, url, {
         "Set-Cookie": buildCookie("scholartrend_oauth_state", stateToken, {
           maxAge: 600,
@@ -173,6 +173,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const adminUserDeleteMatch = requestUrl.pathname.match(
+      /^\/api\/admin\/users\/([^/]+)$/,
+    );
+    if (adminUserDeleteMatch && req.method === "DELETE") {
+      await handleAdminDeleteUser(req, res, adminUserDeleteMatch[1], requestUrl);
+      return;
+    }
+
     if (requestUrl.pathname === "/api/admin/payments" && req.method === "GET") {
       sendJson(res, 200, { items: getPaymentsForAdmin().map(mapPaymentForAdmin) });
       return;
@@ -199,6 +207,11 @@ const server = http.createServer(async (req, res) => {
     );
     if (adminProMatch && req.method === "PUT") {
       await handleAdminUpdatePro(req, res, adminProMatch[1]);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith("/api/")) {
+      await proxyDotnetApi(req, res, requestUrl);
       return;
     }
 
@@ -250,13 +263,26 @@ function trimTrailingSlash(value) {
 
 function applyCors(req, res) {
   const origin = req.headers.origin;
-  if (origin && origin === FRONTEND_URL) {
+  if (origin && isAllowedCorsOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Vary", "Origin");
   }
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Internal-Secret");
+}
+
+function isAllowedCorsOrigin(origin) {
+  const normalizedOrigin = trimTrailingSlash(origin);
+  if (normalizedOrigin === FRONTEND_URL) {
+    return true;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  return /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(normalizedOrigin);
 }
 
 function sendJson(res, statusCode, body, headers = {}) {
@@ -316,14 +342,16 @@ function requireGoogleConfig() {
   }
 }
 
-function createGoogleAuthUrl(requestUrl) {
+function createGoogleAuthUrl(requestUrl, requestOrigin) {
   const role = sanitizeRole(requestUrl.searchParams.get("role"));
   const returnTo = sanitizeReturnTo(requestUrl.searchParams.get("returnTo"));
+  const frontendOrigin = sanitizeFrontendOrigin(requestOrigin);
   const stateToken = signToken({
     purpose: "google-oauth",
     nonce: crypto.randomBytes(16).toString("base64url"),
     role,
     returnTo,
+    frontendOrigin,
     exp: Math.floor(Date.now() / 1000) + 600,
   });
 
@@ -350,11 +378,20 @@ function sanitizeReturnTo(returnTo) {
   return returnTo;
 }
 
+function sanitizeFrontendOrigin(origin) {
+  if (!origin || !isAllowedCorsOrigin(origin)) {
+    return FRONTEND_URL;
+  }
+
+  return trimTrailingSlash(origin);
+}
+
 async function handleGoogleCallback(req, res, requestUrl) {
   const code = requestUrl.searchParams.get("code");
   const state = requestUrl.searchParams.get("state");
   const cookies = parseCookies(req);
   const savedState = cookies.scholartrend_oauth_state;
+  let callbackFrontendOrigin = FRONTEND_URL;
 
   try {
     if (!code) {
@@ -366,6 +403,7 @@ async function handleGoogleCallback(req, res, requestUrl) {
     }
 
     const statePayload = verifyToken(state, "google-oauth");
+    callbackFrontendOrigin = sanitizeFrontendOrigin(statePayload.frontendOrigin);
     const tokenSet = await exchangeCodeForTokens(code);
     const googleUser = await fetchGoogleUser(tokenSet);
     const localUser = upsertUser(googleUser, statePayload.role);
@@ -379,7 +417,7 @@ async function handleGoogleCallback(req, res, requestUrl) {
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7,
     });
 
-    redirect(res, `${FRONTEND_URL}/login?auth=google-success`, {
+    redirect(res, `${callbackFrontendOrigin}${statePayload.returnTo || "/login"}?auth=google-success`, {
       "Set-Cookie": [
         buildCookie("scholartrend_session", sessionToken, {
           maxAge: 60 * 60 * 24 * 7,
@@ -390,7 +428,7 @@ async function handleGoogleCallback(req, res, requestUrl) {
   } catch (error) {
     redirect(
       res,
-      `${FRONTEND_URL}/login?auth=google-error&message=${encodeURIComponent(
+      `${callbackFrontendOrigin}/login?auth=google-error&message=${encodeURIComponent(
         error.message,
       )}`,
       {
@@ -1119,6 +1157,78 @@ async function handleAdminUpdatePro(req, res, userId) {
   sendJson(res, 200, { user: mapUserForAdmin(users[targetIndex]) });
 }
 
+async function handleAdminDeleteUser(req, res, userId, requestUrl) {
+  const users = readUsers();
+  const decodedUserId = decodeURIComponent(String(userId || ""));
+  const email = String(requestUrl.searchParams.get("email") || "")
+    .trim()
+    .toLowerCase();
+  const targetIndex = users.findIndex((user) => {
+    const userEmail = String(user.email || "").toLowerCase();
+    return (
+      String(user.id) === decodedUserId ||
+      userEmail === decodedUserId.toLowerCase() ||
+      (email && userEmail === email)
+    );
+  });
+
+  let deletedUser = null;
+  if (targetIndex >= 0) {
+    [deletedUser] = users.splice(targetIndex, 1);
+    writeUsers(users);
+  }
+
+  const sqlDeleteResult = await deleteDotnetAdminUser(decodedUserId, email);
+
+  if (!deletedUser && !sqlDeleteResult) {
+    sendJson(res, 200, {
+      message: "User already deleted.",
+      alreadyDeleted: true,
+    });
+    return;
+  }
+
+  sendJson(res, 200, {
+    message: "User deleted.",
+    user: deletedUser ? mapUserForAdmin(deletedUser) : sqlDeleteResult.user,
+  });
+}
+
+async function deleteDotnetAdminUser(userId, email) {
+  if (!PAYMENT_SYNC_SECRET) return null;
+
+  const params = new URLSearchParams();
+  if (/^\d+$/.test(String(userId || ""))) {
+    params.set("id", String(userId));
+  }
+  if (email) {
+    params.set("email", email);
+  }
+  if (!params.toString()) return null;
+
+  const response = await fetch(
+    `${DOTNET_API_BASE_URL}/api/admin/users/internal?${params.toString()}`,
+    {
+      method: "DELETE",
+      headers: {
+        "X-Internal-Secret": PAYMENT_SYNC_SECRET,
+      },
+    },
+  );
+
+  if (response.status === 404) return null;
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(
+      payload?.message || payload?.error || "Could not delete user from SQL Server.",
+    );
+    error.statusCode = response.status;
+    throw error;
+  }
+  return payload;
+}
+
 async function serveStaticApp(res, pathname) {
   const distDir = path.join(rootDir, "dist");
   const filePath = path.join(
@@ -1155,4 +1265,37 @@ async function serveStaticApp(res, pathname) {
     "Content-Type": contentTypes[ext] || "application/octet-stream",
   });
   fs.createReadStream(targetPath).pipe(res);
+}
+
+async function proxyDotnetApi(req, res, requestUrl) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+
+  const targetUrl = `${DOTNET_API_BASE_URL}${requestUrl.pathname}${requestUrl.search}`;
+  const headers = { ...req.headers };
+  delete headers.host;
+  headers["x-forwarded-host"] = req.headers.host || "";
+  headers["x-forwarded-proto"] = requestUrl.protocol.replace(":", "");
+
+  const upstream = await fetch(targetUrl, {
+    method: req.method,
+    headers,
+    body:
+      req.method === "GET" || req.method === "HEAD"
+        ? undefined
+        : Buffer.concat(chunks),
+  });
+
+  const responseHeaders = {};
+  upstream.headers.forEach((value, key) => {
+    if (!["content-encoding", "transfer-encoding", "connection"].includes(key)) {
+      responseHeaders[key] = value;
+    }
+  });
+
+  res.writeHead(upstream.status, responseHeaders);
+  const arrayBuffer = await upstream.arrayBuffer();
+  res.end(Buffer.from(arrayBuffer));
 }

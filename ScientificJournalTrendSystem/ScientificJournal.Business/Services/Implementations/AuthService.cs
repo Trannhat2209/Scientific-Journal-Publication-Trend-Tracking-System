@@ -51,6 +51,7 @@ public class AuthService : IAuthService
             Role = request.Role,
             IsActive = true,
             IsDeleted = false,
+            Plan = "Free",
             IsEmailVerified = !_requireEmailVerification,
             EmailVerificationToken = verificationToken,
             EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24),
@@ -266,7 +267,7 @@ public class AuthService : IAuthService
             FullName = user.FullName,
             Role = user.Role,
             IsPro = user.IsPro,
-            Plan = user.IsPro ? "Pro" : "Free",
+            Plan = string.IsNullOrWhiteSpace(user.Plan) ? (user.IsPro ? "Pro" : "Free") : user.Plan,
             SearchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro)
         };
     }

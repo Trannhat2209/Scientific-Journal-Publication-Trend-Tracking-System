@@ -15,6 +15,7 @@ public class User
     public bool IsDeleted { get; set; } = false;
     public bool IsEmailVerified { get; set; } = false;
     public bool IsPro { get; set; } = false;
+    public string Plan { get; set; } = "Free";
     public string? EmailVerificationToken { get; set; }
     public DateTime? EmailVerificationTokenExpiresAt { get; set; }
     public string? PasswordResetToken { get; set; }
@@ -25,4 +26,5 @@ public class User
     public ICollection<Bookmark> Bookmarks { get; set; } = new List<Bookmark>();
     public ICollection<Follow> Follows { get; set; } = new List<Follow>();
     public ICollection<Notification> Notifications { get; set; } = new List<Notification>();
+    public ICollection<PaymentTransaction> PaymentTransactions { get; set; } = new List<PaymentTransaction>();
 }

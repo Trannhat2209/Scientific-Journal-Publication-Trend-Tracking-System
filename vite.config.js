@@ -11,6 +11,7 @@ export default defineConfig({
       ignored: [
         "**/ScientificJournalTrendSystem/**",
         "**/scientific-journal-frontend/**",
+        "**/.codex-run/**",
         "**/dist/**",
       ],
     },

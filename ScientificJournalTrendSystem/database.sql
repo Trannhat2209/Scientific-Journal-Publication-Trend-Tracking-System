@@ -50,6 +50,7 @@ CREATE TABLE users (
     is_deleted      BIT                 NOT NULL        CONSTRAINT df_users_del     DEFAULT 0,
     is_email_verified BIT               NOT NULL        CONSTRAINT df_users_verified DEFAULT 0,
     is_pro          BIT                 NOT NULL        CONSTRAINT df_users_pro      DEFAULT 0,
+    [plan]          NVARCHAR(20)        NOT NULL        CONSTRAINT df_users_plan     DEFAULT 'Free',
     email_verification_token NVARCHAR(100) NULL,
     email_verification_token_expires_at DATETIME2 NULL,
     password_reset_token NVARCHAR(100) NULL,
@@ -62,6 +63,40 @@ CREATE TABLE users (
     CONSTRAINT uq_users_email       UNIQUE      (email),
     CONSTRAINT ck_users_role        CHECK       (role IN ('Admin','Researcher','Lecturer','Student'))
 );
+GO
+
+-- ================================================================
+--  1A. PAYMENT TRANSACTIONS (PayOS Pro upgrades)
+-- ================================================================
+CREATE TABLE payment_transactions (
+    id              INT                 IDENTITY(1,1)   NOT NULL,
+    order_code      BIGINT              NOT NULL,
+    payment_link_id NVARCHAR(100)       NULL,
+    checkout_url    NVARCHAR(1000)      NULL,
+    user_id         INT                 NOT NULL,
+    user_email      NVARCHAR(256)       NOT NULL,
+    billing_cycle   NVARCHAR(20)        NOT NULL        CONSTRAINT df_pt_cycle DEFAULT 'yearly',
+    [plan]          NVARCHAR(20)        NOT NULL        CONSTRAINT df_pt_plan DEFAULT 'Pro',
+    amount          INT                 NOT NULL,
+    currency        NVARCHAR(10)        NOT NULL        CONSTRAINT df_pt_currency DEFAULT 'VND',
+    description     NVARCHAR(100)       NOT NULL,
+    status          NVARCHAR(30)        NOT NULL        CONSTRAINT df_pt_status DEFAULT 'PENDING',
+    payos_reference NVARCHAR(100)       NULL,
+    raw_webhook_json NVARCHAR(MAX)      NULL,
+    created_at      DATETIME2           NOT NULL        CONSTRAINT df_pt_created DEFAULT GETUTCDATE(),
+    expires_at      DATETIME2           NULL,
+    paid_at         DATETIME2           NULL,
+    updated_at      DATETIME2           NULL,
+
+    CONSTRAINT pk_payment_transactions PRIMARY KEY (id),
+    CONSTRAINT uq_payment_transactions_order UNIQUE (order_code),
+    CONSTRAINT fk_pt_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX ix_payment_transactions_user_email ON payment_transactions(user_email);
+CREATE INDEX ix_payment_transactions_status ON payment_transactions(status);
+CREATE INDEX ix_payment_transactions_payment_link_id ON payment_transactions(payment_link_id);
 GO
 
 -- ================================================================
@@ -308,12 +343,12 @@ PRINT '>> Seeding data...';
 GO
 
 SET IDENTITY_INSERT users ON;
-INSERT INTO users (id, full_name, email, password_hash, role, is_email_verified, is_pro) VALUES
-(1, N'Nguyen Van Admin',  'admin@scijtrend.io',              '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Admin', 1, 1),
-(2, N'Le Thi Minh',       'le.researcher@uni.edu.vn',        '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Researcher', 1, 0),
-(3, N'Tran Quoc Binh',    'tran.lecturer@hcmus.edu.vn',      '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Lecturer', 1, 0),
-(4, N'Pham Thi Lan',      'student01@student.hcmus.edu.vn',  '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Student', 1, 0),
-(5, N'Demo Researcher',   'demo.researcher@local.test',      '$2a$11$0NK5SsVUz4joZ4n2biOdzemEsmchErWdWn.VZnbk1awoF3mspueCi', 'Researcher', 1, 0);
+INSERT INTO users (id, full_name, email, password_hash, role, is_email_verified, is_pro, [plan]) VALUES
+(1, N'Nguyen Van Admin',  'admin@scijtrend.io',              '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Admin', 1, 1, 'Pro'),
+(2, N'Le Thi Minh',       'le.researcher@uni.edu.vn',        '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Researcher', 1, 0, 'Free'),
+(3, N'Tran Quoc Binh',    'tran.lecturer@hcmus.edu.vn',      '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Lecturer', 1, 0, 'Free'),
+(4, N'Pham Thi Lan',      'student01@student.hcmus.edu.vn',  '$2a$12$39eC79rFq37dF3vF7C38feO6GgUu.3eC.3rFq37dF3vF7C38feO6G', 'Student', 1, 0, 'Free'),
+(5, N'Demo Researcher',   'demo.researcher@local.test',      '$2a$11$0NK5SsVUz4joZ4n2biOdzemEsmchErWdWn.VZnbk1awoF3mspueCi', 'Researcher', 1, 0, 'Free');
 SET IDENTITY_INSERT users OFF;
 
 SET IDENTITY_INSERT journals ON;

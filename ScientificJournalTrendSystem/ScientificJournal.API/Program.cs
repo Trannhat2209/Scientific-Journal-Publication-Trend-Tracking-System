@@ -10,8 +10,11 @@ using ScientificJournal.API.Extensions;
 using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Jobs;
 using ScientificJournal.Common.Configurations;
+using ScientificJournal.Common.Policies;
 using System.Text.Json.Serialization;
 using Microsoft.IdentityModel.Tokens;
+
+LoadDotEnvFromWorkspace();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -85,6 +88,7 @@ builder.Services.AddApplicationServices(builder.Configuration);
 var hangfireEnabled = builder.Configuration.GetValue("Hangfire:Enabled", true);
 
 var app = builder.Build();
+PlanPolicy.LoadFromFile(Path.Combine(app.Environment.ContentRootPath, "App_Data", "plan-policy.json"));
 
 app.UseMiddleware<ScientificJournal.API.Middleware.ExceptionHandlingMiddleware>();
 
@@ -142,4 +146,41 @@ if (hangfireEnabled)
 }
 
 app.Run();
+
+static void LoadDotEnvFromWorkspace()
+{
+    var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
+    while (directory != null)
+    {
+        var envPath = Path.Combine(directory.FullName, ".env");
+        if (File.Exists(envPath))
+        {
+            foreach (var rawLine in File.ReadAllLines(envPath))
+            {
+                var line = rawLine.Trim();
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var separatorIndex = line.IndexOf('=');
+                if (separatorIndex <= 0)
+                {
+                    continue;
+                }
+
+                var key = line[..separatorIndex].Trim();
+                var value = line[(separatorIndex + 1)..].Trim().Trim('"', '\'');
+                if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(key)))
+                {
+                    Environment.SetEnvironmentVariable(key, value);
+                }
+            }
+
+            return;
+        }
+
+        directory = directory.Parent;
+    }
+}
 

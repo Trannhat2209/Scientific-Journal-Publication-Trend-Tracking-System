@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.API.Filters;
+using ScientificJournal.API.Services;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Helpers;
@@ -24,13 +25,20 @@ public class AdminController : ControllerBase
     private readonly ITrendingService _trendingService;
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly PayosMerchantClient _payosClient;
 
-    public AdminController(ISyncService syncService, ITrendingService trendingService, AppDbContext context, IConfiguration configuration)
+    public AdminController(
+        ISyncService syncService,
+        ITrendingService trendingService,
+        AppDbContext context,
+        IConfiguration configuration,
+        PayosMerchantClient payosClient)
     {
         _syncService = syncService;
         _trendingService = trendingService;
         _context = context;
         _configuration = configuration;
+        _payosClient = payosClient;
     }
 
     [HttpGet("overview")]
@@ -65,7 +73,7 @@ public class AdminController : ControllerBase
             roleDistribution,
             apiHealth = new[]
             {
-                new { label = "Semantic Scholar", value = "Ready" },
+                new { label = "Semantic Scholar", value = "Ready via Graph API" },
                 new { label = "OpenAlex", value = "Ready" }
             }
         });
@@ -92,7 +100,7 @@ public class AdminController : ControllerBase
                 status = u.IsActive ? "Active" : "Inactive",
                 isActive = u.IsActive,
                 isPro = u.IsPro,
-                plan = u.IsPro ? "Pro" : "Free",
+                plan = string.IsNullOrWhiteSpace(u.Plan) ? (u.IsPro ? "Pro" : "Free") : u.Plan,
                 searchAccuracy = PlanPolicy.GetSearchAccuracy(u.Role, u.IsPro),
                 createdAt = u.CreatedAt,
                 lastLoginAt = u.CreatedAt,
@@ -136,6 +144,7 @@ public class AdminController : ControllerBase
             Role = role,
             IsActive = request.IsActive ?? string.Equals(request.Status, "Active", StringComparison.OrdinalIgnoreCase),
             IsPro = request.IsPro ?? string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase),
+            Plan = string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase) || request.IsPro == true ? "Pro" : "Free",
             IsDeleted = false,
             IsEmailVerified = true,
             CreatedAt = DateTime.UtcNow
@@ -182,6 +191,7 @@ public class AdminController : ControllerBase
                 IsDeleted = false,
                 IsEmailVerified = true,
                 IsPro = request.IsPro ?? string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase),
+                Plan = string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase) || request.IsPro == true ? "Pro" : "Free",
                 CreatedAt = DateTime.UtcNow
             };
             _context.Users.Add(user);
@@ -198,6 +208,7 @@ public class AdminController : ControllerBase
         if (request.IsPro == true || string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase))
         {
             user.IsPro = true;
+            user.Plan = "Pro";
         }
 
         await _context.SaveChangesAsync();
@@ -235,6 +246,7 @@ public class AdminController : ControllerBase
         user.Role = role;
         user.IsActive = request.IsActive ?? string.Equals(request.Status, "Active", StringComparison.OrdinalIgnoreCase);
         user.IsPro = request.IsPro ?? string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase);
+        user.Plan = user.IsPro ? "Pro" : "Free";
         if (!string.IsNullOrWhiteSpace(request.Password))
         {
             user.PasswordHash = PasswordHasher.HashPassword(request.Password);
@@ -258,6 +270,31 @@ public class AdminController : ControllerBase
         await LogAuditAsync("User Management", $"Deleted user {user.Email}.", "Success", "ADMIN-USER-DELETE");
 
         return Ok(new { message = "User deleted." });
+    }
+
+    [AllowAnonymous]
+    [HttpDelete("users/internal")]
+    public async Task<IActionResult> DeleteUserInternal([FromQuery] int? id, [FromQuery] string? email)
+    {
+        if (!IsAuthorizedInternalRequest())
+        {
+            return Unauthorized(new { message = "Invalid internal sync secret." });
+        }
+
+        var normalizedEmail = NormalizeEmail(email);
+        var user = await _context.Users.FirstOrDefaultAsync(u =>
+            !u.IsDeleted &&
+            ((id.HasValue && u.Id == id.Value) ||
+             (!string.IsNullOrWhiteSpace(normalizedEmail) && u.Email == normalizedEmail)));
+
+        if (user == null) return NotFound(new { message = "User not found." });
+
+        user.IsDeleted = true;
+        user.IsActive = false;
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("User Management", $"Deleted user {user.Email} through internal admin sync.", "Success", "ADMIN-USER-INTERNAL-DELETE");
+
+        return Ok(new { message = "User deleted.", user = MapAdminUser(user) });
     }
 
     [HttpPut("users/{id:int}/role")]
@@ -299,10 +336,83 @@ public class AdminController : ControllerBase
         if (user == null) return NotFound(new { message = "User not found." });
 
         user.IsPro = !user.IsPro;
+        user.Plan = user.IsPro ? "Pro" : "Free";
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Set Pro status for {user.Email} to {user.IsPro}.", "Success", "ADMIN-USER-PRO");
 
         return Ok(new { message = $"User premium status updated. IsPro: {user.IsPro}", user = MapAdminUser(user), isPro = user.IsPro });
+    }
+
+    [HttpGet("payments")]
+    public async Task<IActionResult> GetPayments()
+    {
+        var payments = await _context.PaymentTransactions
+            .Include(payment => payment.User)
+            .OrderByDescending(payment => payment.CreatedAt)
+            .ToListAsync();
+
+        return Ok(new { items = payments.Select(MapAdminPayment) });
+    }
+
+    [HttpPost("payments/{orderCode:long}/verify")]
+    public async Task<IActionResult> VerifyPayment(long orderCode)
+    {
+        var payment = await _context.PaymentTransactions
+            .Include(item => item.User)
+            .FirstOrDefaultAsync(item => item.OrderCode == orderCode);
+
+        if (payment == null)
+        {
+            return NotFound(new { message = "Payment not found." });
+        }
+
+        var payosPayment = await _payosClient.GetPaymentInformationAsync(orderCode);
+        payment.Status = payosPayment.Status.ToUpperInvariant();
+        payment.PayosReference = payosPayment.GetFirstTransactionReference() ?? payment.PayosReference;
+        payment.UpdatedAt = DateTime.UtcNow;
+
+        if (payment.Status == "PAID" && payosPayment.AmountPaid >= payment.Amount && payment.User != null)
+        {
+            payment.PaidAt ??= DateTime.UtcNow;
+            payment.User.IsPro = true;
+            payment.User.Plan = "Pro";
+            await LogAuditAsync("Payment Management", $"Verified PayOS payment {payment.OrderCode}; activated Pro for {payment.User.Email}.", "Success", "ADMIN-PAYOS-VERIFY");
+        }
+
+        await _context.SaveChangesAsync();
+        return Ok(new { payment = MapAdminPayment(payment) });
+    }
+
+    [HttpPost("payments/{orderCode:long}/cancel")]
+    public async Task<IActionResult> CancelPayment(long orderCode)
+    {
+        var payment = await _context.PaymentTransactions
+            .Include(item => item.User)
+            .FirstOrDefaultAsync(item => item.OrderCode == orderCode);
+
+        if (payment == null)
+        {
+            return NotFound(new { message = "Payment not found." });
+        }
+
+        if (string.Equals(payment.Status, "PAID", StringComparison.OrdinalIgnoreCase))
+        {
+            return Conflict(new { message = "Paid payments cannot be cancelled." });
+        }
+
+        if (!string.Equals(payment.Status, "EXPIRED", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(payment.Status, "FAILED", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(payment.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase))
+        {
+            await _payosClient.CancelPaymentLinkAsync(orderCode, "Cancelled by admin");
+        }
+
+        payment.Status = "CANCELLED";
+        payment.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Payment Management", $"Cancelled PayOS payment {payment.OrderCode} for {payment.UserEmail}.", "Success", "ADMIN-PAYOS-CANCEL");
+
+        return Ok(new { payment = MapAdminPayment(payment) });
     }
 
     [HttpPost("notifications/broadcast")]
@@ -429,9 +539,13 @@ public class AdminController : ControllerBase
     [HttpPost("sync/semantic-scholar")]
     public async Task<IActionResult> SyncSemanticScholar()
     {
-        await LogAuditAsync("Sync Management", "Admin triggered Semantic Scholar sync.", "Info", "ADMIN-SYNC-SEMANTIC");
+        await LogAuditAsync("Sync Management", "Admin triggered Semantic Scholar sync.", "Info", "ADMIN-SYNC-SEMANTIC-SCHOLAR");
         await _syncService.SyncFromSemanticScholarAsync();
-        return Ok(new { message = "Semantic Scholar sync started." });
+        var latest = await _context.SyncLogs
+            .Where(log => log.SourceApi == "Semantic Scholar")
+            .OrderByDescending(log => log.StartedAt)
+            .FirstOrDefaultAsync();
+        return Ok(new { message = "Semantic Scholar sync completed.", recordsSynced = latest?.RecordsSynced ?? 0 });
     }
 
     [HttpPost("sync/openalex")]
@@ -439,7 +553,11 @@ public class AdminController : ControllerBase
     {
         await LogAuditAsync("Sync Management", "Admin triggered OpenAlex sync.", "Info", "ADMIN-SYNC-OPENALEX");
         await _syncService.SyncFromOpenAlexAsync();
-        return Ok(new { message = "OpenAlex sync started." });
+        var latest = await _context.SyncLogs
+            .Where(log => log.SourceApi == "OpenAlex")
+            .OrderByDescending(log => log.StartedAt)
+            .FirstOrDefaultAsync();
+        return Ok(new { message = "OpenAlex sync completed.", recordsSynced = latest?.RecordsSynced ?? 0 });
     }
 
     [HttpPost("recalculate-trends")]
@@ -560,11 +678,31 @@ public class AdminController : ControllerBase
         status = user.IsActive ? "Active" : "Inactive",
         isActive = user.IsActive,
         isPro = user.IsPro,
-        plan = user.IsPro ? "Pro" : "Free",
+        plan = string.IsNullOrWhiteSpace(user.Plan) ? (user.IsPro ? "Pro" : "Free") : user.Plan,
         searchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro),
         createdAt = user.CreatedAt,
         lastLoginAt = user.CreatedAt,
         avatar = user.FullName.Length >= 2 ? user.FullName.Substring(0, 2).ToUpper() : "ST"
+    };
+
+    private object MapAdminPayment(PaymentTransaction payment) => new
+    {
+        orderCode = payment.OrderCode,
+        paymentLinkId = payment.PaymentLinkId,
+        checkoutUrl = payment.CheckoutUrl,
+        billingCycle = payment.BillingCycle,
+        plan = payment.Plan,
+        priceLabel = payment.BillingCycle == "monthly" ? "$5 / month" : "$49 / year",
+        status = payment.Status,
+        email = payment.UserEmail,
+        userName = payment.User?.FullName ?? payment.UserEmail,
+        role = payment.User?.Role.ToString() ?? "Researcher",
+        createdAt = payment.CreatedAt,
+        expiresAt = payment.ExpiresAt,
+        expiresInSeconds = payment.ExpiresAt.HasValue
+            ? Math.Max(0, (int)Math.Floor((payment.ExpiresAt.Value - DateTime.UtcNow).TotalSeconds))
+            : 0,
+        updatedAt = payment.UpdatedAt
     };
 
     private async Task LogAuditAsync(string module, string detail, string severity, string code)

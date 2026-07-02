@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
@@ -10,6 +12,7 @@ using ScientificJournal.Common.DTOs.Response.Publication;
 using ScientificJournal.Common.Enums;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
+using ScientificJournal.DataAccess.External;
 using ScientificJournal.DataAccess.Mongo;
 
 namespace ScientificJournal.Business.Services.Implementations;
@@ -21,23 +24,31 @@ public class PublicationService : IPublicationService
     private readonly ISimilarityService _similarityService;
     private readonly IPlagiarismCheckService _plagiarismCheckService;
     private readonly IMongoMetadataRepository _mongoRepository;
+    private readonly OpenAlexClient _openAlexClient;
+    private readonly SerpApiScholarSearchClient _scholarSearchClient;
 
     public PublicationService(
         AppDbContext context, 
         IRecommendationService recommendationService,
         ISimilarityService similarityService,
         IPlagiarismCheckService plagiarismCheckService,
-        IMongoMetadataRepository mongoRepository)
+        IMongoMetadataRepository mongoRepository,
+        OpenAlexClient openAlexClient,
+        SerpApiScholarSearchClient scholarSearchClient)
     {
         _context = context;
         _recommendationService = recommendationService;
         _similarityService = similarityService;
         _plagiarismCheckService = plagiarismCheckService;
         _mongoRepository = mongoRepository;
+        _openAlexClient = openAlexClient;
+        _scholarSearchClient = scholarSearchClient;
     }
 
     public async Task<PaginatedResponse<PublicationDto>> SearchPublicationsAsync(PublicationSearchRequestDto request, int? userId = null)
     {
+        await EnsureExternalSearchCacheAsync(request);
+
         var query = _context.Publications
             .AsNoTracking()
             .Include(p => p.Journal)
@@ -48,9 +59,10 @@ public class PublicationService : IPublicationService
 
         if (!string.IsNullOrWhiteSpace(request.Keyword))
         {
-            query = query.Where(p => p.Title.Contains(request.Keyword)
-                                    || (p.Abstract != null && p.Abstract.Contains(request.Keyword))
-                                    || p.PublicationKeywords.Any(pk => pk.Keyword.Term.Contains(request.Keyword)));
+            var keyword = request.Keyword.Trim();
+            query = query.Where(p => p.Title.Contains(keyword)
+                                    || (p.Abstract != null && p.Abstract.Contains(keyword))
+                                    || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(keyword)));
         }
 
         if (request.Year > 0)
@@ -61,6 +73,15 @@ public class PublicationService : IPublicationService
         if (!string.IsNullOrWhiteSpace(request.JournalId) && int.TryParse(request.JournalId, out var journalId))
         {
             query = query.Where(p => p.JournalId == journalId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Source))
+        {
+            var source = NormalizeSourceName(request.Source);
+            if (!string.IsNullOrWhiteSpace(source))
+            {
+                query = query.Where(p => p.SourceApi == source);
+            }
         }
 
         query = request.SortBy?.ToLowerInvariant() switch
@@ -334,6 +355,213 @@ public class PublicationService : IPublicationService
             Authors = publication.PublicationAuthors.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList(),
             Keywords = publication.PublicationKeywords.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList()
         };
+    }
+
+    private async Task EnsureExternalSearchCacheAsync(PublicationSearchRequestDto request)
+    {
+        var keyword = string.IsNullOrWhiteSpace(request.Keyword)
+            ? "artificial intelligence"
+            : request.Keyword.Trim();
+        var maxResults = Math.Clamp(request.PageSize <= 0 ? 10 : request.PageSize, 5, 20);
+        var source = NormalizeSourceName(request.Source);
+
+        var importTasks = new List<Task<IReadOnlyList<ExternalPublication>>>();
+        if (string.IsNullOrWhiteSpace(source) || source == "OpenAlex")
+        {
+            importTasks.Add(_openAlexClient.SearchWorksAsync(keyword, maxResults));
+        }
+
+        if (string.IsNullOrWhiteSpace(source) || source == "Google Scholar")
+        {
+            importTasks.Add(_scholarSearchClient.SearchAsync(keyword, Math.Min(maxResults, 10)));
+        }
+
+        if (importTasks.Count == 0)
+        {
+            return;
+        }
+
+        var results = await Task.WhenAll(importTasks.Select(FetchSafelyAsync));
+        foreach (var publication in results.SelectMany(items => items))
+        {
+            await UpsertExternalPublicationAsync(publication);
+        }
+    }
+
+    private static async Task<IReadOnlyList<ExternalPublication>> FetchSafelyAsync(
+        Task<IReadOnlyList<ExternalPublication>> sourceTask)
+    {
+        try
+        {
+            return await sourceTask;
+        }
+        catch
+        {
+            return Array.Empty<ExternalPublication>();
+        }
+    }
+
+    private async Task UpsertExternalPublicationAsync(ExternalPublication external)
+    {
+        var title = external.Title.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return;
+        }
+
+        var doi = string.IsNullOrWhiteSpace(external.DOI)
+            ? $"{external.SourceApi.ToLowerInvariant().Replace(" ", "-")}:{StableHash(title)}"
+            : external.DOI.Trim();
+        var normalizedTitle = title.ToLowerInvariant();
+        var existing = await _context.Publications
+            .Include(p => p.Journal)
+            .FirstOrDefaultAsync(p =>
+                p.DOI == doi ||
+                p.Title.ToLower() == normalizedTitle);
+
+        if (existing != null)
+        {
+            existing.CitationCount = Math.Max(existing.CitationCount, external.CitationCount);
+            existing.SourceApi = external.SourceApi;
+            existing.SyncedAt = DateTime.UtcNow;
+            if (string.IsNullOrWhiteSpace(existing.Abstract) && !string.IsNullOrWhiteSpace(external.Abstract))
+            {
+                existing.Abstract = external.Abstract;
+            }
+            await _context.SaveChangesAsync();
+            return;
+        }
+
+        var journal = await GetOrCreateExternalJournalAsync(external);
+        var mongoId = await TryInsertRawMetadataAsync(external, doi);
+        var publication = new Publication
+        {
+            Title = title,
+            Abstract = external.Abstract,
+            Year = external.Year <= 0 ? DateTime.UtcNow.Year : external.Year,
+            DOI = doi,
+            JournalId = journal?.Id,
+            CitationCount = external.CitationCount,
+            SourceApi = external.SourceApi,
+            MongoMetadataId = mongoId,
+            IsDeleted = false,
+            IsOriginal = true,
+            SyncedAt = DateTime.UtcNow
+        };
+
+        _context.Publications.Add(publication);
+        await _context.SaveChangesAsync();
+
+        var authorOrder = 1;
+        foreach (var authorName in external.Authors.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().Take(8))
+        {
+            var author = await _context.Authors.FirstOrDefaultAsync(a => a.Name == authorName);
+            if (author == null)
+            {
+                author = new Author { Name = authorName };
+                _context.Authors.Add(author);
+                await _context.SaveChangesAsync();
+            }
+
+            _context.PublicationAuthors.Add(new PublicationAuthor
+            {
+                PublicationId = publication.Id,
+                AuthorId = author.Id,
+                AuthorOrder = authorOrder++
+            });
+        }
+
+        foreach (var keywordTerm in external.Keywords.Where(term => !string.IsNullOrWhiteSpace(term)).Distinct().Take(8))
+        {
+            var norm = keywordTerm.ToLowerInvariant().Trim();
+            var keyword = await _context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
+            if (keyword == null)
+            {
+                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = norm };
+                _context.Keywords.Add(keyword);
+                await _context.SaveChangesAsync();
+            }
+
+            _context.PublicationKeywords.Add(new PublicationKeyword
+            {
+                PublicationId = publication.Id,
+                KeywordId = keyword.Id
+            });
+        }
+
+        await _context.SaveChangesAsync();
+    }
+
+    private async Task<Journal?> GetOrCreateExternalJournalAsync(ExternalPublication external)
+    {
+        var name = string.IsNullOrWhiteSpace(external.JournalName)
+            ? external.SourceApi
+            : external.JournalName.Trim();
+        var journal = await _context.Journals.FirstOrDefaultAsync(j => j.Name == name);
+        if (journal != null)
+        {
+            return journal;
+        }
+
+        journal = new Journal
+        {
+            Name = name,
+            Publisher = external.Publisher ?? external.SourceApi,
+            ISSNOnline = $"ex-{StableHash(name)}"
+        };
+        _context.Journals.Add(journal);
+        await _context.SaveChangesAsync();
+        return journal;
+    }
+
+    private async Task<string?> TryInsertRawMetadataAsync(ExternalPublication external, string doi)
+    {
+        try
+        {
+            var insertTask = _mongoRepository.InsertAsync(new PublicationRawMetadata
+            {
+                Doi = doi,
+                SourceApi = external.SourceApi,
+                RawData = string.IsNullOrWhiteSpace(external.RawJson)
+                    ? $"{{\"title\":\"{external.Title.Replace("\"", "\\\"")}\"}}"
+                    : external.RawJson,
+                SyncedAt = DateTime.UtcNow
+            });
+
+            var completedTask = await Task.WhenAny(insertTask, Task.Delay(TimeSpan.FromSeconds(2)));
+            return completedTask == insertTask ? await insertTask : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string NormalizeSourceName(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return string.Empty;
+        }
+
+        if (source.Contains("openalex", StringComparison.OrdinalIgnoreCase))
+        {
+            return "OpenAlex";
+        }
+
+        if (source.Contains("google", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("scholar", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Google Scholar";
+        }
+
+        return source.Trim();
+    }
+
+    private static string StableHash(string value)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value.ToLowerInvariant().Trim()));
+        return Convert.ToHexString(bytes)[..16].ToLowerInvariant();
     }
 }
 
