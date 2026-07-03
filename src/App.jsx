@@ -370,6 +370,17 @@ const apiFetch = async (path, options = {}) => {
   let response;
 
   try {
+    // If caller requested auth but we have no access token, fail fast so UI can use local/demo fallback
+    if (auth && !token) {
+      appendClientSystemLog({
+        event: "API request skipped (no token)",
+        detail: path,
+        module,
+        severity: "Warning",
+        code: getClientLogCode(module, 401),
+      });
+      throw new Error("Not authenticated");
+    }
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...rest,
       __skipClientAlert: true,
