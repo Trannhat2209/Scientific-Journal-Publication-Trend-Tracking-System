@@ -396,6 +396,39 @@ const apiFetch = async (path, options = {}) => {
     ? await response.json()
     : await response.text();
 
+  // If the backend returned 401, try to refresh the access token once and retry.
+  if (response.status === 401 && !options._retried) {
+    try {
+      const stored = getStoredAuth();
+      const refreshToken = stored.refreshToken;
+      if (refreshToken) {
+        const refreshResp = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken }),
+        });
+
+        if (refreshResp.ok) {
+          const newAuth = await refreshResp.json();
+          // Persist minimal auth so subsequent calls use updated token
+          window.localStorage.setItem(
+            "scholartrend.auth",
+            JSON.stringify({
+              accessToken: newAuth.accessToken,
+              refreshToken: newAuth.refreshToken,
+              expiresAt: newAuth.expiresAt,
+            }),
+          );
+
+          // Retry original request once with refreshed token
+          return apiFetch(path, { ...options, _retried: true, auth: true });
+        }
+      }
+    } catch {
+      // Ignore refresh failures and continue to surface the 401 below
+    }
+  }
+
   if (!response.ok) {
     const validationMessage =
       payload?.errors && typeof payload.errors === "object"
