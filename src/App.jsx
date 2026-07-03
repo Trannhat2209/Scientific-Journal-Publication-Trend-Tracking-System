@@ -3,6 +3,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import Chart from "chart.js/auto";
 import { Line } from "react-chartjs-2";
+import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "./LoginEnhancements";
 
 const getAcademicRole = () =>
   window.location.pathname.startsWith("/lecturer-") ? "lecturer" : "researcher";
@@ -28,11 +30,6 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(
 const GOOGLE_AUTH_BASE_URL = (
   import.meta.env.VITE_GOOGLE_AUTH_BASE_URL || API_BASE_URL
 ).replace(/\/$/, "");
-const ORCID_CLIENT_ID = import.meta.env.VITE_ORCID_CLIENT_ID || "";
-const ORCID_REDIRECT_URI =
-  import.meta.env.VITE_ORCID_REDIRECT_URI ||
-  `${window.location.origin}/login?auth=orcid-success`;
-const INSTITUTION_SSO_URL = import.meta.env.VITE_INSTITUTION_SSO_URL || "";
 
 const getStoredAuth = () => {
   try {
@@ -83,17 +80,11 @@ const getStoredSession = () => {
   }
 };
 
-const normalizeAuthResponse = (payload) => ({
-  ...payload,
-  accessToken: payload.accessToken || payload.AccessToken,
-  refreshToken: payload.refreshToken || payload.RefreshToken,
-  expiresAt: payload.expiresAt || payload.ExpiresAt,
-  user: payload.user || payload.User,
-});
-
 const normalizeRoleForUi = (role) => {
   const value = Array.isArray(role) ? role[0] : role;
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (normalized === "admin" || normalized === "administrator") {
     return "Administrator";
   }
@@ -167,15 +158,22 @@ const setProPlanSettings = (settings) => {
   );
 };
 
-const normalizeAccuracyPolicy = (policy = {}, fallback = defaultProPlanSettings.freeAccuracy) => ({
+const normalizeAccuracyPolicy = (
+  policy = {},
+  fallback = defaultProPlanSettings.freeAccuracy,
+) => ({
   Student: Number(policy.Student ?? policy.student ?? fallback.Student),
   Lecturer: Number(policy.Lecturer ?? policy.lecturer ?? fallback.Lecturer),
-  Researcher: Number(policy.Researcher ?? policy.researcher ?? fallback.Researcher),
+  Researcher: Number(
+    policy.Researcher ?? policy.researcher ?? fallback.Researcher,
+  ),
 });
 
 const normalizePlanPolicySettings = (policy = {}) => ({
   ...defaultProPlanSettings,
-  monthlyPrice: Number(policy.monthlyPrice || defaultProPlanSettings.monthlyPrice),
+  monthlyPrice: Number(
+    policy.monthlyPrice || defaultProPlanSettings.monthlyPrice,
+  ),
   yearlyPrice: Number(policy.yearlyPrice || defaultProPlanSettings.yearlyPrice),
   monthlyAmountVnd: Number(
     policy.monthlyAmountVnd ||
@@ -188,8 +186,7 @@ const normalizePlanPolicySettings = (policy = {}) => ({
       defaultProPlanSettings.yearlyPrice * 25000,
   ),
   yearlySavingsPercent: Number(
-    policy.yearlySavingsPercent ??
-      defaultProPlanSettings.yearlySavingsPercent,
+    policy.yearlySavingsPercent ?? defaultProPlanSettings.yearlySavingsPercent,
   ),
   checkoutHoldMinutes: Number(
     policy.checkoutHoldMinutes ?? defaultProPlanSettings.checkoutHoldMinutes,
@@ -245,6 +242,18 @@ const getSearchAccuracyForAccount = (role, isPro = false) => {
   return accuracyMap[normalizedRole] ?? settings.freeAccuracy.Researcher;
 };
 
+const normalizePercentValue = (value) => {
+  const percent = Number(value);
+  return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
+};
+
+const clampPercentToAccuracy = (value, accuracyLimit = 100) => {
+  const percent = normalizePercentValue(value);
+  const limit = normalizePercentValue(accuracyLimit) ?? 100;
+  if (percent === null) return Math.min(100, limit);
+  return Math.min(percent, limit);
+};
+
 const inferRoleFromPath = () => {
   const path = window.location.pathname;
   if (path.startsWith("/student-")) return "Student";
@@ -253,17 +262,27 @@ const inferRoleFromPath = () => {
   return "Researcher";
 };
 
+const getExplicitRoleFromPath = () => {
+  const path = window.location.pathname;
+  if (path.startsWith("/student-")) return "Student";
+  if (path.startsWith("/lecturer-")) return "Lecturer";
+  if (path.startsWith("/researcher-")) return "Researcher";
+  if (path.startsWith("/admin-")) return "Administrator";
+  return null;
+};
+
 const getCurrentAccountPlan = () => {
   const session = getStoredSession();
-  const role = normalizeRoleForUi(session.role || inferRoleFromPath());
+  const role = normalizeRoleForUi(
+    getExplicitRoleFromPath() || session.role || inferRoleFromPath(),
+  );
   const isPro = Boolean(session.isPro || session.plan === "Pro");
   return {
     ...session,
     role,
     isPro,
     plan: isPro ? "Pro" : "Free",
-    searchAccuracy:
-      session.searchAccuracy || getSearchAccuracyForAccount(role, isPro),
+    searchAccuracy: getSearchAccuracyForAccount(role, isPro),
   };
 };
 
@@ -333,7 +352,10 @@ const appendClientSystemLog = ({
       code: code || getClientLogCode(module),
     };
     const nextLogs = [nextLog, ...current].slice(0, 120);
-    window.localStorage.setItem(CLIENT_SYSTEM_LOGS_KEY, JSON.stringify(nextLogs));
+    window.localStorage.setItem(
+      CLIENT_SYSTEM_LOGS_KEY,
+      JSON.stringify(nextLogs),
+    );
     window.dispatchEvent(new Event("scholartrend:system-log"));
     return nextLog;
   } catch {
@@ -345,11 +367,6 @@ const apiFetch = async (path, options = {}) => {
   const { body, auth = false, headers = {}, ...rest } = options;
   const token = getStoredAuth().accessToken;
   const module = getClientLogModule(path);
-
-  if (auth && !token) {
-    throw new Error("Authentication is required to access this backend resource.");
-  }
-
   let response;
 
   try {
@@ -407,7 +424,8 @@ const apiFetch = async (path, options = {}) => {
 const ACADEMIC_PROVIDER_TEST_PASSWORD = "Scholar2024";
 
 const getFriendlyRegisterError = (error) => {
-  let message = error?.message || "Registration failed. Please check your details.";
+  let message =
+    error?.message || "Registration failed. Please check your details.";
 
   try {
     const parsed = JSON.parse(message);
@@ -416,7 +434,11 @@ const getFriendlyRegisterError = (error) => {
         ? Object.values(parsed.errors).flat().join(" ")
         : "";
     message =
-      validationMessages || parsed?.message || parsed?.error || parsed?.title || message;
+      validationMessages ||
+      parsed?.message ||
+      parsed?.error ||
+      parsed?.title ||
+      message;
   } catch {
     // The backend usually returns plain English; JSON strings are normalized above.
   }
@@ -455,7 +477,9 @@ const getFriendlyRegisterError = (error) => {
 };
 
 const getAcademicProviderEmail = ({ provider, role, email }) => {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedEmail = String(email || "")
+    .trim()
+    .toLowerCase();
   if (normalizedEmail) return normalizedEmail;
 
   const providerSlug = String(provider || "academic")
@@ -481,7 +505,9 @@ const authenticateAcademicProvider = async ({
   const accountName =
     String(fullName || "").trim() || `${provider} ${normalizedRole}`;
   const fallbackUser = {
-    id: `${String(provider).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${normalizedEmail}`,
+    id: `${String(provider)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")}-${normalizedEmail}`,
     email: normalizedEmail,
     fullName: accountName,
     name: accountName,
@@ -492,7 +518,7 @@ const authenticateAcademicProvider = async ({
   };
 
   try {
-    const rawPayload = await apiFetch("/api/auth/register", {
+    const payload = await apiFetch("/api/auth/register", {
       method: "POST",
       body: {
         fullName: accountName,
@@ -501,7 +527,6 @@ const authenticateAcademicProvider = async ({
         role: normalizeRoleForApi(normalizedRole),
       },
     });
-    const payload = normalizeAuthResponse(rawPayload);
     persistAuth(payload);
     return {
       user: {
@@ -513,14 +538,13 @@ const authenticateAcademicProvider = async ({
     };
   } catch {
     try {
-      const rawPayload = await apiFetch("/api/auth/login", {
+      const payload = await apiFetch("/api/auth/login", {
         method: "POST",
         body: {
           email: normalizedEmail,
           password: ACADEMIC_PROVIDER_TEST_PASSWORD,
         },
       });
-      const payload = normalizeAuthResponse(rawPayload);
       persistAuth(payload);
       return {
         user: {
@@ -580,16 +604,15 @@ const persistSession = (user) => {
 };
 
 const persistAuth = (authPayload) => {
-  const normalized = normalizeAuthResponse(authPayload);
   window.localStorage.setItem(
     "scholartrend.auth",
     JSON.stringify({
-      accessToken: normalized.accessToken,
-      refreshToken: normalized.refreshToken,
-      expiresAt: normalized.expiresAt,
+      accessToken: authPayload.accessToken,
+      refreshToken: authPayload.refreshToken,
+      expiresAt: authPayload.expiresAt,
     }),
   );
-  persistSession(normalized.user);
+  persistSession(authPayload.user);
 };
 
 const clearAuth = () => {
@@ -611,7 +634,8 @@ const handleLogout = async () => {
   goToRoute("/login");
 };
 
-const getSearchParam = (key) => new URLSearchParams(window.location.search).get(key);
+const getSearchParam = (key) =>
+  new URLSearchParams(window.location.search).get(key);
 
 const LOCAL_BOOKMARKS_KEY = "scholartrend.localBookmarks";
 const REMOVED_BOOKMARKS_KEY = "scholartrend.removedBookmarks";
@@ -619,22 +643,10 @@ const REMOVED_BOOKMARKS_KEY = "scholartrend.removedBookmarks";
 const formatCount = (value) =>
   new Intl.NumberFormat("en-US").format(Number(value || 0));
 
-const UTF8_BOM = "\ufeff";
-
-const createCsvText = (rows) => {
-  const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  return `${UTF8_BOM}${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
-};
-
 const downloadCsvFile = (filename, rows) => {
-  downloadBlobFile(
-    filename,
-    new Blob([createCsvText(rows)], { type: "text/csv;charset=utf-8" }),
-  );
-};
-
-const downloadBlobFile = (filename, blob) => {
-  const url = URL.createObjectURL(blob);
+  const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -700,14 +712,15 @@ const createZipBlob = (files, type) => {
   files.forEach((file) => {
     const nameBytes = encoder.encode(file.name);
     const contentBytes =
-      typeof file.content === "string" ? encoder.encode(file.content) : file.content;
+      typeof file.content === "string"
+        ? encoder.encode(file.content)
+        : file.content;
     const crc = getCrc32(contentBytes);
 
     const localHeader = new Uint8Array(30);
     const localView = new DataView(localHeader.buffer);
     localView.setUint32(0, 0x04034b50, true);
     localView.setUint16(4, 20, true);
-    localView.setUint16(6, 0x0800, true);
     localView.setUint16(10, time, true);
     localView.setUint16(12, day, true);
     localView.setUint32(14, crc, true);
@@ -722,7 +735,6 @@ const createZipBlob = (files, type) => {
     centralView.setUint32(0, 0x02014b50, true);
     centralView.setUint16(4, 20, true);
     centralView.setUint16(6, 20, true);
-    centralView.setUint16(8, 0x0800, true);
     centralView.setUint16(12, time, true);
     centralView.setUint16(14, day, true);
     centralView.setUint32(16, crc, true);
@@ -744,12 +756,41 @@ const createZipBlob = (files, type) => {
   endView.setUint32(12, centralDirectory.length, true);
   endView.setUint32(16, localOffset, true);
 
-  return new Blob([concatUint8Arrays(localParts), centralDirectory, endRecord], {
-    type,
-  });
+  return new Blob(
+    [concatUint8Arrays(localParts), centralDirectory, endRecord],
+    {
+      type,
+    },
+  );
 };
 
-const createDocxBlob = ({ title, rows }) => {
+const createDocxParagraph = (
+  text,
+  { bold = false, size = 22, spacingAfter = 160 } = {},
+) => `
+    <w:p>
+      <w:pPr><w:spacing w:after="${spacingAfter}"/></w:pPr>
+      <w:r>
+        <w:rPr>${bold ? "<w:b/>" : ""}<w:sz w:val="${size}"/></w:rPr>
+        <w:t xml:space="preserve">${xmlEscape(text)}</w:t>
+      </w:r>
+    </w:p>`;
+
+const createDocxSection = ({ heading, paragraphs = [] }) => `
+    ${heading ? createDocxParagraph(heading, { bold: true, size: 28, spacingAfter: 120 }) : ""}
+    ${paragraphs
+      .flatMap((paragraph) =>
+        String(paragraph || "")
+          .split(/\n{2,}/)
+          .map((line) => line.trim())
+          .filter(Boolean),
+      )
+      .map((paragraph) => createDocxParagraph(paragraph))
+      .join("")}`;
+
+const createDocxTable = (rows = []) => {
+  if (!rows.length) return "";
+
   const tableRows = rows
     .map(
       (row, rowIndex) => `
@@ -768,15 +809,7 @@ const createDocxBlob = ({ title, rows }) => {
     )
     .join("");
 
-  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>
-    <w:p>
-      <w:r>
-        <w:rPr><w:b/><w:sz w:val="32"/></w:rPr>
-        <w:t>${xmlEscape(title)}</w:t>
-      </w:r>
-    </w:p>
+  return `
     <w:tbl>
       <w:tblPr>
         <w:tblW w:w="0" w:type="auto"/>
@@ -790,7 +823,24 @@ const createDocxBlob = ({ title, rows }) => {
         </w:tblBorders>
       </w:tblPr>
       ${tableRows}
-    </w:tbl>
+    </w:tbl>`;
+};
+
+const createDocxBlob = ({ title, rows = [], sections = [] }) => {
+  const tableXml = createDocxTable(rows);
+  const sectionXml = sections.map(createDocxSection).join("");
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:rPr><w:b/><w:sz w:val="32"/></w:rPr>
+        <w:t>${xmlEscape(title)}</w:t>
+      </w:r>
+    </w:p>
+    ${sectionXml}
+    ${tableXml}
     <w:sectPr>
       <w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>
       <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
@@ -823,414 +873,177 @@ const createDocxBlob = ({ title, rows }) => {
 };
 
 const downloadDocxFile = (filename, documentData) => {
-  downloadBlobFile(filename, createDocxBlob(documentData));
+  const url = URL.createObjectURL(createDocxBlob(documentData));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 };
 
-const createXlsxBlob = ({ sheets }) => {
-  const sheetEntries = Object.entries(sheets || {}).filter(
-    ([, rows]) => Array.isArray(rows) && rows.length,
-  );
-  const safeSheetEntries = sheetEntries.length
-    ? sheetEntries
-    : [["Sheet1", [["No data"]]]];
-  const workbookSheets = safeSheetEntries
-    .map(
-      ([name], index) =>
-        `<sheet name="${xmlEscape(String(name).slice(0, 31) || `Sheet${index + 1}`)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
-    )
-    .join("");
-  const workbookRels = safeSheetEntries
-    .map(
-      ([,], index) =>
-        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
-    )
-    .join("");
-  const sheetFiles = safeSheetEntries.map(([name, rows], sheetIndex) => {
-    const sheetRows = rows
-      .map(
-        (row, rowIndex) =>
-          `<row r="${rowIndex + 1}">${row
-            .map((cell, cellIndex) => {
-              const columnName = String.fromCharCode(65 + (cellIndex % 26));
-              const cellRef = `${columnName}${rowIndex + 1}`;
-              const isNumber =
-                typeof cell === "number" ||
-                (String(cell).trim() !== "" && !Number.isNaN(Number(cell)));
-              return isNumber
-                ? `<c r="${cellRef}"><v>${Number(cell)}</v></c>`
-                : `<c r="${cellRef}" t="inlineStr"><is><t>${xmlEscape(cell)}</t></is></c>`;
-            })
-            .join("")}</row>`,
-      )
-      .join("");
-    return {
-      name: `xl/worksheets/sheet${sheetIndex + 1}.xml`,
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetData>${sheetRows}</sheetData>
-</worksheet>`,
-    };
-  });
-
-  return createZipBlob(
-    [
-      {
-        name: "[Content_Types].xml",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  ${safeSheetEntries
-    .map(([,], index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
-    .join("")}
-</Types>`,
-      },
-      {
-        name: "_rels/.rels",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`,
-      },
-      {
-        name: "xl/workbook.xml",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>${workbookSheets}</sheets>
-</workbook>`,
-      },
-      {
-        name: "xl/_rels/workbook.xml.rels",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  ${workbookRels}
-</Relationships>`,
-      },
-      ...sheetFiles,
-    ],
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
+const slugifyFilename = (value, fallback = "scholartrend-paper") => {
+  const slug = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || fallback;
 };
 
-const downloadXlsxFile = (filename, sheets) => {
-  downloadBlobFile(filename, createXlsxBlob({ sheets }));
-};
-
-const copyTextToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const sharePublicationLink = async ({ title, url, text = "" }) => {
-  if (navigator.share) {
-    await navigator.share({ title, text, url });
-    return "Shared with your system share sheet.";
-  }
-  const copied = await copyTextToClipboard(url);
-  return copied ? "Link copied to clipboard." : url;
-};
-
-const getPublicationCitation = (publication) => {
-  const authors = Array.isArray(publication.authors)
-    ? publication.authors.join(", ")
-    : publication.authorText || "Unknown author";
-  return `${authors} (${publication.year || "n.d."}). ${publication.title}. ${publication.journalName || "Scientific Journal"}.${publication.doi ? ` https://doi.org/${publication.doi}` : ""}`;
-};
-
-const downloadJsonFile = (filename, payload) => {
-  downloadBlobFile(
-    filename,
-    new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    }),
-  );
-};
-
-const sanitizeDownloadFilename = (value, fallback = "paper") =>
-  String(value || fallback)
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 90)
-    .replace(/^-|-$/g, "") || fallback;
-
-const normalizePaperForDownload = (paper = {}) => {
-  const authors = Array.isArray(paper.authors)
-    ? paper.authors.join(", ")
-    : paper.authorText || paper.authors || "Unknown authors";
-  const citations = String(
-    paper.citations ?? paper.citationCount ?? paper.citation_count ?? "0",
-  );
+const buildExternalSourceLinks = (paper = {}) => {
+  const title = paper.title || "";
   const doi = paper.doi || paper.DOI || "";
-  const sourceUrl =
-    paper.pdfUrl ||
-    paper.fullTextUrl ||
-    paper.url ||
-    (doi ? `https://doi.org/${doi}` : "");
+  const query = doi || title;
+  if (!query) return [];
 
+  const encodedQuery = encodeURIComponent(query);
+  const encodedTitle = encodeURIComponent(title || query);
+  return [
+    {
+      label: "OpenAlex",
+      href: `https://openalex.org/search?q=${encodedQuery}`,
+    },
+    {
+      label: "Google Scholar",
+      href: `https://scholar.google.com/scholar?q=${encodedQuery}`,
+    },
+    {
+      label: "ResearchGate",
+      href: `https://www.researchgate.net/search/publication?q=${encodedTitle}`,
+    },
+    {
+      label: "Connected Papers",
+      href: `https://www.connectedpapers.com/search?q=${encodedTitle}`,
+    },
+  ];
+};
+
+const getPaperFullText = (paper = {}) =>
+  paper.fullText ||
+  paper.FullText ||
+  paper.fileText ||
+  paper.content ||
+  paper.body ||
+  paper.text ||
+  paper.raw?.fullText ||
+  paper.raw?.fileText ||
+  "";
+
+const buildPaperDocxSections = (paper = {}, query = "") => {
+  const abstract =
+    paper.abstract ||
+    paper.summary ||
+    paper.excerpt ||
+    "No abstract is available for this publication yet.";
+  const fullText = getPaperFullText(paper);
+  const tags = Array.isArray(paper.tags)
+    ? paper.tags
+    : Array.isArray(paper.keywords)
+      ? paper.keywords
+      : [];
+  const sourceLinks = buildExternalSourceLinks(paper)
+    .map((link) => `${link.label}: ${link.href}`)
+    .join("\n");
+  const doi = paper.doi || paper.DOI || "";
+  const venue =
+    paper.journalName || paper.source || paper.sourceApi || "Indexed source";
+
+  return [
+    {
+      heading: "Article metadata",
+      paragraphs: [
+        `Title: ${paper.title || "Untitled publication"}`,
+        `Authors: ${paper.authors || paper.authorText || "Unknown authors"}`,
+        `Year: ${paper.year || "N/A"}`,
+        `Venue/source: ${venue}`,
+        `Citations: ${paper.citations ?? paper.citationCount ?? 0}`,
+        `References: ${paper.references ?? "N/A"}`,
+        `Search accuracy shown: ${Number(paper.similarity || 0).toFixed(1)}%`,
+        doi ? `DOI: ${doi}` : "DOI: Not available",
+        query ? `Search query: ${query}` : "",
+      ].filter(Boolean),
+    },
+    {
+      heading: fullText ? "Full paper content" : "Abstract / available content",
+      paragraphs: [
+        fullText ||
+          abstract ||
+          "The full publisher text is not stored in ScholarTrend for this record.",
+      ],
+    },
+    {
+      heading: "Keywords and trends",
+      paragraphs: [
+        tags.length
+          ? tags.join(", ")
+          : "No keyword list is available for this publication yet.",
+      ],
+    },
+    {
+      heading: "Original source links",
+      paragraphs: [
+        sourceLinks ||
+          "No external source link is available. Search the title in Google Scholar or DOI.org.",
+      ],
+    },
+    {
+      heading: "Reading note",
+      paragraphs: [
+        fullText
+          ? "This DOCX includes the full text stored in ScholarTrend for this publication."
+          : "ScholarTrend currently has metadata and abstract-level content for this indexed record. Use the source links above to open the publisher or DOI page for the official full text.",
+      ],
+    },
+  ];
+};
+
+const buildPaperDocxData = (paper, query = "") => ({
+  title: paper.title || "ScholarTrend Publication",
+  sections: buildPaperDocxSections(paper, query),
+});
+
+const buildSearchResultsDocxData = (papers = [], query = "") => ({
+  title: query.trim()
+    ? `Search results for "${query.trim()}"`
+    : "ScholarTrend Search Results",
+  sections: papers.flatMap((paper, index) => [
+    {
+      heading: `${index + 1}. ${paper.title}`,
+      paragraphs: [
+        `Authors: ${paper.authors || "Unknown authors"}`,
+        `Year: ${paper.year || "N/A"} | Citations: ${paper.citations ?? 0} | References: ${paper.references ?? "N/A"} | Search accuracy: ${Number(paper.similarity || 0).toFixed(1)}%`,
+      ],
+    },
+    ...buildPaperDocxSections(paper, query).filter(
+      (section) => section.heading !== "Reading note",
+    ),
+  ]),
+});
+
+const mapPublicationForCard = (paper) => {
+  const sourceApi = paper.sourceApi || paper.SourceApi || "";
+  const journalName = paper.journalName || paper.JournalName || "";
+  const doi = paper.doi || paper.DOI || "";
   return {
-    id: paper.id || paper.title || Date.now(),
-    title: paper.title || "Untitled publication",
-    authors,
-    year: paper.year || paper.date || "N/A",
-    journal: paper.journalName || paper.source || paper.venue || "Scientific Journal",
+    id: paper.id,
+    tags: paper.keywords?.length ? paper.keywords.slice(0, 2) : ["Publication"],
+    title: paper.title,
+    excerpt: paper.abstract || "No abstract available from backend.",
+    abstract: paper.abstract || "No abstract available from backend.",
+    meta: `${paper.year || "N/A"}  -  ${formatCount(
+      paper.citationCount,
+    )} Citations  -  ${journalName || "Unknown journal"}`,
+    authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : "",
+    source: sourceApi || journalName || "Scientific Journal",
+    sourceApi,
+    journalName,
     doi,
-    citations,
-    abstract: paper.abstract || paper.excerpt || paper.summary || "No abstract available.",
-    keywords: Array.isArray(paper.keywords)
-      ? paper.keywords.join(", ")
-      : paper.keywords || paper.impact || "",
-    pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-    sourceUrl,
+    externalLinks: buildExternalSourceLinks({ ...paper, doi }),
+    citations: formatCount(paper.citationCount),
+    year: paper.year,
+    saved: false,
   };
 };
-
-const getPaperTextContent = (paper) => {
-  const item = normalizePaperForDownload(paper);
-  return [
-    item.title,
-    "",
-    `Authors: ${item.authors}`,
-    `Year: ${item.year}`,
-    `Journal: ${item.journal}`,
-    `Citations: ${item.citations}`,
-    item.doi ? `DOI: ${item.doi}` : "",
-    item.sourceUrl ? `Link: ${item.sourceUrl}` : "",
-    item.keywords ? `Keywords: ${item.keywords}` : "",
-    "",
-    "Abstract",
-    item.abstract,
-  ]
-    .filter((line) => line !== "")
-    .join("\n");
-};
-
-const splitPdfTextLines = (text, maxLength = 86) =>
-  String(text || "")
-    .split(/\r?\n/)
-    .flatMap((line) => {
-      if (!line.trim()) return [""];
-      const chunks = [];
-      let current = line.trim();
-      while (current.length > maxLength) {
-        const breakIndex = current.lastIndexOf(" ", maxLength);
-        const index = breakIndex > 24 ? breakIndex : maxLength;
-        chunks.push(current.slice(0, index));
-        current = current.slice(index).trim();
-      }
-      chunks.push(current);
-      return chunks;
-    });
-
-const createReadablePdfBlob = (title, text) => {
-  const escapePdf = (value) =>
-    String(value || "")
-      .replace(/[^\x20-\x7e]/g, "?")
-      .replace(/\\/g, "\\\\")
-      .replace(/\(/g, "\\(")
-      .replace(/\)/g, "\\)");
-  const lines = splitPdfTextLines(text).slice(0, 46);
-  const stream = [
-    "BT",
-    "/F1 16 Tf",
-    "50 790 Td",
-    `(${escapePdf(title)}) Tj`,
-    "/F1 10 Tf",
-    "0 -24 Td",
-    ...lines.map((line) => `(${escapePdf(line)}) Tj 0 -14 Td`),
-    "ET",
-  ].join("\n");
-  const objects = [
-    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
-    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
-    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
-    `5 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
-  ];
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((object) => {
-    offsets.push(pdf.length);
-    pdf += `${object}\n`;
-  });
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  });
-  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return new Blob([pdf], { type: "application/pdf" });
-};
-
-const downloadPaperTxt = (paper) => {
-  const item = normalizePaperForDownload(paper);
-  downloadBlobFile(
-    `${sanitizeDownloadFilename(item.title)}.txt`,
-    new Blob([`${UTF8_BOM}${getPaperTextContent(item)}`], {
-      type: "text/plain;charset=utf-8",
-    }),
-  );
-};
-
-const downloadPaperPdf = (paper) => {
-  const item = normalizePaperForDownload(paper);
-  if (item.pdfUrl) {
-    const anchor = document.createElement("a");
-    anchor.href = item.pdfUrl;
-    anchor.download = `${sanitizeDownloadFilename(item.title)}.pdf`;
-    anchor.target = "_blank";
-    anchor.rel = "noreferrer";
-    anchor.click();
-    return "Downloading original PDF.";
-  }
-
-  downloadBlobFile(
-    `${sanitizeDownloadFilename(item.title)}.pdf`,
-    createReadablePdfBlob(item.title, getPaperTextContent(item)),
-  );
-  return "No original PDF URL found. A readable PDF was generated from available metadata.";
-};
-
-const getPapersMetadataRows = (papers) => [
-  ["Title", "Authors", "Year", "Journal", "DOI", "Citations", "Link"],
-  ...papers.map((paper) => {
-    const item = normalizePaperForDownload(paper);
-    return [
-      item.title,
-      item.authors,
-      item.year,
-      item.journal,
-      item.doi,
-      item.citations,
-      item.sourceUrl,
-    ];
-  }),
-];
-
-const getPapersTextBundle = (papers) => {
-  const normalizedPapers = papers.map(normalizePaperForDownload);
-  return [
-    "ScholarTrend Papers",
-    `Generated: ${new Date().toLocaleString()}`,
-    `Total papers: ${normalizedPapers.length}`,
-    "",
-    ...normalizedPapers.flatMap((paper, index) => [
-      "============================================================",
-      `Paper ${index + 1}`,
-      "============================================================",
-      getPaperTextContent(paper),
-      "",
-    ]),
-  ].join("\r\n");
-};
-
-const downloadPapersTextBundle = (filename, papers) => {
-  const safeFilename = filename.endsWith(".txt")
-    ? filename
-    : `${filename.replace(/\.[^.]+$/, "")}.txt`;
-  downloadBlobFile(
-    safeFilename,
-    new Blob([`${UTF8_BOM}${getPapersTextBundle(papers)}`], {
-      type: "text/plain;charset=utf-8",
-    }),
-  );
-};
-
-const downloadPapersZip = async (filename, papers) => {
-  const normalizedPapers = papers.map(normalizePaperForDownload);
-  const metadataRows = getPapersMetadataRows(normalizedPapers);
-  const metadataWorkbook = createXlsxBlob({
-    sheets: { Papers: metadataRows },
-  });
-  const metadataBytes = new Uint8Array(await metadataWorkbook.arrayBuffer());
-  const readme = [
-    "ScholarTrend Papers Download",
-    "",
-    "Open these files:",
-    "1. papers.csv - easiest option for Excel, Google Sheets, or Notepad.",
-    "2. papers-metadata.xlsx - Excel workbook with the same metadata. Open this with Excel/LibreOffice, not Notepad.",
-    "3. papers/*.txt - one readable text file for each paper.",
-    "",
-    "Note: .xlsx is a binary Excel format. If you open it in Notepad, it will look like broken characters.",
-  ].join("\r\n");
-  const textFiles = normalizedPapers.map((paper, index) => ({
-    name: `papers/${String(index + 1).padStart(2, "0")}-${sanitizeDownloadFilename(paper.title)}.txt`,
-    content: `${UTF8_BOM}${getPaperTextContent(paper).replace(/\n/g, "\r\n")}`,
-  }));
-  downloadBlobFile(
-    filename,
-    createZipBlob(
-      [
-        {
-          name: "README.txt",
-          content: `${UTF8_BOM}${readme}`,
-        },
-        {
-          name: "papers.csv",
-          content: createCsvText(metadataRows),
-        },
-        {
-          name: "papers-metadata.xlsx",
-          content: metadataBytes,
-        },
-        ...textFiles,
-      ],
-      "application/zip",
-    ),
-  );
-};
-
-const buildAcademicProviderUrl = ({ provider, role, email, fullName }) => {
-  const returnTo = roleDashboardRoutes[normalizeRoleForUi(role)] || "/researcher-dashboard";
-  if (provider === "ORCID" && ORCID_CLIENT_ID) {
-    const url = new URL("https://orcid.org/oauth/authorize");
-    url.searchParams.set("client_id", ORCID_CLIENT_ID);
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "/authenticate");
-    url.searchParams.set("redirect_uri", ORCID_REDIRECT_URI);
-    url.searchParams.set(
-      "state",
-      btoa(JSON.stringify({ provider, role, email, fullName, returnTo })),
-    );
-    return url.toString();
-  }
-
-  if (provider === "Institution SSO" && INSTITUTION_SSO_URL) {
-    const url = new URL(INSTITUTION_SSO_URL);
-    url.searchParams.set("role", normalizeRoleForUi(role));
-    url.searchParams.set("email", email || "");
-    url.searchParams.set("name", fullName || "");
-    url.searchParams.set("returnTo", `${window.location.origin}${returnTo}`);
-    return url.toString();
-  }
-
-  return "";
-};
-
-const mapPublicationForCard = (paper) => ({
-  id: paper.id,
-  tags: paper.keywords?.length ? paper.keywords.slice(0, 2) : ["Publication"],
-  title: paper.title,
-  excerpt: paper.abstract || "No abstract available from backend.",
-  abstract: paper.abstract || "No abstract available from backend.",
-  meta: `${paper.year || "N/A"}  -  ${formatCount(
-    paper.citationCount,
-  )} Citations  -  ${paper.journalName || "Unknown journal"}`,
-  authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : "",
-  source: paper.journalName || "Scientific Journal",
-  citations: formatCount(paper.citationCount),
-  year: paper.year,
-  doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || "",
-  saved: false,
-});
 
 const mapPublicationDetailForUi = (payload) => {
   const publication = payload?.publication || payload || {};
@@ -1253,9 +1066,8 @@ const mapPublicationDetailForUi = (payload) => {
       : "Unknown author",
     year: publication.year || "N/A",
     doi: publication.doi || publication.DOI || "",
-    pdfUrl: publication.pdfUrl || publication.fullTextUrl || publication.PdfUrl || "",
-    url: publication.url || publication.sourceUrl || "",
     journalName: publication.journalName || "Scientific Journal",
+    sourceApi: publication.sourceApi || publication.SourceApi || "",
     citationCount: publication.citationCount || 0,
     keywords: Array.isArray(publication.keywords) ? publication.keywords : [],
     relatedPublications,
@@ -1264,14 +1076,21 @@ const mapPublicationDetailForUi = (payload) => {
 
 const mapPublicationForBookmark = (paper) => ({
   id: paper.id || paper.title,
+  detailId: paper.id || paper.detailId || paper.title,
   title: paper.title,
   excerpt: paper.excerpt || paper.abstract || "No abstract available.",
+  abstract: paper.abstract || paper.excerpt || "No abstract available.",
+  authors: paper.authors || [],
   date: String(paper.year || paper.date || "N/A"),
+  year: paper.year || paper.date || "N/A",
   citations: String(paper.citations || paper.citationCount || "0"),
+  citationCount: paper.citationCount || paper.citations || 0,
   impact: paper.impact || paper.tags?.[0] || "Indexed",
-  doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || paper.sourceUrl || "",
+  source: paper.source || paper.sourceApi || paper.journalName || "Scientific Journal",
+  sourceApi: paper.sourceApi || "",
+  journalName: paper.journalName || paper.source || "Scientific Journal",
+  doi: paper.doi || "",
+  keywords: Array.isArray(paper.keywords) ? paper.keywords : [],
 });
 
 const getBookmarkKey = (paper) =>
@@ -1279,55 +1098,53 @@ const getBookmarkKey = (paper) =>
     .trim()
     .toLowerCase();
 
-const getBookmarkOwnerKey = () => {
-  const session = getStoredSession();
-  return String(session.email || session.id || "guest")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-");
+const getBookmarkDetailPath = (basePath, paper) => {
+  const detailId = paper?.detailId || paper?.id || paper?.title;
+  if (!detailId) return basePath;
+  const separator = basePath.includes("?") ? "&" : "?";
+  return `${basePath}${separator}id=${encodeURIComponent(detailId)}`;
 };
 
-const getUserScopedStorageKey = (baseKey) =>
-  `${baseKey}.${getBookmarkOwnerKey()}`;
-
-const parseStoredArray = (key) => {
+const getLocalBookmarks = () => {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    const parsed = JSON.parse(
+      window.localStorage.getItem(LOCAL_BOOKMARKS_KEY) || "[]",
+    );
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 };
 
-const getLocalBookmarks = () => {
-  const scopedKey = getUserScopedStorageKey(LOCAL_BOOKMARKS_KEY);
-  if (window.localStorage.getItem(scopedKey) !== null) {
-    return parseStoredArray(scopedKey);
-  }
-  return parseStoredArray(LOCAL_BOOKMARKS_KEY);
-};
-
 const setLocalBookmarks = (bookmarks) => {
   window.localStorage.setItem(
-    getUserScopedStorageKey(LOCAL_BOOKMARKS_KEY),
-    JSON.stringify(bookmarks),
+    LOCAL_BOOKMARKS_KEY,
+    JSON.stringify(bookmarks.slice(0, 100)),
   );
-  window.dispatchEvent(new Event("scholartrend:bookmarks-changed"));
 };
 
 const getRemovedBookmarkKeys = () => {
-  return parseStoredArray(getUserScopedStorageKey(REMOVED_BOOKMARKS_KEY));
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(REMOVED_BOOKMARKS_KEY) || "[]",
+    );
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 };
 
 const setRemovedBookmarkKeys = (keys) => {
   window.localStorage.setItem(
-    getUserScopedStorageKey(REMOVED_BOOKMARKS_KEY),
-    JSON.stringify(keys),
+    REMOVED_BOOKMARKS_KEY,
+    JSON.stringify(keys.slice(0, 500)),
   );
 };
 
 const hasLocalBookmark = (paper, bookmarks) =>
-  bookmarks.some((bookmark) => getBookmarkKey(bookmark) === getBookmarkKey(paper));
+  bookmarks.some(
+    (bookmark) => getBookmarkKey(bookmark) === getBookmarkKey(paper),
+  );
 
 const upsertLocalBookmark = (paper) => {
   const nextBookmark = mapPublicationForBookmark(paper);
@@ -1335,7 +1152,9 @@ const upsertLocalBookmark = (paper) => {
   const current = getLocalBookmarks();
   const next = [
     nextBookmark,
-    ...current.filter((bookmark) => getBookmarkKey(bookmark) !== nextBookmarkKey),
+    ...current.filter(
+      (bookmark) => getBookmarkKey(bookmark) !== nextBookmarkKey,
+    ),
   ];
   setLocalBookmarks(next);
   setRemovedBookmarkKeys(
@@ -1355,7 +1174,9 @@ const removeLocalBookmark = (paper) => {
 
 const markBookmarkRemoved = (paper) => {
   const bookmarkKey = getBookmarkKey(paper);
-  const next = [...new Set([...getRemovedBookmarkKeys(), bookmarkKey])].filter(Boolean);
+  const next = [...new Set([...getRemovedBookmarkKeys(), bookmarkKey])].filter(
+    Boolean,
+  );
   setRemovedBookmarkKeys(next);
   return next;
 };
@@ -1378,6 +1199,18 @@ const unwrapList = (payload) => {
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
 };
+
+const getSearchTerms = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length > 2)
+    .slice(0, 8);
+
+const matchesSearchTerms = (value, terms) =>
+  !terms.length ||
+  terms.every((term) => String(value || "").toLowerCase().includes(term));
 
 const SIMILARITY_LIMIT_PERCENT = 50;
 const PUBLICATION_SUBMISSIONS_KEY = "scholartrend.publicationSubmissions";
@@ -1547,12 +1380,16 @@ const analyzePublicationSimilarity = (submission) => {
   const result = scholarlyReferencePapers
     .map((paper) => {
       const titleScore = jaccardSimilarity(submission.title, paper.title);
-      const abstractScore = jaccardSimilarity(submission.abstract, paper.abstract);
+      const abstractScore = jaccardSimilarity(
+        submission.abstract,
+        paper.abstract,
+      );
       const keywordScore = jaccardSimilarity(
         submission.keywords,
         paper.keywords.join(" "),
       );
-      const score = titleScore * 0.35 + abstractScore * 0.45 + keywordScore * 0.2;
+      const score =
+        titleScore * 0.35 + abstractScore * 0.45 + keywordScore * 0.2;
       return {
         paper,
         percent: Math.round(score * 100),
@@ -1618,7 +1455,9 @@ const normalizePublicationSubmission = (submission) => ({
   authors: submission.authors || submission.authorsText || "",
   submitter: submission.submitter || submission.submitterEmail || "",
   submitterName: submission.submitterName || "",
-  role: normalizeRoleForUi(submission.role || submission.submitterRole || "Researcher"),
+  role: normalizeRoleForUi(
+    submission.role || submission.submitterRole || "Researcher",
+  ),
   keywords: submission.keywords || submission.keywordsText || "",
   abstract: submission.abstract || "",
   fileName: submission.fileName || "",
@@ -1677,10 +1516,13 @@ const fetchPublicationSubmissionsFromBackend = async () => {
 };
 
 const approvePublicationSubmissionOnBackend = async (id) => {
-  const payload = await apiFetch(`/api/publications/submissions/${id}/approve`, {
-    method: "POST",
-    auth: true,
-  });
+  const payload = await apiFetch(
+    `/api/publications/submissions/${id}/approve`,
+    {
+      method: "POST",
+      auth: true,
+    },
+  );
   return normalizePublicationSubmission(payload.submission || payload);
 };
 
@@ -1706,7 +1548,9 @@ const submissionToPublishedPublication = (submission) => ({
   submissionId: submission.id,
   title: submission.title,
   abstract: submission.abstract || "No abstract provided.",
-  authors: String(submission.authors || submission.submitter || "Unknown author")
+  authors: String(
+    submission.authors || submission.submitter || "Unknown author",
+  )
     .split(",")
     .map((author) => author.trim())
     .filter(Boolean),
@@ -1745,10 +1589,7 @@ const setStoredPublishedPublications = (publicationsToStore) => {
 
 const getPublicationMergeKey = (paper) => {
   const title =
-    paper?.title ||
-    paper?.paper?.title ||
-    paper?.matchedTitle ||
-    "";
+    paper?.title || paper?.paper?.title || paper?.matchedTitle || "";
   const normalizedTitle = String(title || "")
     .trim()
     .toLowerCase()
@@ -1786,8 +1627,7 @@ const publishApprovedSubmission = (submission) => {
     published,
     ...current.filter(
       (paper) =>
-        String(paper.submissionId || paper.id) !==
-        String(submission.id),
+        String(paper.submissionId || paper.id) !== String(submission.id),
     ),
   ];
   setStoredPublishedPublications(next);
@@ -1830,50 +1670,130 @@ const mapPublishedPublicationForCard = (paper) => ({
   meta: `${paper.year || "N/A"}  -  ${formatCount(
     paper.citationCount,
   )} Citations  -  ${paper.journalName || "ScholarTrend Published"}`,
-  authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : paper.authors,
+  authors: Array.isArray(paper.authors)
+    ? paper.authors.join(", ")
+    : paper.authors,
   source: paper.journalName || "ScholarTrend Published",
+  journalName: paper.journalName || "ScholarTrend Published",
+  doi: paper.doi || paper.DOI || "",
+  externalLinks: buildExternalSourceLinks(paper),
   citations: formatCount(paper.citationCount),
   year: paper.year,
-  doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || "",
   saved: false,
 });
 
-const MAX_KNOWLEDGE_GRAPH_DYNAMIC_NODES = 5;
+const MAX_KNOWLEDGE_GRAPH_DYNAMIC_NODES = 10;
 const dynamicGraphNodePositions = [
-  [130, 10, 24],
-  [238, 68, -12],
-  [226, -78, 28],
-  [84, -94, -20],
-  [42, 82, 24],
+  [0, 0, 40],
+  [250, 110, -20],
+  [290, -145, 34],
+  [64, -250, -28],
+  [-230, -130, 26],
+  [-270, 124, -18],
+  [-58, 260, 36],
+  [390, 10, -48],
+  [-396, 18, 44],
+  [16, -380, 18],
 ];
 
-const mapPublishedPublicationForGraph = (paper, index = 0) => ({
-  id: paper.id,
-  label: `${paper.title.slice(0, 28)}${paper.title.length > 28 ? "..." : ""}, ${
-    paper.year || "Published"
-  }`,
-  position:
-    dynamicGraphNodePositions[index % dynamicGraphNodePositions.length] ||
-    dynamicGraphNodePositions[0],
-  size: index === 0 ? 48 : 32,
-  color: "#6d5dfc",
-  similarity: Math.max(
-    42,
-    Math.min(
-      96,
-      Number(paper.similarityPercent) ||
-        58 +
-          Math.min(28, Number(paper.citationCount || paper.citations || 0) / 40) +
-          (index % 5) * 2.4,
-    ),
-  ),
-  published: true,
+const getPublicationDisplaySimilarity = (
   paper,
-});
+  accuracyLimit = 100,
+  fallback = 0,
+) =>
+  clampPercentToAccuracy(
+    paper.displayScore ??
+      paper.DisplayScore ??
+      paper.similarityPercent ??
+      paper.SimilarityPercent ??
+      paper.similarity ??
+      paper.Similarity ??
+      fallback,
+    accuracyLimit,
+  );
 
-const mapPublicationForResearcherList = (paper) => ({
+const calculateSearchMatchPercent = (paper = {}, query = "") => {
+  const searchText = String(query || "").trim();
+  if (!searchText) return null;
+
+  const keywordText = Array.isArray(paper.keywords)
+    ? paper.keywords.join(" ")
+    : Array.isArray(paper.tags)
+      ? paper.tags.join(" ")
+      : "";
+  const titleScore = jaccardSimilarity(searchText, paper.title || "");
+  const abstractScore = jaccardSimilarity(
+    searchText,
+    paper.abstract || paper.summary || paper.excerpt || "",
+  );
+  const keywordScore = jaccardSimilarity(searchText, keywordText);
+  const weightedScore = titleScore * 0.7 + abstractScore * 0.2 + keywordScore * 0.1;
+
+  return Math.max(1, Math.min(100, weightedScore * 100));
+};
+
+const getPolicyScopedSearchAccuracy = (
+  paper = {},
+  query = "",
+  accuracyLimit = 100,
+) => {
+  const searchScore = calculateSearchMatchPercent(paper, query);
+  const explicitScore =
+    paper.displayScore ??
+    paper.DisplayScore ??
+    paper.similarityPercent ??
+    paper.SimilarityPercent ??
+    paper.similarity ??
+    paper.Similarity;
+  const calculatedScore =
+    normalizePercentValue(searchScore) ??
+    normalizePercentValue(explicitScore) ??
+    0;
+  const limit = normalizePercentValue(accuracyLimit) ?? 100;
+  if (calculatedScore <= limit) {
+    return Math.max(0, calculatedScore);
+  }
+
+  const softCapPenalty =
+    limit * 0.01 + ((100 - calculatedScore) / 100) * limit * 0.11;
+  return Math.max(0, Math.min(limit, limit - softCapPenalty));
+};
+
+const mapPublishedPublicationForGraph = (
+  paper,
+  index = 0,
+  accuracyLimit = 100,
+) => {
+  const fallbackSimilarity =
+    58 +
+    Math.min(28, Number(paper.citationCount || paper.citations || 0) / 40) +
+    (index % 5) * 2.4;
+
+  return {
+    id: paper.id,
+    label: `${paper.title.slice(0, 28)}${paper.title.length > 28 ? "..." : ""}, ${
+      paper.year || "Published"
+    }`,
+    position:
+      dynamicGraphNodePositions[index % dynamicGraphNodePositions.length] ||
+      dynamicGraphNodePositions[0],
+    size: index === 0 ? 48 : 32,
+    color: "#6d5dfc",
+    similarity: getPublicationDisplaySimilarity(
+      paper,
+      accuracyLimit,
+      fallbackSimilarity,
+    ),
+    published: true,
+    paper,
+  };
+};
+
+const mapPublicationForResearcherList = (
+  paper,
+  accuracyLimit = 100,
+  query = "",
+) => ({
   id: String(paper.id),
   title: paper.title,
   authors: Array.isArray(paper.authors)
@@ -1882,12 +1802,17 @@ const mapPublicationForResearcherList = (paper) => ({
   year: paper.year || "N/A",
   citations: Number(paper.citationCount || paper.citations || 0),
   doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || "",
+  source: paper.source || paper.sourceApi || paper.SourceApi || "",
+  sourceApi: paper.sourceApi || paper.SourceApi || "",
+  journalName: paper.journalName || paper.JournalName || "",
   references: paper.keywords?.length || 0,
-  similarity: Math.max(10, Math.min(100, Number(paper.similarityPercent || 25))),
+  similarity: getPolicyScopedSearchAccuracy(paper, query, accuracyLimit),
+  abstract: paper.abstract || "",
+  excerpt: paper.excerpt || "",
+  fullText: getPaperFullText(paper),
   summary: paper.abstract || paper.excerpt || "No abstract provided.",
   tags: paper.keywords?.length ? paper.keywords : ["Published"],
+  raw: paper,
 });
 
 const getPublicationReviewNotifications = () => {
@@ -2052,26 +1977,19 @@ const sendPublicationDeleteNotification = async (
 };
 
 function useApiResource(path, fallbackValue, options = {}) {
-  const auth = Boolean(options.auth);
   const [data, setData] = React.useState(fallbackValue);
   const [status, setStatus] = React.useState("idle");
   const [error, setError] = React.useState(null);
-  const shouldFetch = !auth || Boolean(getStoredAuth().accessToken);
 
   React.useEffect(() => {
     let cancelled = false;
-
-    if (!shouldFetch) {
-      setStatus("success");
-      setError(null);
-      setData(fallbackValue);
-      return;
-    }
-
     setStatus("loading");
     setError(null);
+    if (options.clearOnLoad) {
+      setData(fallbackValue);
+    }
 
-    apiFetch(path, { auth })
+    apiFetch(path, { auth: options.auth })
       .then((payload) => {
         if (cancelled) return;
         setData(options.select ? options.select(payload) : payload);
@@ -2087,10 +2005,53 @@ function useApiResource(path, fallbackValue, options = {}) {
     return () => {
       cancelled = true;
     };
-  }, [path, shouldFetch, auth]);
+  }, [path]);
 
   return { data, status, error };
 }
+
+function useSearchSuggestions(query, limit = 8) {
+  const path = React.useMemo(() => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (query?.trim()) params.set("q", query.trim());
+    return `/api/publications/autocomplete?${params.toString()}`;
+  }, [query, limit]);
+
+  return useApiResource(path, [], {
+    select: (payload) =>
+      unwrapList(payload)
+        .map((item) => item.label || item.Label || item.term || item.title)
+        .filter(Boolean),
+  });
+}
+
+const downloadReferenceExport = async ({
+  format = "bibtex",
+  ids = [],
+  query = "",
+  filenamePrefix = "scholartrend-references",
+} = {}) => {
+  const params = new URLSearchParams({ format });
+  const numericIds = ids.filter((id) => isBackendNumericId(id));
+  if (numericIds.length) params.set("ids", numericIds.join(","));
+  if (!numericIds.length && query?.trim()) params.set("q", query.trim());
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/publications/export?${params.toString()}`,
+    {
+      __skipClientAlert: true,
+    },
+  );
+  if (!response.ok) throw new Error("Could not export references.");
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${filenamePrefix}.${format === "ris" ? "ris" : "bib"}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 const beginGoogleOAuth = async (role) => {
   const response = await fetch(
@@ -2450,9 +2411,6 @@ function Brand({ boxed = false, small = false }) {
 
 function LandingPage() {
   const [activeDataPoint, setActiveDataPoint] = React.useState(5); // Default to 2025 (index 5)
-  const [landingSearch, setLandingSearch] = React.useState("");
-  const [newsletterEmail, setNewsletterEmail] = React.useState("");
-  const [newsletterMessage, setNewsletterMessage] = React.useState("");
 
   const chartData = [
     { year: "2020", value: 5200, publications: "5,200", growth: "baseline" },
@@ -2462,44 +2420,6 @@ function LandingPage() {
     { year: "2024", value: 60420, publications: "60,420", growth: "+43%" },
     { year: "2025", value: 96847, publications: "96,847", growth: "+160%" },
   ];
-
-  const submitLandingSearch = (event) => {
-    event.preventDefault();
-    const query = landingSearch.trim();
-    goToRoute(query ? `/student-search?q=${encodeURIComponent(query)}` : "/student-search");
-  };
-
-  const subscribeNewsletter = (event) => {
-    event.preventDefault();
-    const email = newsletterEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setNewsletterMessage("Enter a valid email address.");
-      return;
-    }
-
-    const key = "scholartrend.newsletterSubscribers";
-    let subscribers = [];
-    try {
-      subscribers = JSON.parse(window.localStorage.getItem(key) || "[]");
-    } catch {
-      subscribers = [];
-    }
-    const alreadySubscribed = subscribers.some((item) => item.email === email);
-    const nextSubscribers = alreadySubscribed
-      ? subscribers.map((item) =>
-          item.email === email
-            ? { ...item, updatedAt: new Date().toISOString() }
-            : item,
-        )
-      : [{ email, createdAt: new Date().toISOString() }, ...subscribers];
-    window.localStorage.setItem(key, JSON.stringify(nextSubscribers));
-    setNewsletterEmail("");
-    setNewsletterMessage(
-      alreadySubscribed
-        ? "Subscription refreshed."
-        : "Subscribed. Research updates will be queued for this email.",
-    );
-  };
 
   return (
     <main className="page-shell">
@@ -2630,7 +2550,7 @@ function LandingPage() {
             publications from trusted scholarly databases to reveal emerging
             research trends with clarity.
           </p>
-          <form className="lp-search-bar" onSubmit={submitLandingSearch}>
+          <div className="lp-search-bar">
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
@@ -2643,10 +2563,8 @@ function LandingPage() {
               type="text"
               placeholder="Search publications, authors, topics, or journals..."
               className="lp-search-input"
-              value={landingSearch}
-              onChange={(event) => setLandingSearch(event.target.value)}
             />
-            <button className="lp-search-btn" type="submit">
+            <button className="lp-search-btn">
               Search
               <svg
                 viewBox="0 0 24 24"
@@ -2657,7 +2575,7 @@ function LandingPage() {
                 <path d="m16.5 16.5 4 4" />
               </svg>
             </button>
-          </form>
+          </div>
           <div className="lp-hero-actions">
             <a
               className="lp-primary-btn"
@@ -4376,7 +4294,7 @@ function LandingPage() {
               researchers.
             </p>
             <div className="lp-footer-socials">
-              <a href="https://x.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="X (Twitter)">
+              <a href="/" className="lp-social-icon" aria-label="X (Twitter)">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4386,7 +4304,7 @@ function LandingPage() {
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               </a>
-              <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="LinkedIn">
+              <a href="/" className="lp-social-icon" aria-label="LinkedIn">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4396,7 +4314,7 @@ function LandingPage() {
                   <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                 </svg>
               </a>
-              <a href="https://www.facebook.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="Facebook">
+              <a href="/" className="lp-social-icon" aria-label="Facebook">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4406,7 +4324,7 @@ function LandingPage() {
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
               </a>
-              <a href="https://github.com/Trannhat2209/Scientific-Journal-Publication-Trend-Tracking-System" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="GitHub">
+              <a href="/" className="lp-social-icon" aria-label="GitHub">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4416,7 +4334,7 @@ function LandingPage() {
                   <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
                 </svg>
               </a>
-              <a href="https://www.instagram.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="Instagram">
+              <a href="/" className="lp-social-icon" aria-label="Instagram">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4430,53 +4348,48 @@ function LandingPage() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Product</div>
-            <a href="#features">Features</a>
-            <a href="#trends">Trends</a>
-            <a href="#pricing">Pricing</a>
-            <a href="/docs" onClick={navTo("/docs")}>API</a>
+            <a href="/">Features</a>
+            <a href="/">Trends</a>
+            <a href="/">Pricing</a>
+            <a href="/">API</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Resources</div>
-            <a href="/docs" onClick={navTo("/docs")}>Documentation</a>
-            <a href="/blog" onClick={navTo("/blog")}>Blog</a>
-            <a href="/guides" onClick={navTo("/guides")}>Guides</a>
-            <a href="/support" onClick={navTo("/support")}>Support</a>
+            <a href="/">Documentation</a>
+            <a href="/">Blog</a>
+            <a href="/">Guides</a>
+            <a href="/">Support</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Company</div>
-            <a href="/about" onClick={navTo("/about")}>About Us</a>
-            <a href="/careers" onClick={navTo("/careers")}>Careers</a>
-            <a href="/contact" onClick={navTo("/contact")}>Contact</a>
-            <a href="/privacy" onClick={navTo("/privacy")}>Privacy Policy</a>
+            <a href="/">About Us</a>
+            <a href="/">Careers</a>
+            <a href="/">Contact</a>
+            <a href="/">Privacy Policy</a>
           </div>
           <div className="lp-footer-col newsletter-col">
             <div className="lp-footer-col-title">Newsletter</div>
             <p className="lp-newsletter-desc">
               Stay updated with the latest research trends and platform updates.
             </p>
-            <form className="lp-newsletter-form" onSubmit={subscribeNewsletter}>
+            <div className="lp-newsletter-form">
               <input
                 type="email"
                 placeholder="Enter your email"
                 className="lp-newsletter-input"
-                value={newsletterEmail}
-                onChange={(event) => setNewsletterEmail(event.target.value)}
               />
-              <button className="lp-newsletter-btn" type="submit" aria-label="Subscribe">
+              <button className="lp-newsletter-btn" aria-label="Subscribe">
                 →
               </button>
-            </form>
-            {newsletterMessage ? (
-              <p className="lp-newsletter-status">{newsletterMessage}</p>
-            ) : null}
+            </div>
           </div>
         </div>
         <div className="lp-footer-bottom">
           <span>© 2026 ScholarTrend. All rights reserved.</span>
           <nav className="lp-footer-bottom-links" aria-label="Legal links">
-            <a href="/terms" onClick={navTo("/terms")}>Terms of Service</a>
-            <a href="/privacy" onClick={navTo("/privacy")}>Privacy Policy</a>
-            <a href="/contact" onClick={navTo("/contact")}>Contact</a>
+            <a href="/">Terms of Service</a>
+            <a href="/">Privacy Policy</a>
+            <a href="/">Contact</a>
           </nav>
         </div>
       </footer>
@@ -4496,7 +4409,8 @@ function RegisterPage() {
   const [authFeedback, setAuthFeedback] = React.useState(null);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const [isRegistering, setIsRegistering] = React.useState(false);
-  const [selectedAcademicProvider, setSelectedAcademicProvider] = React.useState("");
+  const [selectedAcademicProvider, setSelectedAcademicProvider] =
+    React.useState("");
   const registerRoles = ["Researcher", "Lecturer", "Student", "Administrator"];
 
   const handleRegister = async (event) => {
@@ -4522,7 +4436,7 @@ function RegisterPage() {
     setAuthFeedback({ type: "success", text: "Creating backend account..." });
 
     try {
-      const rawPayload = await apiFetch("/api/auth/register", {
+      const payload = await apiFetch("/api/auth/register", {
         method: "POST",
         body: {
           fullName: fullName.trim(),
@@ -4531,7 +4445,6 @@ function RegisterPage() {
           role: normalizeRoleForApi(registerRole),
         },
       });
-      const payload = normalizeAuthResponse(rawPayload);
 
       persistAuth(payload);
       const role = normalizeRoleForUi(payload.user?.role || registerRole);
@@ -4570,7 +4483,7 @@ function RegisterPage() {
     }
   };
 
-  const handleAcademicProviderRegister = async (provider) => {
+  const handleAcademicProviderRegister = (provider) => {
     if (!fullName.trim() || !email.trim() || !password) {
       setAuthFeedback({
         type: "error",
@@ -4588,45 +4501,10 @@ function RegisterPage() {
     }
 
     setSelectedAcademicProvider(provider);
-    const providerUrl = buildAcademicProviderUrl({
-      provider,
-      role: registerRole,
-      email,
-      fullName,
+    setAuthFeedback({
+      type: "success",
+      text: `${provider} selected. Fill the form and click Register Account to continue.`,
     });
-
-    if (providerUrl) {
-      setAuthFeedback({
-        type: "success",
-        text: `Opening ${provider} authentication...`,
-      });
-      window.location.href = providerUrl;
-      return;
-    }
-
-    setIsRegistering(true);
-    setAuthFeedback({ type: "success", text: `Syncing ${provider} profile...` });
-    try {
-      const { user, mode } = await authenticateAcademicProvider({
-        provider,
-        role: registerRole,
-        email,
-        fullName,
-      });
-      const role = normalizeRoleForUi(user.role || registerRole);
-      setAuthFeedback({
-        type: "success",
-        text: `${provider} ${mode === "local" ? "local profile" : "profile"} ready. Loading workspace...`,
-      });
-      window.setTimeout(
-        () => goToRoute(roleDashboardRoutes[role] || "/researcher-dashboard"),
-        450,
-      );
-    } catch (error) {
-      setAuthFeedback({ type: "error", text: error.message });
-    } finally {
-      setIsRegistering(false);
-    }
   };
 
   return (
@@ -4799,7 +4677,11 @@ function RegisterPage() {
                 <a href="/">Privacy Policy</a>.
               </span>
             </label>
-            <button className="auth-submit" type="submit" disabled={isRegistering}>
+            <button
+              className="auth-submit"
+              type="submit"
+              disabled={isRegistering}
+            >
               {isRegistering ? "Creating Account..." : "Register Account"}
             </button>
             <div className="auth-divider">
@@ -4823,12 +4705,16 @@ function RegisterPage() {
                   <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
                   <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
                 </svg>
-                {isGoogleLoading ? "Connecting Google..." : "Continue with Google"}
+                {isGoogleLoading
+                  ? "Connecting Google..."
+                  : "Continue with Google"}
               </button>
               <button
                 className="institution-login-button"
                 type="button"
-                onClick={() => handleAcademicProviderRegister("Institution SSO")}
+                onClick={() =>
+                  handleAcademicProviderRegister("Institution SSO")
+                }
                 title="Continue with Institution SSO"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -4851,7 +4737,9 @@ function RegisterPage() {
                 <span className="orcid-mark" aria-hidden="true">
                   iD
                 </span>
-                {selectedAcademicProvider === "ORCID" ? "ORCID selected" : "ORCID"}
+                {selectedAcademicProvider === "ORCID"
+                  ? "ORCID selected"
+                  : "ORCID"}
               </button>
             </div>
             {authFeedback && (
@@ -4859,10 +4747,15 @@ function RegisterPage() {
                 className={`login-feedback register-feedback ${authFeedback.type}`}
                 role={authFeedback.type === "error" ? "alert" : "status"}
               >
-                {authFeedback.title ? <strong>{authFeedback.title}</strong> : null}
+                {authFeedback.title ? (
+                  <strong>{authFeedback.title}</strong>
+                ) : null}
                 <span>{authFeedback.text}</span>
                 {authFeedback.actionRoute ? (
-                  <a href={authFeedback.actionRoute} onClick={navTo(authFeedback.actionRoute)}>
+                  <a
+                    href={authFeedback.actionRoute}
+                    onClick={navTo(authFeedback.actionRoute)}
+                  >
                     {authFeedback.actionText || "Continue"}
                   </a>
                 ) : null}
@@ -5073,6 +4966,7 @@ function RegisterPage() {
 }
 
 function LoginPage() {
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = React.useState(false);
   const [email, setEmail] = React.useState(() => {
     return (
@@ -5090,7 +4984,8 @@ function LoginPage() {
   const [feedback, setFeedback] = React.useState(null);
   const [isLoggingIn, setIsLoggingIn] = React.useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
-  const [selectedAcademicProvider, setSelectedAcademicProvider] = React.useState("");
+  const [selectedAcademicProvider, setSelectedAcademicProvider] =
+    React.useState("");
 
   const roleRoutes = {
     Researcher: "/researcher-dashboard",
@@ -5184,7 +5079,9 @@ function LoginPage() {
           : {};
 
         if (!response.ok || !payload.authenticated) {
-          throw new Error("Google session was not found. Please sign in again.");
+          throw new Error(
+            "Google session was not found. Please sign in again.",
+          );
         }
 
         persistSession(payload.user);
@@ -5228,7 +5125,10 @@ function LoginPage() {
       text: message,
     });
     window.setTimeout(
-      () => goToWorkspace(route || roleDashboardRoutes[role] || "/researcher-dashboard"),
+      () =>
+        goToWorkspace(
+          route || roleDashboardRoutes[role] || "/researcher-dashboard",
+        ),
       550,
     );
   };
@@ -5254,14 +5154,13 @@ function LoginPage() {
     setFeedback({ type: "success", text: "Checking backend credentials..." });
 
     try {
-      const rawPayload = await apiFetch("/api/auth/login", {
+      const payload = await apiFetch("/api/auth/login", {
         method: "POST",
         body: {
           email: normalizedEmail,
           password: loginPassword,
         },
       });
-      const payload = normalizeAuthResponse(rawPayload);
       persistAuth(payload);
       const role = normalizeRoleForUi(payload.user?.role || requestedRole);
       setSelectedRole(role);
@@ -5362,7 +5261,7 @@ function LoginPage() {
     }
   };
 
-  const handleAcademicProviderLogin = async (provider) => {
+  const handleAcademicProviderLogin = (provider) => {
     if (!email.trim() || !password) {
       setFeedback({
         type: "error",
@@ -5372,42 +5271,15 @@ function LoginPage() {
     }
 
     setSelectedAcademicProvider(provider);
-    const providerUrl = buildAcademicProviderUrl({
-      provider,
-      role: selectedRole,
-      email,
-      fullName: email.split("@")[0],
+    setFeedback({
+      type: "success",
+      text: `${provider} selected. Enter your email/password and click Sign In to continue.`,
     });
-
-    if (providerUrl) {
-      setFeedback({ type: "success", text: `Opening ${provider} authentication...` });
-      window.location.href = providerUrl;
-      return;
-    }
-
-    setIsLoggingIn(true);
-    setFeedback({ type: "success", text: `Syncing ${provider} profile...` });
-    try {
-      const { user, mode } = await authenticateAcademicProvider({
-        provider,
-        role: selectedRole,
-        email,
-        fullName: email.split("@")[0],
-      });
-      const role = normalizeRoleForUi(user.role || selectedRole);
-      finishLogin(
-        role,
-        roleDashboardRoutes[role] || "/researcher-dashboard",
-        `${provider} ${mode === "local" ? "local profile" : "profile"} ready. Loading workspace...`,
-      );
-    } catch (error) {
-      setIsLoggingIn(false);
-      setFeedback({ type: "error", text: error.message });
-    }
   };
 
   return (
     <main className="login-shell" aria-label="Login">
+      <LanguageSwitcher />
       <section className="login-wrap">
         <div className="login-logo">
           <Brand />
@@ -5416,11 +5288,11 @@ function LoginPage() {
 
         <form className="login-card" onSubmit={handleLogin}>
           <div className="login-card-bar"></div>
-          <h1>Welcome back</h1>
-          <p>Please enter your credentials to access your dashboard.</p>
+          <h1>{t("login.welcome")}</h1>
+          <p>{t("login.subtitle")}</p>
 
           <label className="field login-field">
-            <span>Email Address</span>
+            <span>{t("login.email")}</span>
             <span className="input-with-icon">
               <span className="icon-container">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -5474,11 +5346,11 @@ function LoginPage() {
           </label>
 
           <div className="field login-field role-field">
-            <span>Academic Role</span>
+            <span>{t("login.role")}</span>
             <div
               className="role-picker"
               role="radiogroup"
-              aria-label="Academic Role"
+              aria-label={t("login.role")}
             >
               {["Researcher", "Lecturer", "Student", "Administrator"].map(
                 (role) => (
@@ -5517,7 +5389,7 @@ function LoginPage() {
                         </>
                       )}
                     </svg>
-                    <span>{role}</span>
+                    <span>{t(`roles.${role.toLowerCase()}`)}</span>
                   </button>
                 ),
               )}
@@ -5525,7 +5397,7 @@ function LoginPage() {
           </div>
 
           <label className="field login-field">
-            <span>Password</span>
+            <span>{t("login.password")}</span>
             <span className="input-with-icon password-input">
               <span className="icon-container">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -5685,10 +5557,10 @@ function LoginPage() {
                 checked={rememberMe}
                 onChange={(event) => setRememberMe(event.target.checked)}
               />{" "}
-              Remember me
+              {t("login.rememberMe")}
             </label>
             <a href="/" onClick={handleForgotPassword}>
-              Forgot password?
+              {t("login.forgotPassword")}
             </a>
           </div>
 
@@ -5708,11 +5580,13 @@ function LoginPage() {
               <path d="M5 20h14" />
               <path d="M7 15v3M12 12v6M17 10v8" />
             </svg>
-            <span>{isLoggingIn ? "Signing In..." : "Sign In"}</span>
+            <span>
+              {isLoggingIn ? t("login.signingIn") : t("login.signIn")}
+            </span>
           </button>
 
           <div className="divider">
-            <span>OR</span>
+            <span>{t("login.or")}</span>
           </div>
 
           <div className="login-providers">
@@ -5733,7 +5607,9 @@ function LoginPage() {
                 <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
                 <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
               </svg>
-              {isGoogleLoading ? "Connecting Google..." : "Continue with Google"}
+              {isGoogleLoading
+                ? "Connecting Google..."
+                : t("login.continueWithGoogle")}
             </button>
             <button
               className="orcid-login-button"
@@ -5746,7 +5622,7 @@ function LoginPage() {
               </span>
               {selectedAcademicProvider === "ORCID"
                 ? "ORCID selected"
-                : "Continue with ORCID"}
+                : t("login.continueWithORCID")}
             </button>
             <button
               className="institution-login-button"
@@ -5763,17 +5639,32 @@ function LoginPage() {
               </svg>
               {selectedAcademicProvider === "Institution SSO"
                 ? "Institution SSO selected"
-                : "Continue with Institution SSO"}
+                : t("login.continueWithSSO")}
             </button>
           </div>
         </form>
 
         <p className="login-switch">
-          Don't have an account?{" "}
+          {t("login.noAccount")}{" "}
           <a href="/register" onClick={navTo("/register")}>
-            Sign up
+            {t("login.signUp")}
           </a>
         </p>
+
+        <div className="login-help">
+          <p>{t("login.needHelp")}</p>
+          <div className="login-help-links">
+            <a href="/help/login" onClick={navTo("/help/login")}>
+              {t("login.howToLogin")}
+            </a>
+            <a href="/help/access" onClick={navTo("/help/access")}>
+              {t("login.cantAccess")}
+            </a>
+            <a href="/contact-support" onClick={navTo("/contact-support")}>
+              {t("login.contactSupport")}
+            </a>
+          </div>
+        </div>
       </section>
     </main>
   );
@@ -6141,7 +6032,7 @@ const researcherNavGroups = [
     heading: "Lecturer",
     items: [
       {
-        label: "Sync Management",
+        label: "admin.syncManagement",
         route: "/researcher-sync-management",
         icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
       },
@@ -6151,7 +6042,7 @@ const researcherNavGroups = [
 
 const researcherStats = [
   {
-    label: "Total Publications",
+    label: "admin.totalPublications",
     value: "124,592",
     note: "+2.4% vs last month",
     tone: "positive",
@@ -6355,7 +6246,7 @@ const reportHistoryRows = [
 
 const yearMetricCards = [
   {
-    label: "Total Publications",
+    label: "admin.totalPublications",
     value: "12,450",
     note: "+8.4%",
     icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
@@ -6853,7 +6744,9 @@ const graph3DLinks = [
 
 const getGraphNodeRelevance = (node) => {
   if (!node) return "0%";
-  const explicitScore = Number(node.similarity ?? node.paper?.similarityPercent);
+  const explicitScore = Number(
+    node.similarity ?? node.paper?.similarityPercent,
+  );
   if (Number.isFinite(explicitScore) && explicitScore > 0) {
     return `${Math.max(1, Math.min(99.9, explicitScore)).toFixed(1)}%`;
   }
@@ -6873,7 +6766,7 @@ const getGraphNodeRelevance = (node) => {
 };
 
 const getGraphPaperForNode = (node) => {
-  if (node?.published && node.paper) {
+  if (node?.paper) {
     const authors = Array.isArray(node.paper.authors)
       ? node.paper.authors.join(", ")
       : node.paper.authors || "Unknown authors";
@@ -6913,6 +6806,61 @@ const getGraphPaperForNode = (node) => {
   };
 };
 
+const createApiBackedGraphNodes = (publications = [], accuracyLimit = 100) => {
+  const realPublications = publications.filter((paper) => paper?.title);
+  if (!realPublications.length) {
+    return graph3DNodes.map((node) => ({
+      ...node,
+      similarity: clampPercentToAccuracy(
+        Number(getGraphNodeRelevance(node).replace("%", "")),
+        accuracyLimit,
+      ),
+    }));
+  }
+
+  return graph3DNodes.map((layoutNode, index) => {
+    const paper = realPublications[index % realPublications.length];
+    const title = paper.title || layoutNode.label;
+    const year = paper.year || "Published";
+    const firstAuthor = Array.isArray(paper.authors)
+      ? paper.authors[0]
+      : String(paper.authors || "").split(",")[0];
+    const authorLabel = String(firstAuthor || "")
+      .trim()
+      .split(/\s+/)
+      .slice(-1)[0]
+      ?.replace(/[^\p{L}\p{N}'-]/gu, "");
+    const fallbackLabel = String(layoutNode.label || title).split(",")[0];
+    const shortLabel = `${authorLabel || fallbackLabel}, ${year}`;
+    return {
+      ...layoutNode,
+      label: shortLabel,
+      color: layoutNode.id === "deepfruits" ? "#c3d8d7" : layoutNode.color,
+      similarity: getPublicationDisplaySimilarity(
+        paper,
+        accuracyLimit,
+        Number(getGraphNodeRelevance(layoutNode).replace("%", "")),
+      ),
+      published: true,
+      paper: {
+        ...paper,
+        id: paper.id,
+        title,
+        year,
+        journalName: paper.journalName || "ScholarTrend Indexed",
+        citationCount: paper.citationCount || 0,
+        abstract: paper.abstract || "No abstract provided.",
+        authors: Array.isArray(paper.authors) ? paper.authors : [],
+        similarityPercent: getPublicationDisplaySimilarity(
+          paper,
+          accuracyLimit,
+          Number(getGraphNodeRelevance(layoutNode).replace("%", "")),
+        ),
+      },
+    };
+  });
+};
+
 function MiniIcon({ path }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -6922,6 +6870,7 @@ function MiniIcon({ path }) {
 }
 
 function StudentSidebar({ activeRoute }) {
+  const { t } = useTranslation();
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
   const session = getCurrentAccountPlan();
   const displayName = session.name || session.email || "Student Account";
@@ -6932,159 +6881,158 @@ function StudentSidebar({ activeRoute }) {
 
   return (
     <>
-    <aside className="student-sidebar">
-      <div
-        className="student-logo"
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "12px",
-          padding: "20px 24px",
-          borderBottom: "1px solid rgba(226, 232, 240, 0.14)",
-        }}
-      >
-        <span
-          className="student-logo-mark"
+      <aside className="student-sidebar">
+        <div
+          className="student-logo"
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "36px",
-            height: "36px",
-            background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
-            borderRadius: "8px",
-            padding: "8px",
-            boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
-            flexShrink: 0,
-            marginTop: 0,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "12px",
+            padding: "20px 24px",
+            borderBottom: "1px solid rgba(226, 232, 240, 0.14)",
           }}
         >
-          <svg
-            viewBox="0 0 32 32"
-            width="100%"
-            height="100%"
-            aria-hidden="true"
-          >
-            <path
-              d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
-              fill="white"
-              opacity="0.95"
-            />
-            <path
-              d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
-              fill="white"
-              opacity="0.75"
-            />
-            <path
-              d="M16 4 L10 8 L16 10 L22 8 Z"
-              fill="rgba(255, 255, 255, 0.95)"
-            />
-            <path
-              d="M16 4 L16 28"
-              stroke="rgba(2, 132, 199, 0.4)"
-              strokeWidth="1.5"
-            />
-            <circle cx="16" cy="28" r="1.5" fill="white" />
-          </svg>
-        </span>
-        <div
-          className="student-logo-copy"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <a
-            href="/"
-            onClick={navTo("/")}
-            style={{
-              fontSize: "12px",
-              fontWeight: 800,
-              color: "#cbd5e1",
-              textDecoration: "none",
-              display: "flex",
-              alignItems: "center",
-              gap: "3px",
-              letterSpacing: "0.08em",
-              lineHeight: 1,
-              textTransform: "uppercase",
-            }}
-          >
-            <span style={{ display: "inline", marginTop: 0 }}>Scholar</span>
-            <span style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}>
-              Trend
-            </span>
-          </a>
           <span
+            className="student-logo-mark"
             style={{
-              display: "block",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "36px",
+              height: "36px",
+              background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+              borderRadius: "8px",
+              padding: "8px",
+              boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
+              flexShrink: 0,
               marginTop: 0,
-              maxWidth: "116px",
-              fontSize: "11px",
-              color: "#7f8aa0",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              lineHeight: 1.2,
-              textTransform: "uppercase",
             }}
           >
-            Analytical
-            <br />
-            Intelligence
+            <svg
+              viewBox="0 0 32 32"
+              width="100%"
+              height="100%"
+              aria-hidden="true"
+            >
+              <path
+                d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+                fill="white"
+                opacity="0.95"
+              />
+              <path
+                d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+                fill="white"
+                opacity="0.75"
+              />
+              <path
+                d="M16 4 L10 8 L16 10 L22 8 Z"
+                fill="rgba(255, 255, 255, 0.95)"
+              />
+              <path
+                d="M16 4 L16 28"
+                stroke="rgba(2, 132, 199, 0.4)"
+                strokeWidth="1.5"
+              />
+              <circle cx="16" cy="28" r="1.5" fill="white" />
+            </svg>
           </span>
-        </div>
-      </div>
-
-      <nav className="student-nav" aria-label="Student dashboard navigation">
-        {sidebarItems.map((item) => (
-          <a
-            className={item.route === activeRoute ? "active" : ""}
-            href={item.route}
-            onClick={navTo(item.route)}
-            key={item.label}
+          <div
+            className="student-logo-copy"
+            style={{ display: "flex", flexDirection: "column", gap: "2px" }}
           >
-            <MiniIcon path={item.icon} />
-            <span>{item.label}</span>
-          </a>
-        ))}
-      </nav>
+            <a
+              href="/"
+              onClick={navTo("/")}
+              style={{
+                fontSize: "12px",
+                fontWeight: 800,
+                color: "#cbd5e1",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "3px",
+                letterSpacing: "0.08em",
+                lineHeight: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ display: "inline", marginTop: 0 }}>Scholar</span>
+              <span
+                style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}
+              >
+                Trend
+              </span>
+            </a>
+            <span
+              style={{
+                display: "block",
+                marginTop: 0,
+                maxWidth: "116px",
+                fontSize: "11px",
+                color: "#7f8aa0",
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                lineHeight: 1.2,
+                textTransform: "uppercase",
+              }}
+            >
+              Analytical
+              <br />
+              Intelligence
+            </span>
+          </div>
+        </div>
 
-      <div className="student-sidebar-footer">
-        <button
-          type="button"
-          className="student-upgrade-button"
-          onClick={() => setUpgradeOpen(true)}
-        >
-          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-          <span>Upgrade to Pro</span>
-        </button>
-        <a
-          className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`}
-          href="/student-profile"
-          onClick={navTo("/student-profile")}
-        >
-          <div className="sidebar-avatar">
-            <img
-              src={avatarUrl}
-              alt={`${displayName} avatar`}
-            />
-          </div>
-          <div className="sidebar-profile-info">
-            <strong>{displayName}</strong>
-            <span>{displayRole}</span>
-          </div>
-        </a>
-        <button
-          type="button"
-          className="student-logout-button"
-          onClick={handleLogout}
-        >
-          <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
-          <span>Logout</span>
-        </button>
-      </div>
-    </aside>
-    <UpgradeProModal
-      open={upgradeOpen}
-      onClose={() => setUpgradeOpen(false)}
-    />
+        <nav className="student-nav" aria-label="Student dashboard navigation">
+          {sidebarItems.map((item) => (
+            <a
+              className={item.route === activeRoute ? "active" : ""}
+              href={item.route}
+              onClick={navTo(item.route)}
+              key={item.label}
+            >
+              <MiniIcon path={item.icon} />
+              <span>{t(item.label)}</span>
+            </a>
+          ))}
+        </nav>
+
+        <div className="student-sidebar-footer">
+          <button
+            type="button"
+            className="student-upgrade-button"
+            onClick={() => setUpgradeOpen(true)}
+          >
+            <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
+            <span>Upgrade to Pro</span>
+          </button>
+          <a
+            className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`}
+            href="/student-profile"
+            onClick={navTo("/student-profile")}
+          >
+            <div className="sidebar-avatar">
+              <img src={avatarUrl} alt={`${displayName} avatar`} />
+            </div>
+            <div className="sidebar-profile-info">
+              <strong>{displayName}</strong>
+              <span>{displayRole}</span>
+            </div>
+          </a>
+          <button
+            type="button"
+            className="student-logout-button"
+            onClick={handleLogout}
+          >
+            <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
+            <span>Logout</span>
+          </button>
+        </div>
+      </aside>
+      <UpgradeProModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+      />
     </>
   );
 }
@@ -7098,11 +7046,19 @@ function StudentTopbar({
 }) {
   const isProfileUtility = variant === "profile";
   const isUtility = variant === "utility" || isProfileUtility;
+  const [queryValue, setQueryValue] = React.useState(searchValue);
+  React.useEffect(() => {
+    setQueryValue(searchValue || "");
+  }, [searchValue]);
+
   const handleSearchSubmit = (event) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const query = String(formData.get("query") || "").trim();
-    goToRoute(query ? `/student-search?q=${encodeURIComponent(query)}` : "/student-search");
+    const query = queryValue.trim();
+    goToRoute(
+      query
+        ? `/student-search?q=${encodeURIComponent(query)}`
+        : "/student-search",
+    );
   };
 
   return (
@@ -7126,7 +7082,8 @@ function StudentTopbar({
             type="search"
             name="query"
             placeholder={searchPlaceholder}
-            defaultValue={searchValue}
+            value={queryValue}
+            onChange={(event) => setQueryValue(event.target.value)}
           />
         </form>
         <div className="topbar-icon-group">
@@ -7174,7 +7131,10 @@ function StudentDashboard() {
     getLocalBookmarks(),
   );
   const [dashboardQuery, setDashboardQuery] = React.useState("");
-  const [dashboardBookmarkMessage, setDashboardBookmarkMessage] = React.useState("");
+  const { data: dashboardSuggestions } = useSearchSuggestions(
+    dashboardQuery,
+    6,
+  );
   const { data: publicationData } = useApiResource(
     "/api/publications/search?page=1&pageSize=5",
     publications,
@@ -7183,7 +7143,10 @@ function StudentDashboard() {
   const { data: recommendedData } = useApiResource(
     "/api/recommendations?topN=8",
     [],
-    { auth: true, select: (payload) => unwrapList(payload).map(mapPublicationForCard) },
+    {
+      auth: true,
+      select: (payload) => unwrapList(payload).map(mapPublicationForCard),
+    },
   );
   const publishedPublicationCards = React.useMemo(
     () => getPublishedPublications().map(mapPublishedPublicationForCard),
@@ -7230,7 +7193,12 @@ function StudentDashboard() {
           ...paper,
           saved: hasLocalBookmark(paper, localBookmarks),
         })),
-    [publicationData, publishedPublicationCards, recommendedData, localBookmarks],
+    [
+      publicationData,
+      publishedPublicationCards,
+      recommendedData,
+      localBookmarks,
+    ],
   );
 
   const handleTogglePublicationBookmark = async (paper) => {
@@ -7239,11 +7207,6 @@ function StudentDashboard() {
       ? upsertLocalBookmark(paper)
       : removeLocalBookmark(paper);
     setLocalBookmarkState(nextLocalBookmarks);
-    setDashboardBookmarkMessage(
-      nextSaved
-        ? `"${paper.title}" saved. Open Bookmarks to view it again.`
-        : `"${paper.title}" removed from Bookmarks.`,
-    );
 
     if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
       apiFetch(`/api/bookmarks/${paper.id}`, {
@@ -7257,7 +7220,9 @@ function StudentDashboard() {
     event.preventDefault();
     const params = new URLSearchParams();
     if (dashboardQuery.trim()) params.set("q", dashboardQuery.trim());
-    goToRoute(`/student-search${params.toString() ? `?${params.toString()}` : ""}`);
+    goToRoute(
+      `/student-search${params.toString() ? `?${params.toString()}` : ""}`,
+    );
   };
 
   return (
@@ -7310,7 +7275,13 @@ function StudentDashboard() {
                 value={dashboardQuery}
                 onChange={(event) => setDashboardQuery(event.target.value)}
                 placeholder="Search by title, author, DOI, or keyword..."
+                list="student-dashboard-search-suggestions"
               />
+              <datalist id="student-dashboard-search-suggestions">
+                {dashboardSuggestions.map((suggestion) => (
+                  <option value={suggestion} key={suggestion} />
+                ))}
+              </datalist>
               <button type="submit">Search</button>
             </form>
             <div className="trending-keywords">
@@ -7318,7 +7289,9 @@ function StudentDashboard() {
               {keywordData.map((keyword) => (
                 <a
                   href={`/student-search?q=${encodeURIComponent(keyword)}`}
-                  onClick={navTo(`/student-search?q=${encodeURIComponent(keyword)}`)}
+                  onClick={navTo(
+                    `/student-search?q=${encodeURIComponent(keyword)}`,
+                  )}
                   key={keyword}
                 >
                   {keyword}
@@ -7335,22 +7308,13 @@ function StudentDashboard() {
                   View all -&gt;
                 </a>
               </div>
-              {dashboardBookmarkMessage ? (
-                <p className="bookmark-save-message" role="status">
-                  {dashboardBookmarkMessage}{" "}
-                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
-                    View Bookmarks
-                  </a>
-                </p>
-              ) : null}
               {studentPublications.map((paper) => (
                 <article className="publication-card" key={paper.title}>
                   <button
                     type="button"
                     aria-label={
-                      paper.saved ? "Remove from Bookmarks" : "Save to Bookmarks"
+                      paper.saved ? "Remove bookmark" : "Bookmark publication"
                     }
-                    aria-pressed={paper.saved}
                     className={`bookmark-button ${paper.saved ? "saved" : ""}`}
                     onClick={() => handleTogglePublicationBookmark(paper)}
                   >
@@ -7404,6 +7368,7 @@ function ResearcherSidebar({
   onUpgrade,
   onSettings,
 }) {
+  const { t } = useTranslation();
   return (
     <aside
       className={`researcher-sidebar ${collapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}
@@ -7526,11 +7491,7 @@ function ResearcherSidebar({
           onClick={onToggleCollapse}
         >
           <MiniIcon
-            path={
-              collapsed
-                ? "M9 5l7 7-7 7M4 5v14"
-                : "M15 5l-7 7 7 7M20 5v14"
-            }
+            path={collapsed ? "M9 5l7 7-7 7M4 5v14" : "M15 5l-7 7 7 7M20 5v14"}
           />
         </button>
       </div>
@@ -7566,7 +7527,7 @@ function ResearcherSidebar({
                   key={`${group.heading || "primary"}-${item.label}`}
                 >
                   <MiniIcon path={item.icon} />
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                 </a>
               );
             })}
@@ -7625,8 +7586,6 @@ function UpgradeProModal({ open, onClose }) {
   const [paymentMessage, setPaymentMessage] = React.useState("");
   const planSettings = getProPlanSettings();
   const accountPlan = getCurrentAccountPlan();
-  const freeAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, false);
-  const proAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, true);
   const currentAccuracy = getSearchAccuracyForAccount(
     accountPlan.role,
     accountPlan.isPro,
@@ -7770,7 +7729,9 @@ function UpgradeProModal({ open, onClose }) {
           type="button"
           className="upgrade-primary-action"
           onClick={handleUpgrade}
-          disabled={paymentStatus === "loading" || paymentStatus === "redirecting"}
+          disabled={
+            paymentStatus === "loading" || paymentStatus === "redirecting"
+          }
         >
           {paymentStatus === "loading"
             ? "Creating PayOS Link..."
@@ -7825,7 +7786,8 @@ const defaultAcademicWorkspaceSettings = {
 
 const getDefaultAcademicWorkspaceSettings = (role = "researcher") => ({
   ...defaultAcademicWorkspaceSettings,
-  defaultDiscipline: role === "lecturer" ? "AI in Education" : "Computer Science",
+  defaultDiscipline:
+    role === "lecturer" ? "AI in Education" : "Computer Science",
 });
 
 const mergeAcademicWorkspaceSettings = (saved, role) => {
@@ -7953,15 +7915,50 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
     ],
   ];
   const alertOptions = [
-    ["trendSpikes", "Trend spike alerts", "Notify when a keyword accelerates beyond your threshold.", "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3"],
-    ["citationMilestones", "Citation milestones", "Track citation gains on saved and authored papers.", "M12 19V5M7 10l5-5 5 5M5 19h14"],
-    ["authorUpdates", "Author updates", "Watch followed researchers for new publications.", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0"],
-    ["journalQuartileChanges", "Journal quartile changes", "Flag ranking changes for followed journals.", "M5 19V5h14v14H5ZM8 15l2.4-2.4 2 1.6L16.5 9M15 9h2v2"],
+    [
+      "trendSpikes",
+      "Trend spike alerts",
+      "Notify when a keyword accelerates beyond your threshold.",
+      "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3",
+    ],
+    [
+      "citationMilestones",
+      "Citation milestones",
+      "Track citation gains on saved and authored papers.",
+      "M12 19V5M7 10l5-5 5 5M5 19h14",
+    ],
+    [
+      "authorUpdates",
+      "Author updates",
+      "Watch followed researchers for new publications.",
+      "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    ],
+    [
+      "journalQuartileChanges",
+      "Journal quartile changes",
+      "Flag ranking changes for followed journals.",
+      "M5 19V5h14v14H5ZM8 15l2.4-2.4 2 1.6L16.5 9M15 9h2v2",
+    ],
   ];
   const privacyOptions = [
-    ["publicProfile", "Public academic profile", "Allow collaborators to view your research identity.", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0"],
-    ["shareReadingSignals", "Share reading signals", "Use saved papers and views to improve recommendations.", "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6"],
-    ["showInstitutionDashboard", "Institution dashboard visibility", "Include your aggregate activity in department analytics.", "M3.5 20h17M5 17V9h4v8M10 17V5h4v12M15 17v-6h4v6"],
+    [
+      "publicProfile",
+      "Public academic profile",
+      "Allow collaborators to view your research identity.",
+      "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    ],
+    [
+      "shareReadingSignals",
+      "Share reading signals",
+      "Use saved papers and views to improve recommendations.",
+      "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6",
+    ],
+    [
+      "showInstitutionDashboard",
+      "Institution dashboard visibility",
+      "Include your aggregate activity in department analytics.",
+      "M3.5 20h17M5 17V9h4v8M10 17V5h4v12M15 17v-6h4v6",
+    ],
   ];
 
   return (
@@ -7983,7 +7980,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
             <div>
               <span>{roleLabel} Workspace</span>
               <h2 id="academic-settings-title">Settings</h2>
-              <p>Control how ScholarTrend tracks publications, trends, and alerts.</p>
+              <p>
+                Control how ScholarTrend tracks publications, trends, and
+                alerts.
+              </p>
             </div>
           </div>
           <button type="button" aria-label="Close settings" onClick={onClose}>
@@ -7992,7 +7992,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
         </header>
 
         <div className="academic-settings-body">
-          <div className="academic-settings-summary" aria-label="Current settings summary">
+          <div
+            className="academic-settings-summary"
+            aria-label="Current settings summary"
+          >
             <div>
               <i className="summary-icon teal" aria-hidden="true">
                 <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" />
@@ -8018,7 +8021,8 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
               <span>
                 <small>Sources</small>
                 <strong>
-                  {Object.values(settings.sources).filter(Boolean).length} active
+                  {Object.values(settings.sources).filter(Boolean).length}{" "}
+                  active
                 </strong>
               </span>
             </div>
@@ -8035,7 +8039,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
               {sourceOptions.map(([key, label, detail, icon, tone]) => (
                 <label className="academic-settings-toggle" key={key}>
                   <span className="academic-toggle-copy">
-                    <i className={`academic-toggle-icon ${tone}`} aria-hidden="true">
+                    <i
+                      className={`academic-toggle-icon ${tone}`}
+                      aria-hidden="true"
+                    >
                       <MiniIcon path={icon} />
                     </i>
                     <span>
@@ -8204,7 +8211,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
               {privacyOptions.map(([key, label, detail, icon]) => (
                 <label className="academic-settings-toggle" key={key}>
                   <span className="academic-toggle-copy">
-                    <i className="academic-toggle-icon slate" aria-hidden="true">
+                    <i
+                      className="academic-toggle-icon slate"
+                      aria-hidden="true"
+                    >
                       <MiniIcon path={icon} />
                     </i>
                     <span>
@@ -8231,7 +8241,11 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
         </div>
 
         <footer className="academic-settings-footer">
-          <button type="button" className="settings-secondary" onClick={resetSettings}>
+          <button
+            type="button"
+            className="settings-secondary"
+            onClick={resetSettings}
+          >
             Reset
           </button>
           <button
@@ -8241,7 +8255,11 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
           >
             Profile settings
           </button>
-          <button type="button" className="settings-primary" onClick={saveSettings}>
+          <button
+            type="button"
+            className="settings-primary"
+            onClick={saveSettings}
+          >
             Save Settings
           </button>
           {message ? <p role="status">{message}</p> : null}
@@ -8507,10 +8525,7 @@ function PublicationGrowthChart({ data = publicationGrowthData }) {
         publications: Number(item.publications || 0),
       }))
     : [];
-  const hasMeaningfulGrowthData =
-    mappedChartData.length >= 6 &&
-    Math.max(...mappedChartData.map((item) => item.publications), 0) >= 1000;
-  const chartData = hasMeaningfulGrowthData
+  const chartData = mappedChartData.length
     ? mappedChartData
     : publicationGrowthData;
   const [activeIndex, setActiveIndex] = React.useState(chartData.length - 1);
@@ -8542,9 +8557,7 @@ function PublicationGrowthChart({ data = publicationGrowthData }) {
           { length: maxValue / (maxValue <= 4 ? 1 : 2) + 1 },
           (_, index) => index * (maxValue <= 4 ? 1 : 2),
         )
-      : [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
-          Math.round(maxValue * ratio),
-        );
+      : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(maxValue * ratio));
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
   const bottom = chartHeight - padding.bottom;
@@ -8630,8 +8643,7 @@ function PublicationGrowthChart({ data = publicationGrowthData }) {
         >
           <title id="growthChartTitle">
             Publication growth chart from {points[0].year} to{" "}
-            {points[points.length - 1].year} based on yearly
-            publication counts.
+            {points[points.length - 1].year} based on yearly publication counts.
           </title>
           <defs>
             <linearGradient id="growthArea" x1="0" x2="0" y1="0" y2="1">
@@ -8982,26 +8994,26 @@ function LecturerPublicationsCard({ publishedPublications = [] }) {
             ? `/lecturer-publication?id=${encodeURIComponent(publication.id)}`
             : "/lecturer-publication";
           return (
-          <a
-            className="lecturer-publication-item"
-            href={detailPath}
-            onClick={navTo(detailPath)}
-            key={publication.title}
-          >
-            <span className="lecturer-pdf-tile">PDF</span>
-            <span className="lecturer-publication-copy">
-              <strong>{publication.title}</strong>
-              <small>
-                {publication.authors} <i>-</i> {publication.journal}
-              </small>
-              {publication.date ? (
-                <em>
-                  <span>{publication.date}</span>
-                  <span>{publication.citations} Citations</span>
-                </em>
-              ) : null}
-            </span>
-          </a>
+            <a
+              className="lecturer-publication-item"
+              href={detailPath}
+              onClick={navTo(detailPath)}
+              key={publication.title}
+            >
+              <span className="lecturer-pdf-tile">PDF</span>
+              <span className="lecturer-publication-copy">
+                <strong>{publication.title}</strong>
+                <small>
+                  {publication.authors} <i>-</i> {publication.journal}
+                </small>
+                {publication.date ? (
+                  <em>
+                    <span>{publication.date}</span>
+                    <span>{publication.citations} Citations</span>
+                  </em>
+                ) : null}
+              </span>
+            </a>
           );
         })}
       </div>
@@ -9011,7 +9023,10 @@ function LecturerPublicationsCard({ publishedPublications = [] }) {
 
 function LecturerDashboard() {
   const [exported, setExported] = React.useState(false);
-  const publishedPublications = React.useMemo(() => getPublishedPublications(), []);
+  const publishedPublications = React.useMemo(
+    () => getPublishedPublications(),
+    [],
+  );
 
   return (
     <ResearcherShell
@@ -9050,7 +9065,9 @@ function LecturerDashboard() {
 
         <div className="lecturer-dashboard-grid">
           <LecturerTrendingCard />
-          <LecturerPublicationsCard publishedPublications={publishedPublications} />
+          <LecturerPublicationsCard
+            publishedPublications={publishedPublications}
+          />
         </div>
       </div>
     </ResearcherShell>
@@ -9058,9 +9075,11 @@ function LecturerDashboard() {
 }
 
 function ResearcherDashboard() {
-  const [dateRange, setDateRange] = React.useState("30");
   const { data: statsData } = useApiResource("/api/dashboard/stats", null);
-  const publishedPublications = React.useMemo(() => getPublishedPublications(), []);
+  const publishedPublications = React.useMemo(
+    () => getPublishedPublications(),
+    [],
+  );
   const { data: growthData } = useApiResource(
     "/api/dashboard/growth",
     publicationGrowthData,
@@ -9070,11 +9089,7 @@ function ResearcherDashboard() {
           year: item.year || item.Year,
           publications: item.count || item.Count || 0,
         }));
-        const hasMeaningfulGrowthData =
-          mapped.length >= 6 &&
-          Math.max(...mapped.map((item) => Number(item.publications || 0)), 0) >=
-            1000;
-        return hasMeaningfulGrowthData ? mapped : publicationGrowthData;
+        return mapped.length ? mapped : publicationGrowthData;
       },
     },
   );
@@ -9085,66 +9100,39 @@ function ResearcherDashboard() {
       select: (payload) => {
         const mapped = unwrapList(payload).map((item) => ({
           label: item.keyword,
-          percent: `${Number(item.trendingScore || 0).toFixed(1)}`,
+          percent: `${Number(item.trendingScore || 0).toFixed(1)}%`,
           width: `${Math.max(12, Math.min(100, Number(item.trendingScore || 0)))}%`,
         }));
-        return mapped.length >= 3 ? mapped : researcherKeywords;
+        return mapped.length ? mapped : researcherKeywords;
       },
     },
   );
   const dashboardStats = React.useMemo(() => {
     if (!statsData) return researcherStats;
-    if (Number(statsData.totalPublications || 0) < 100) return researcherStats;
     return researcherStats.map((stat) => {
-      if (stat.label === "Total Publications") {
+      if (stat.label === "admin.totalPublications") {
         return { ...stat, value: formatCount(statsData.totalPublications) };
       }
       if (stat.label === "New This Week") {
-        return { ...stat, value: formatCount(statsData.totalKeywords), note: "Tracked keywords" };
+        return {
+          ...stat,
+          value: formatCount(statsData.totalKeywords),
+          note: "Tracked keywords",
+        };
       }
       return stat;
     });
   }, [statsData]);
-  const filteredGrowthData = React.useMemo(() => {
-    if (dateRange === "all") return growthData;
-    const yearsToShow = dateRange === "90" ? 4 : dateRange === "365" ? 6 : 3;
-    return growthData.slice(Math.max(0, growthData.length - yearsToShow));
-  }, [dateRange, growthData]);
-  const downloadDashboardReport = () => {
-    downloadXlsxFile("scholartrend-researcher-dashboard.xlsx", {
-      Summary: [
-        ["Metric", "Value", "Note"],
-        ...dashboardStats.map((stat) => [stat.label, stat.value, stat.note || ""]),
-      ],
-      Growth: [
-        ["Year", "Publications"],
-        ...filteredGrowthData.map((row) => [row.year, row.publications]),
-      ],
-      Keywords: [
-        ["Keyword", "Score"],
-        ...keywordData.map((row) => [row.label, row.percent]),
-      ],
-    });
-  };
 
   return (
     <ResearcherShell activeRoute="/researcher-dashboard" current="Dashboard">
       <div className="researcher-content">
         <div className="researcher-intro-row">
           <p>Here's your latest academic intelligence overview.</p>
-          <label className="researcher-date-filter">
+          <button type="button" className="researcher-date-filter">
             <MiniIcon path="M7 7h10M9 12h6M11 17h2" />
-            <select
-              value={dateRange}
-              onChange={(event) => setDateRange(event.target.value)}
-              aria-label="Dashboard date range"
-            >
-              <option value="30">Last 30 Days</option>
-              <option value="90">Last 90 Days</option>
-              <option value="365">Last 12 Months</option>
-              <option value="all">All Data</option>
-            </select>
-          </label>
+            Last 30 Days
+          </button>
         </div>
 
         <section className="researcher-stats" aria-label="Researcher metrics">
@@ -9154,7 +9142,7 @@ function ResearcherDashboard() {
         </section>
 
         <div className="researcher-dashboard-grid">
-          <PublicationGrowthChart data={filteredGrowthData} />
+          <PublicationGrowthChart data={growthData} />
           <aside className="researcher-side-column">
             <TrendingKeywordsCard keywords={keywordData} />
             <RecentlyPublishedCard publications={publishedPublications} />
@@ -9167,7 +9155,6 @@ function ResearcherDashboard() {
         type="button"
         className="researcher-download"
         aria-label="Download report"
-        onClick={downloadDashboardReport}
       >
         <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
       </button>
@@ -9303,8 +9290,6 @@ function TrendKeywordsOverview() {
 }
 
 function TrendMainChart() {
-  const [activeTrendTab, setActiveTrendTab] = React.useState("time");
-  const [chartMode, setChartMode] = React.useState("count");
   const { data: backendTrendData } = useApiResource(
     "/api/trends?keyword=Machine%20Learning&fromYear=2019&toYear=2023&strategy=StrategyA_RawCount",
     [],
@@ -9322,11 +9307,8 @@ function TrendMainChart() {
       return rowsByYear;
     }, {}),
   ).sort((left, right) => Number(left.year) - Number(right.year));
-  const hasUsableBackendTrend =
-    backendChartRows.length >= 5 &&
-    Math.max(...backendChartRows.map((item) => item.value), 0) >= 1000;
   const chartRows = (
-    hasUsableBackendTrend
+    backendChartRows.length
       ? backendChartRows
       : trendLineData.map((item) => ({
           year: String(item.year),
@@ -9335,36 +9317,12 @@ function TrendMainChart() {
   ).slice(0, 5);
   const labels = chartRows.map((item) => item.year);
   const values = chartRows.map((item) => item.value);
-  const distributionValues = values.map((value, index) =>
-    Math.max(1, Math.round(value * (0.42 + index * 0.08))),
-  );
-  const activeValues =
-    activeTrendTab === "journals"
-      ? distributionValues
-      : chartMode === "growth"
-        ? values.map((value, index) =>
-            index ? Math.round(((value - values[index - 1]) / Math.max(values[index - 1], 1)) * 100) : 0,
-          )
-        : values;
   const previousValues = values.map((value, index) =>
     Math.max(0, Math.round(index ? values[index - 1] : value * 0.88)),
   );
   const maxChartValue = Math.max(...values, ...previousValues, 1);
-  const trendAxisMax =
-    chartMode === "growth"
-      ? 100
-      : Math.max(
-          80000,
-          Math.ceil((Math.max(...activeValues, ...previousValues, 1) * 1.12) / 10000) * 10000,
-        );
-  const exportTrendChartRows = () => {
-    downloadXlsxFile("scholartrend-trend-chart.xlsx", {
-      Chart: [
-        ["Label", activeTrendTab === "journals" ? "Journal Distribution" : chartMode === "growth" ? "Growth %" : "Publications"],
-        ...labels.map((label, index) => [label, activeValues[index]]),
-      ],
-    });
-  };
+  const trendAxisMax = Math.max(4, Math.ceil(maxChartValue * 1.12));
+  const trendStepSize = Math.max(1, Math.ceil(trendAxisMax / 5));
 
   return (
     <section
@@ -9372,31 +9330,10 @@ function TrendMainChart() {
       aria-label="Publication trend over time"
     >
       <div className="trend-tabs">
-        <button
-          type="button"
-          className={activeTrendTab === "time" ? "active" : ""}
-          onClick={() => setActiveTrendTab("time")}
-        >
+        <button type="button" className="active">
           Publications Over Time
         </button>
-        <button
-          type="button"
-          className={activeTrendTab === "journals" ? "active" : ""}
-          onClick={() => setActiveTrendTab("journals")}
-        >
-          Distribution by Journal
-        </button>
-        <select
-          value={chartMode}
-          onChange={(event) => setChartMode(event.target.value)}
-          aria-label="Trend chart metric"
-        >
-          <option value="count">Raw Count</option>
-          <option value="growth">Growth Rate</option>
-        </select>
-        <button type="button" onClick={exportTrendChartRows}>
-          Download
-        </button>
+        <button type="button">Distribution by Journal</button>
       </div>
       <div
         className="trend-chart-wrap"
@@ -9407,13 +9344,8 @@ function TrendMainChart() {
             labels,
             datasets: [
               {
-                label:
-                  activeTrendTab === "journals"
-                    ? "Distribution by Journal"
-                    : chartMode === "growth"
-                      ? "Growth Rate"
-                      : "Publications Over Time",
-                data: activeValues,
+                label: "Publications Over Time",
+                data: values,
                 borderColor: "rgba(99, 102, 241, 1)",
                 backgroundColor: "rgba(99, 102, 241, 0.13)",
                 tension: 0.32,
@@ -9479,7 +9411,12 @@ function TrendMainChart() {
                 },
                 callbacks: {
                   label: function (context) {
-                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}${chartMode === "growth" ? "%" : " publications"}`;
+                    return (
+                      context.dataset.label +
+                      ": " +
+                      context.parsed.y.toLocaleString() +
+                      " publications"
+                    );
                   },
                 },
               },
@@ -9500,7 +9437,7 @@ function TrendMainChart() {
                   callback: function (value) {
                     return value >= 1000 ? value / 1000 + "k" : value;
                   },
-                  stepSize: 10000,
+                  stepSize: trendStepSize,
                 },
                 border: {
                   display: false,
@@ -9550,9 +9487,9 @@ function TrendRankingTables() {
         const score = Number(item.trendingScore ?? item.TrendingScore ?? 0);
         return {
           keyword: item.keyword || item.Keyword || `Keyword ${index + 1}`,
-          count: Number(
-            item.totalCount ?? item.TotalCount ?? 0,
-          ).toLocaleString("en-US"),
+          count: Number(item.totalCount ?? item.TotalCount ?? 0).toLocaleString(
+            "en-US",
+          ),
           growth: `${score.toFixed(1)}%`,
           values: [
             Math.max(12, Math.min(95, score * 0.45 + 18)),
@@ -9566,7 +9503,8 @@ function TrendRankingTables() {
     : trendTopRaw;
   const growthRows = backendTopKeywords.length
     ? [...rankingRows].sort(
-        (left, right) => Number.parseFloat(right.growth) - Number.parseFloat(left.growth),
+        (left, right) =>
+          Number.parseFloat(right.growth) - Number.parseFloat(left.growth),
       )
     : trendTopGrowth;
   const exportRankingRows = () => {
@@ -9595,7 +9533,9 @@ function TrendRankingTables() {
             <MiniIcon path="M5 7h14M5 12h14M5 17h14" /> Top 10 by Raw Count
             (Strategy A)
           </h2>
-          <button type="button" onClick={exportRankingRows}>Export</button>
+          <button type="button" onClick={exportRankingRows}>
+            Export
+          </button>
         </div>
         <table>
           <thead>
@@ -9627,7 +9567,9 @@ function TrendRankingTables() {
             <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" /> Top 10 by
             Growth Rate (Strategy B)
           </h2>
-          <button type="button" onClick={exportGrowthRows}>Export</button>
+          <button type="button" onClick={exportGrowthRows}>
+            Export
+          </button>
         </div>
         <table>
           <thead>
@@ -9841,7 +9783,9 @@ function ReportsPage() {
     const rows = Object.values(
       reportTrendRows.reduce((rowsByYear, item) => {
         const year = Number(item.year || item.Year);
-        const count = Number(item.publicationCount ?? item.PublicationCount ?? 0);
+        const count = Number(
+          item.publicationCount ?? item.PublicationCount ?? 0,
+        );
         const score = Number(item.trendingScore ?? item.TrendingScore ?? 0);
         if (year < endYear - 4 || year > endYear || count < 0) {
           return rowsByYear;
@@ -9854,8 +9798,7 @@ function ReportsPage() {
         return rowsByYear;
       }, {}),
     ).sort((left, right) => left.year - right.year);
-    const useBackendRows =
-      rows.length === 5 && Math.max(...rows.map((row) => row.count), 0) >= 200;
+    const useBackendRows = rows.length > 0;
     const total = rows.reduce((sum, row) => sum + row.count, 0);
     const averageScore = rows.length
       ? rows.reduce((sum, row) => sum + row.score, 0) / rows.length
@@ -9878,32 +9821,6 @@ function ReportsPage() {
   );
   const handleGenerateReport = async () => {
     setReportMessage("Generating report...");
-    const filenameBase = `trend-report-${reportKeyword.replace(/\s+/g, "-")}-${reportFromYear}-${reportToYear}`;
-    const summaryRows = [
-      ["Metric", "Value"],
-      ["Keyword", reportKeyword],
-      ["From Year", reportFromYear],
-      ["To Year", reportToYear],
-      ["Total Publications", reportTotals.total],
-      ["Average Growth Rate", reportTotals.averageScore.toFixed(1)],
-    ];
-    const trendRows = [
-      ["Year", "Publications", "Previous Period"],
-      ...reportTotals.labels.map((label, index) => [
-        label,
-        reportTotals.counts[index],
-        reportPreviousCounts[index],
-      ]),
-    ];
-    const rawRows = [
-      ["Keyword", "Year", "Publication Count", "Trending Score"],
-      ...reportTrendRows.map((row) => [
-        row.keyword || row.Keyword || reportKeyword,
-        row.year || row.Year,
-        row.publicationCount ?? row.PublicationCount ?? "",
-        row.trendingScore ?? row.TrendingScore ?? "",
-      ]),
-    ];
     try {
       const token = getStoredAuth().accessToken;
       const response = await fetch(`${API_BASE_URL}/api/dashboard/export`, {
@@ -9924,27 +9841,12 @@ function ReportsPage() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${filenameBase}.${reportFormat === "Excel" ? "xlsx" : "csv"}`;
+      anchor.download = `trend-report-${reportKeyword.replace(/\s+/g, "-")}-${reportFromYear}-${reportToYear}.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
       setReportMessage("Report exported from backend.");
     } catch (error) {
-      if (reportFormat === "Excel") {
-        downloadXlsxFile(`${filenameBase}.xlsx`, {
-          Summary: summaryRows,
-          Trends: trendRows,
-          "Raw Data": rawRows.length > 1 ? rawRows : trendRows,
-        });
-        setReportMessage(`${error.message} Exported local Excel fallback.`);
-        return;
-      }
-
-      downloadCsvFile(`${filenameBase}.csv`, [
-        ...summaryRows,
-        [],
-        ...trendRows,
-      ]);
-      setReportMessage(`${error.message} Exported local CSV fallback.`);
+      setReportMessage(error.message);
     }
   };
 
@@ -10102,7 +10004,9 @@ function ReportsPage() {
                 <div className="report-preview-metrics">
                   <div>
                     <span>Total Publications</span>
-                    <strong>{reportTotals.total.toLocaleString("en-US")}</strong>
+                    <strong>
+                      {reportTotals.total.toLocaleString("en-US")}
+                    </strong>
                     <i></i>
                   </div>
                   <div>
@@ -10123,7 +10027,9 @@ function ReportsPage() {
                   {[34, 52, 62, 78, 92].map((height, index) => {
                     const label = reportTotals.labels[index] || "Year";
                     const count = Number(reportTotals.counts[index] || 0);
-                    const previousCount = Number(reportPreviousCounts[index] || 0);
+                    const previousCount = Number(
+                      reportPreviousCounts[index] || 0,
+                    );
                     const active = activeReportBarIndex === index;
 
                     return (
@@ -10154,7 +10060,8 @@ function ReportsPage() {
                             <em>
                               <b className="previous"></b>
                               Previous Year:{" "}
-                              {previousCount.toLocaleString("en-US")} publications
+                              {previousCount.toLocaleString("en-US")}{" "}
+                              publications
                             </em>
                           </span>
                         ) : null}
@@ -10550,7 +10457,11 @@ function YearComparisonPage() {
           volume: item.comparison,
         };
       })
-      .sort((left, right) => Math.abs(Number.parseFloat(right.delta)) - Math.abs(Number.parseFloat(left.delta)))
+      .sort(
+        (left, right) =>
+          Math.abs(Number.parseFloat(right.delta)) -
+          Math.abs(Number.parseFloat(left.delta)),
+      )
       .slice(0, 6);
     const baselineTotal = Object.values(byKeyword).reduce(
       (sum, item) => sum + item.baseline,
@@ -10627,7 +10538,10 @@ function YearComparisonPage() {
             <span>Dashboard&nbsp; &gt;&nbsp; Year Comparison</span>
             <h1>Year Comparison Analysis</h1>
           </div>
-          <form className="year-controls" onSubmit={(event) => event.preventDefault()}>
+          <form
+            className="year-controls"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <label>
               Baseline{" "}
               <select
@@ -10711,89 +10625,6 @@ function SyncSourceCard({ source }) {
 }
 
 function SyncManagementPage() {
-  const [syncConfig, setSyncConfig] = React.useState(() => {
-    try {
-      return (
-        JSON.parse(window.localStorage.getItem("scholartrend.userSyncConfig") || "null") || {
-          semantic: true,
-          openAlex: true,
-          batchSize: 50,
-          schedule: "Manual",
-        }
-      );
-    } catch {
-      return {
-        semantic: true,
-        openAlex: true,
-        batchSize: 50,
-        schedule: "Manual",
-      };
-    }
-  });
-  const [showSyncConfig, setShowSyncConfig] = React.useState(false);
-  const [syncLogsForUi, setSyncLogsForUi] = React.useState(syncLogs);
-  const [syncMessage, setSyncMessage] = React.useState("");
-  const saveUserSyncConfig = (patch) => {
-    const nextConfig = { ...syncConfig, ...patch };
-    setSyncConfig(nextConfig);
-    window.localStorage.setItem("scholartrend.userSyncConfig", JSON.stringify(nextConfig));
-  };
-  const appendUserSyncLog = (level, message) => {
-    const now = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    setSyncLogsForUi((current) => [
-      { time: now, level, message },
-      ...current,
-    ]);
-  };
-  const runDryCheck = async () => {
-    setSyncMessage("Running dry check...");
-    const enabled = [
-      syncConfig.semantic ? "Semantic Scholar" : null,
-      syncConfig.openAlex ? "OpenAlex" : null,
-    ].filter(Boolean);
-    if (!enabled.length) {
-      appendUserSyncLog("ERROR", "Dry check failed: no source enabled.");
-      setSyncMessage("Enable at least one source before running dry check.");
-      return;
-    }
-    appendUserSyncLog("INFO", `Dry check passed for ${enabled.join(", ")} with batch size ${syncConfig.batchSize}.`);
-    setSyncMessage("Dry check passed. No data was written.");
-  };
-  const startUserSync = async () => {
-    setSyncMessage("Starting sync...");
-    const enabled = [
-      syncConfig.semantic ? "Semantic Scholar" : null,
-      syncConfig.openAlex ? "OpenAlex" : null,
-    ].filter(Boolean);
-    try {
-      await apiFetch("/api/admin/audit-log", {
-        method: "POST",
-        auth: true,
-        body: {
-          module: "Sync Management",
-          detail: `User workspace sync requested for ${enabled.join(", ") || "no source"}.`,
-          severity: enabled.length ? "Info" : "Error",
-          code: "USER-SYNC-REQUEST",
-        },
-      });
-    } catch {
-      // Non-admin users can still run the local sync workflow.
-    }
-    if (!enabled.length) {
-      appendUserSyncLog("ERROR", "Sync blocked: no source configured.");
-      setSyncMessage("Sync blocked. Configure a source first.");
-      return;
-    }
-    appendUserSyncLog("INFO", `Started ${enabled.join(" + ")} sync for ${syncConfig.batchSize} records.`);
-    window.setTimeout(() => {
-      appendUserSyncLog("SUCCESS", `Completed ${enabled.join(" + ")} sync simulation. Search uses synced backend records when available.`);
-      setSyncMessage("Sync completed and logs were updated.");
-    }, 450);
-  };
-
   return (
     <ResearcherShell
       activeRoute="/researcher-sync-management"
@@ -10814,65 +10645,15 @@ function SyncManagementPage() {
             </p>
           </div>
           <div className="sync-hero-actions">
-            <button type="button" className="sync-secondary-button" onClick={runDryCheck}>
+            <button type="button" className="sync-secondary-button">
               <MiniIcon path="M4 4v6h6M20 20v-6h-6M20 8a7 7 0 0 0-12.1-4M4 16a7 7 0 0 0 12.1 4M9 12h6" />{" "}
               Run Dry Check
             </button>
-            <button type="button" className="sync-primary-button" onClick={startUserSync}>
+            <button type="button" className="sync-primary-button">
               <MiniIcon path="M12 5v14M5 12h14M7 7l10 10" /> Start Sync
             </button>
           </div>
         </section>
-        {syncMessage ? <p className="sync-message">{syncMessage}</p> : null}
-        {showSyncConfig ? (
-          <section className="sync-panel sync-user-config-panel">
-            <div className="sync-panel-heading">
-              <h2>Configuration</h2>
-              <button type="button" onClick={() => setShowSyncConfig(false)}>
-                Done
-              </button>
-            </div>
-            <div className="sync-user-config-grid">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={syncConfig.semantic}
-                  onChange={(event) => saveUserSyncConfig({ semantic: event.target.checked })}
-                />
-                Semantic Scholar
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={syncConfig.openAlex}
-                  onChange={(event) => saveUserSyncConfig({ openAlex: event.target.checked })}
-                />
-                OpenAlex
-              </label>
-              <label>
-                Batch size
-                <input
-                  type="number"
-                  min="10"
-                  max="200"
-                  value={syncConfig.batchSize}
-                  onChange={(event) => saveUserSyncConfig({ batchSize: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                Schedule
-                <select
-                  value={syncConfig.schedule}
-                  onChange={(event) => saveUserSyncConfig({ schedule: event.target.value })}
-                >
-                  <option>Manual</option>
-                  <option>Every 6 hours</option>
-                  <option>Daily</option>
-                </select>
-              </label>
-            </div>
-          </section>
-        ) : null}
 
         <section className="sync-source-grid" aria-label="Sync data sources">
           {syncSourceCards.map((source) => (
@@ -10909,7 +10690,7 @@ function SyncManagementPage() {
                 <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6zM9 13h2M13 13h2M9 16h2" />{" "}
                 Hangfire Schedule
               </h2>
-              <button type="button" onClick={() => setShowSyncConfig((value) => !value)}>Configure</button>
+              <button type="button">Configure</button>
             </div>
             <table>
               <thead>
@@ -10979,7 +10760,7 @@ function SyncManagementPage() {
               <span>Live logging</span>
             </div>
             <div className="sync-log-list">
-              {syncLogsForUi.map((log) => (
+              {syncLogs.map((log) => (
                 <article
                   className={`sync-log ${log.level.toLowerCase()}`}
                   key={`${log.time}-${log.message}`}
@@ -11045,7 +10826,9 @@ function ResearcherSearchTopbar({ onMenuClick, onOpenSettings }) {
         <input
           type="search"
           name="query"
-          defaultValue={getSearchParam("q") || "DeepFruits: A Fruit Detection System..."}
+          defaultValue={
+            getSearchParam("q") || "DeepFruits: A Fruit Detection System..."
+          }
           aria-label="Search knowledge graph"
         />
       </form>
@@ -11186,6 +10969,13 @@ function KnowledgeGraphCanvas({
     controls.maxDistance = 980;
     controls.enablePan = true;
 
+    const normalizedNodes = nodes.map((node, index) => ({
+      ...node,
+      position: Array.isArray(node.position)
+        ? node.position
+        : dynamicGraphNodePositions[index % dynamicGraphNodePositions.length],
+      size: Number(node.size || (index === 0 ? 48 : 32)),
+    }));
     const graphGroup = new THREE.Group();
     graphGroup.rotation.x = -0.08;
     graphGroup.rotation.y = -0.18;
@@ -11202,12 +10992,29 @@ function KnowledgeGraphCanvas({
     fillLight.position.set(-260, -120, 220);
     scene.add(fillLight);
 
-    const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
+    const nodeById = Object.fromEntries(
+      normalizedNodes.map((node) => [node.id, node]),
+    );
     const labelItems = [];
     const nodeItems = new Map();
     const nodeMeshes = [];
+    const graphLinksForUi = graph3DLinks.some(
+      ([sourceId, targetId]) => nodeById[sourceId] && nodeById[targetId],
+    )
+      ? graph3DLinks.filter(
+          ([sourceId, targetId]) => nodeById[sourceId] && nodeById[targetId],
+        )
+      : normalizedNodes.slice(1).flatMap((node, index) => {
+          const links = [
+            [normalizedNodes[0].id, node.id, index < 4 ? "strong" : "faint"],
+          ];
+          if (index > 0 && index % 2 === 0) {
+            links.push([normalizedNodes[index].id, node.id, "faint"]);
+          }
+          return links;
+        });
 
-    graph3DLinks.forEach(([sourceId, targetId, tone]) => {
+    graphLinksForUi.forEach(([sourceId, targetId, tone]) => {
       const source = nodeById[sourceId];
       const target = nodeById[targetId];
       if (!source || !target) return;
@@ -11246,12 +11053,11 @@ function KnowledgeGraphCanvas({
     selectionGroup.visible = false;
     graphGroup.add(selectionGroup);
 
-    nodes.forEach((node) => {
+    normalizedNodes.forEach((node) => {
       const selectedRadius = node.size;
       const idleRadius = Math.max(node.size * 0.42, 8);
       const isActiveNode = node.id === selectedNodeIdRef.current;
-      const radius =
-        isActiveNode ? selectedRadius : idleRadius;
+      const radius = isActiveNode ? selectedRadius : idleRadius;
       const position = new THREE.Vector3(...node.position);
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(node.color),
@@ -11291,7 +11097,7 @@ function KnowledgeGraphCanvas({
     });
 
     const applySelection = (nodeId) => {
-      const fallbackNodeId = nodes[0]?.id || "deepfruits";
+      const fallbackNodeId = normalizedNodes[0]?.id || "deepfruits";
       const nextNodeId = nodeItems.has(nodeId) ? nodeId : fallbackNodeId;
       const selectedItem = nodeItems.get(nextNodeId);
       selectedNodeIdRef.current = nextNodeId;
@@ -11408,7 +11214,7 @@ function KnowledgeGraphCanvas({
       labelItems.forEach(({ label, sphere, node, currentRadius }) => {
         const isSelected = node.id === selectedNodeIdRef.current;
         sphere.getWorldPosition(worldPosition);
-        const offset = currentRadius + (isSelected ? 6 : 13);
+        const offset = currentRadius + (isSelected ? 34 : 18);
         worldPosition.y += offset;
         projectedPosition.copy(worldPosition).project(camera);
         const x = (projectedPosition.x * 0.5 + 0.5) * width;
@@ -11522,43 +11328,11 @@ function KnowledgeGraphCanvas({
   );
 }
 
-function ResearcherPaperPanel({
-  selectedNode,
-  onComparePaper,
-  comparisonCount = 0,
-}) {
+function ResearcherPaperPanel({ selectedNode }) {
   const selectedPaper = getGraphPaperForNode(selectedNode);
-  const [paperMessage, setPaperMessage] = React.useState("");
-  const [saved, setSaved] = React.useState(() =>
-    hasLocalBookmark(selectedPaper, getLocalBookmarks()),
-  );
   const detailPath = `/researcher-publication${
     selectedPaper.id ? `?id=${encodeURIComponent(selectedPaper.id)}` : ""
   }`;
-  const absoluteDetailUrl = `${window.location.origin}${detailPath}`;
-
-  React.useEffect(() => {
-    setSaved(hasLocalBookmark(selectedPaper, getLocalBookmarks()));
-    setPaperMessage("");
-  }, [selectedPaper.id]);
-
-  const sharePaper = async () => {
-    const message = await sharePublicationLink({
-      title: selectedPaper.title,
-      text: selectedPaper.abstract,
-      url: absoluteDetailUrl,
-    });
-    setPaperMessage(message);
-  };
-
-  const savePaper = (mode = "full") => {
-    upsertLocalBookmark({
-      ...selectedPaper,
-      excerpt: mode === "link" ? absoluteDetailUrl : selectedPaper.abstract,
-    });
-    setSaved(true);
-    setPaperMessage(mode === "link" ? "Link saved to bookmarks." : "Paper saved to bookmarks.");
-  };
 
   return (
     <aside
@@ -11568,7 +11342,7 @@ function ResearcherPaperPanel({
       <div className="paper-panel-actions">
         <span>Selected Node</span>
         <div>
-          <button type="button" aria-label="Share paper" onClick={sharePaper}>
+          <button type="button" aria-label="Share paper">
             <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
           </button>
           <button
@@ -11582,10 +11356,7 @@ function ResearcherPaperPanel({
       </div>
 
       <h1>
-        <a
-          href={detailPath}
-          onClick={navTo(detailPath)}
-        >
+        <a href={detailPath} onClick={navTo(detailPath)}>
           {selectedPaper.title}
         </a>
       </h1>
@@ -11614,29 +11385,21 @@ function ResearcherPaperPanel({
       <section className="paper-summary">
         <h2>Abstract Summary</h2>
         <p>{selectedPaper.abstract}</p>
-        <a
-          href={detailPath}
-          onClick={navTo(detailPath)}
-        >
+        <a href={detailPath} onClick={navTo(detailPath)}>
           Read full abstract
         </a>
       </section>
 
       <div className="paper-save-actions">
-        <button type="button" className="save-full-text" onClick={() => savePaper("full")}>
+        <button type="button" className="save-full-text">
           <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
-          {saved ? "Saved Full Text" : "Save Full Text"}
+          Save Full Text
         </button>
-        <button type="button" className="save-link-only" onClick={() => savePaper("link")}>
+        <button type="button" className="save-link-only">
           <MiniIcon path="M10 13a5 5 0 0 1 7.1 0l.9.9a5 5 0 0 1-7.1 7.1l-.9-.9M14 11a5 5 0 0 1-7.1 0L6 10.1A5 5 0 0 1 13.1 3l.9.9" />
           Save Link Only
         </button>
-        <button type="button" className="save-link-only" onClick={() => onComparePaper?.(selectedPaper)}>
-          <MiniIcon path="M5 6h14M5 12h14M5 18h14M9 4v16M15 4v16" />
-          Compare ({comparisonCount})
-        </button>
       </div>
-      {paperMessage ? <p className="paper-action-message">{paperMessage}</p> : null}
 
       <section className="paper-access-points">
         <h2>Access Points</h2>
@@ -11742,6 +11505,28 @@ const listViewPapers = [
 ];
 
 function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
+  const [queryValue, setQueryValue] = React.useState(getSearchParam("q") || "");
+  React.useEffect(() => {
+    const syncQuery = () => setQueryValue(getSearchParam("q") || "");
+    window.addEventListener("scholartrend:navigate", syncQuery);
+    window.addEventListener("popstate", syncQuery);
+    syncQuery();
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncQuery);
+      window.removeEventListener("popstate", syncQuery);
+    };
+  }, []);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const query = queryValue.trim();
+    const targetPath = query
+      ? `/researcher-search?view=list&q=${encodeURIComponent(query)}`
+      : "/researcher-search?view=list";
+    window.history.pushState({}, "", getAcademicPath(targetPath));
+    window.dispatchEvent(new Event("scholartrend:navigate"));
+  };
+
   return (
     <header className="researcher-list-topbar">
       <button
@@ -11754,13 +11539,15 @@ function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
       </button>
       <form
         className="researcher-list-search"
-        onSubmit={navTo("/researcher-search?view=list")}
+        onSubmit={handleSubmit}
       >
         <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
         <input
           type="search"
           placeholder="Search for a paper, author or concept..."
           aria-label="Search list results"
+          value={queryValue}
+          onChange={(event) => setQueryValue(event.target.value)}
         />
       </form>
 
@@ -11796,12 +11583,9 @@ function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
   );
 }
 
-function ResearcherListDetail({ paper }) {
+function ResearcherListDetail({ paper, onDownloadPaper }) {
   const [originAdded, setOriginAdded] = React.useState(false);
-  const [saved, setSaved] = React.useState(() =>
-    hasLocalBookmark(paper, getLocalBookmarks()),
-  );
-  const [saveMessage, setSaveMessage] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
   const detailPath = `/researcher-publication${paper.id ? `?id=${encodeURIComponent(paper.id)}` : ""}`;
   const summary =
     paper.summary ||
@@ -11814,26 +11598,8 @@ function ResearcherListDetail({ paper }) {
 
   React.useEffect(() => {
     setOriginAdded(false);
-    setSaved(hasLocalBookmark(paper, getLocalBookmarks()));
-    setSaveMessage("");
+    setSaved(false);
   }, [paper.id]);
-
-  const toggleCollectionSave = () => {
-    const nextSaved = !hasLocalBookmark(paper, getLocalBookmarks());
-    if (nextSaved) {
-      upsertLocalBookmark(paper);
-    } else {
-      removeLocalBookmark(paper);
-    }
-    setSaved(nextSaved);
-    setSaveMessage(nextSaved ? "Saved to Bookmarks." : "Removed from Bookmarks.");
-    if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
-      apiFetch(`/api/bookmarks/${paper.id}`, {
-        method: nextSaved ? "POST" : "DELETE",
-        auth: true,
-      }).catch(() => {});
-    }
-  };
 
   return (
     <aside
@@ -11862,22 +11628,23 @@ function ResearcherListDetail({ paper }) {
           Open graph
         </button>
         <button type="button" onClick={navTo(detailPath)}>
-          <MiniIcon
-            path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4"
-          />
+          <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
           Open detail
+        </button>
+        <button type="button" onClick={() => onDownloadPaper?.(paper)}>
+          <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+          Download DOCX
         </button>
       </div>
 
       <button
         type="button"
         className={`researcher-list-save ${saved ? "saved" : ""}`}
-        onClick={toggleCollectionSave}
+        onClick={() => setSaved((value) => !value)}
       >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
         {saved ? "Saved to collection" : "Save to collection"}
       </button>
-      {saveMessage ? <p className="bookmark-save-message">{saveMessage}</p> : null}
 
       <section className="researcher-list-open-in">
         <h3>Open in</h3>
@@ -11890,7 +11657,11 @@ function ResearcherListDetail({ paper }) {
             Google Scholar
           </a>
           <a
-            href={paper.doi ? `https://doi.org/${encodeURIComponent(paper.doi)}` : `https://scholar.google.com/scholar?q=${encodeURIComponent(paper.title)}`}
+            href={
+              paper.doi
+                ? `https://doi.org/${encodeURIComponent(paper.doi)}`
+                : `https://scholar.google.com/scholar?q=${encodeURIComponent(paper.title)}`
+            }
             target="_blank"
             rel="noreferrer"
           >
@@ -11936,6 +11707,22 @@ function ResearcherListViewPage() {
   const [selectedPaperId, setSelectedPaperId] = React.useState("bell-pepper");
   const [query, setQuery] = React.useState(getSearchParam("q") || "");
   const [sortBy, setSortBy] = React.useState("year");
+  React.useEffect(() => {
+    const syncUrlQuery = () => {
+      const urlKeyword = getSearchParam("q") || "";
+      setQuery((current) => (current === urlKeyword ? current : urlKeyword));
+      setSelectedPaperId("");
+    };
+    window.addEventListener("scholartrend:navigate", syncUrlQuery);
+    window.addEventListener("popstate", syncUrlQuery);
+    syncUrlQuery();
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncUrlQuery);
+      window.removeEventListener("popstate", syncUrlQuery);
+    };
+  }, []);
+
+  const { data: listSuggestions } = useSearchSuggestions(query, 8);
   const accountPlan = getCurrentAccountPlan();
   const listApiPath = React.useMemo(() => {
     const params = new URLSearchParams({
@@ -11946,42 +11733,47 @@ function ResearcherListViewPage() {
     if (query.trim()) params.set("keyword", query.trim());
     return `/api/publications/search?${params.toString()}`;
   }, [query, sortBy]);
-  const { data: backendPapers } = useApiResource(
+  const { data: backendPapers, status: listStatus } = useApiResource(
     listApiPath,
-    listViewPapers,
+    [],
     {
+      clearOnLoad: true,
       select: (payload) =>
         unwrapList(payload).map((paper) =>
-          mapPublicationForResearcherList({
-            ...paper,
-            similarityPercent: Math.min(
-              100,
-              Math.max(10, paper.citationCount || 10),
-            ),
-          }),
+          mapPublicationForResearcherList(
+            paper,
+            accountPlan.searchAccuracy,
+            query,
+          ),
         ),
     },
   );
   const publishedListPapers = React.useMemo(
-    () => getPublishedPublications().map(mapPublicationForResearcherList),
-    [],
+    () =>
+      getPublishedPublications().map((paper) =>
+        mapPublicationForResearcherList(
+          paper,
+          accountPlan.searchAccuracy,
+          query,
+        ),
+      ),
+    [accountPlan.searchAccuracy, query],
   );
-  const papersForUi = React.useMemo(
-    () => {
-      const keyword = query.trim().toLowerCase();
-      return mergePublicationsByIdOrTitle(publishedListPapers, backendPapers)
-        .filter((paper) => {
-          if (!keyword) return true;
-          return `${paper.title} ${paper.authors} ${paper.summary} ${paper.tags?.join(" ")}`.toLowerCase().includes(keyword);
-        })
-        .sort((left, right) => {
-          if (sortBy === "title") return left.title.localeCompare(right.title);
-          if (sortBy === "citations") return right.citations - left.citations;
-          return Number(right.year || 0) - Number(left.year || 0);
-        });
-    },
-    [publishedListPapers, backendPapers, query, sortBy],
-  );
+  const papersForUi = React.useMemo(() => {
+    const keywordTerms = getSearchTerms(query);
+    return mergePublicationsByIdOrTitle(publishedListPapers, backendPapers)
+      .filter((paper) => {
+        return matchesSearchTerms(
+          `${paper.title} ${paper.authors} ${paper.summary} ${paper.tags?.join(" ")}`,
+          keywordTerms,
+        );
+      })
+      .sort((left, right) => {
+        if (sortBy === "title") return left.title.localeCompare(right.title);
+        if (sortBy === "citations") return right.citations - left.citations;
+        return Number(right.year || 0) - Number(left.year || 0);
+      });
+  }, [publishedListPapers, backendPapers, query, sortBy]);
   React.useEffect(() => {
     if (papersForUi.length) {
       setSelectedPaperId(papersForUi[0].id);
@@ -11990,17 +11782,29 @@ function ResearcherListViewPage() {
   const selectedPaper =
     papersForUi.find((paper) => paper.id === selectedPaperId) ||
     papersForUi[0] ||
-    listViewPapers[1];
+    null;
 
-  const exportListMetadata = () => {
-    downloadXlsxFile("scholartrend-list-metadata.xlsx", {
-      Papers: getPapersMetadataRows(papersForUi),
-    });
+  const downloadResults = () => {
+    downloadDocxFile(
+      query.trim()
+        ? `${slugifyFilename(query, "scholartrend-search")}-papers.docx`
+        : "scholartrend-search-papers.docx",
+      buildSearchResultsDocxData(papersForUi, query),
+    );
   };
-
-  const downloadListPapersText = () => {
-    downloadPapersTextBundle("scholartrend-list-papers.txt", papersForUi);
+  const downloadPaper = (paper) => {
+    if (!paper) return;
+    downloadDocxFile(
+      `${slugifyFilename(paper.title)}.docx`,
+      buildPaperDocxData(paper, query),
+    );
   };
+  const exportReferences = (format) =>
+    downloadReferenceExport({
+      format,
+      ids: papersForUi.map((paper) => paper.id),
+      query,
+    }).catch(() => {});
 
   return (
     <ResearcherShell
@@ -12015,25 +11819,31 @@ function ResearcherListViewPage() {
             <div>
               <h1>
                 {query.trim()
-                  ? `Search results for "${query.trim()}"`
+                  ? listStatus === "loading"
+                    ? `Searching "${query.trim()}"...`
+                    : `Search results for "${query.trim()}"`
                   : "DeepFruits: A Fruit Detection System"}
               </h1>
               <p className="researcher-search-accuracy">
-                {accountPlan.plan} account: {accountPlan.searchAccuracy}% article
-                accuracy
+                {accountPlan.plan} account: {accountPlan.searchAccuracy}%
+                article accuracy
               </p>
               <p>
                 Knowledge Graph <span>&gt;</span> <strong>List View</strong>
               </p>
             </div>
             <div>
-              <button type="button" onClick={exportListMetadata}>
+              <button type="button" onClick={downloadResults}>
                 <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
-                Export Excel
+                Download Papers
               </button>
-              <button type="button" onClick={downloadListPapersText}>
-                <MiniIcon path="M4 7h16M6 7v12h12V7M9 11h6M9 15h6" />
-                Download Papers TXT
+              <button type="button" onClick={() => exportReferences("bibtex")}>
+                <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+                BibTeX
+              </button>
+              <button type="button" onClick={() => exportReferences("ris")}>
+                <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+                RIS
               </button>
               <label className="researcher-list-inline-filter">
                 <span>Search</span>
@@ -12041,7 +11851,13 @@ function ResearcherListViewPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Keyword, title, author..."
+                  list="researcher-list-search-suggestions"
                 />
+                <datalist id="researcher-list-search-suggestions">
+                  {listSuggestions.map((suggestion) => (
+                    <option value={suggestion} key={suggestion} />
+                  ))}
+                </datalist>
               </label>
               <label className="researcher-list-inline-filter">
                 <span>Sort</span>
@@ -12077,33 +11893,64 @@ function ResearcherListViewPage() {
                 </tr>
               </thead>
               <tbody>
-                {papersForUi.map((paper) => (
-                  <tr
-                    className={paper.id === selectedPaperId ? "selected" : ""}
-                    key={paper.id}
-                    onClick={() => setSelectedPaperId(paper.id)}
-                  >
-                    <td>
-                      <button type="button">{paper.title}</button>
-                    </td>
-                    <td>{paper.authors}</td>
-                    <td>{paper.year}</td>
-                    <td>{paper.citations}</td>
-                    <td>{paper.references}</td>
-                    <td>
-                      <span className="researcher-list-similarity">
-                        <i style={{ width: `${paper.similarity}%` }}></i>
-                      </span>
-                      <strong>{paper.similarity.toFixed(1)}</strong>
-                    </td>
+                {listStatus === "loading" ? (
+                  <tr>
+                    <td colSpan="6">Loading publications...</td>
                   </tr>
-                ))}
+                ) : papersForUi.length ? (
+                  papersForUi.map((paper) => (
+                    <tr
+                      className={paper.id === selectedPaperId ? "selected" : ""}
+                      key={paper.id}
+                      onClick={() => setSelectedPaperId(paper.id)}
+                    >
+                      <td>
+                        <button type="button">{paper.title}</button>
+                      </td>
+                      <td>{paper.authors}</td>
+                      <td>{paper.year}</td>
+                      <td>{paper.citations}</td>
+                      <td>{paper.references}</td>
+                      <td>
+                        <span className="researcher-list-similarity">
+                          <i style={{ width: `${paper.similarity}%` }}></i>
+                        </span>
+                        <strong>{paper.similarity.toFixed(1)}</strong>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="6">No publications matched this search.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </section>
 
-        <ResearcherListDetail paper={selectedPaper} />
+        {selectedPaper ? (
+          <ResearcherListDetail
+            paper={selectedPaper}
+            onDownloadPaper={downloadPaper}
+          />
+        ) : (
+          <aside
+            className="researcher-list-detail"
+            aria-label="Selected paper details"
+          >
+            <h2>
+              {listStatus === "loading"
+                ? "Loading selected paper..."
+                : "No paper selected"}
+            </h2>
+            <p className="researcher-list-detail-authors">
+              {listStatus === "loading"
+                ? "Fetching real publication data from connected sources."
+                : "Try another keyword or switch back to All Sources."}
+            </p>
+          </aside>
+        )}
       </div>
     </ResearcherShell>
   );
@@ -12111,45 +11958,33 @@ function ResearcherListViewPage() {
 
 function ResearcherSearchPage() {
   const view = new URLSearchParams(window.location.search).get("view");
+  const accountPlan = getCurrentAccountPlan();
   const { data: backendGraphPublications } = useApiResource(
-    "/api/publications/search?page=1&pageSize=8&sortBy=year",
+    `/api/publications/search?page=1&pageSize=${graph3DNodes.length}&sortBy=year`,
     [],
     { select: (payload) => unwrapList(payload) },
   );
-  const publishedGraphNodes = React.useMemo(
-    () => getPublishedPublications().map(mapPublishedPublicationForGraph),
+  const localPublishedPublications = React.useMemo(
+    () => getPublishedPublications(),
     [],
   );
-  const backendGraphNodes = React.useMemo(
-    () =>
-      backendGraphPublications.map((paper, index) =>
-        mapPublishedPublicationForGraph(
-          {
-            id: paper.id,
-            title: paper.title,
-            abstract: paper.abstract,
-            authors: paper.authors,
-            year: paper.year,
-            journalName: paper.journalName,
-            citationCount: paper.citationCount,
-            keywords: paper.keywords,
-            similarityPercent: Math.min(
-              100,
-              Math.max(25, Number(paper.citationCount || 25)),
-            ),
-          },
-          index + publishedGraphNodes.length,
-        ),
-      ),
-    [backendGraphPublications, publishedGraphNodes.length],
-  );
   const graphNodesForUi = React.useMemo(() => {
-    return graph3DNodes;
-  }, [publishedGraphNodes, backendGraphNodes]);
+    const realPublications = mergePublicationsByIdOrTitle(
+      backendGraphPublications,
+      localPublishedPublications,
+    );
+    return createApiBackedGraphNodes(
+      realPublications,
+      accountPlan.searchAccuracy,
+    );
+  }, [
+    backendGraphPublications,
+    localPublishedPublications,
+    accountPlan.searchAccuracy,
+  ]);
   const [selectedNodeId, setSelectedNodeId] = React.useState(
     graphNodesForUi[0]?.id || "deepfruits",
   );
-  const [comparisonPapers, setComparisonPapers] = React.useState([]);
   const selectedNode = React.useMemo(
     () =>
       graphNodesForUi.find((node) => node.id === selectedNodeId) ||
@@ -12159,36 +11994,6 @@ function ResearcherSearchPage() {
   );
 
   if (view === "list") return <ResearcherListViewPage />;
-
-  const addComparisonPaper = (paper) => {
-    setComparisonPapers((current) => {
-      const exists = current.some((item) => getBookmarkKey(item) === getBookmarkKey(paper));
-      return exists ? current : [...current, paper].slice(-4);
-    });
-  };
-
-  const exportComparisonPapers = () => {
-    downloadXlsxFile("scholartrend-graph-comparison.xlsx", {
-      Comparison: [
-        ["Title", "Authors", "Year", "Venue", "Citations", "Similarity"],
-        ...comparisonPapers.map((paper) => [
-          paper.title,
-          paper.authors,
-          paper.year,
-          paper.venue,
-          paper.citations,
-          paper.similarity,
-        ]),
-      ],
-    });
-  };
-
-  const shareComparisonPapers = async () => {
-    const text = comparisonPapers
-      .map((paper, index) => `${index + 1}. ${paper.title} (${paper.year})`)
-      .join("\n");
-    await copyTextToClipboard(text || selectedNode.label);
-  };
 
   return (
     <ResearcherShell
@@ -12203,28 +12008,14 @@ function ResearcherSearchPage() {
           selectedNodeId={selectedNode.id}
           onSelectNode={setSelectedNodeId}
         />
-        <ResearcherPaperPanel
-          selectedNode={selectedNode}
-          onComparePaper={addComparisonPaper}
-          comparisonCount={comparisonPapers.length}
-        />
+        <ResearcherPaperPanel selectedNode={selectedNode} />
       </div>
-      {comparisonPapers.length ? (
-        <section className="graph-comparison-bar">
-          <div>
-            <strong>{comparisonPapers.length} papers selected for compare</strong>
-            <span>{comparisonPapers.map((paper) => paper.title).join(" | ")}</span>
-          </div>
-          <button type="button" onClick={shareComparisonPapers}>Copy</button>
-          <button type="button" onClick={exportComparisonPapers}>Export</button>
-          <button type="button" onClick={() => setComparisonPapers([])}>Clear</button>
-        </section>
-      ) : null}
     </ResearcherShell>
   );
 }
 
 function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
+  const { data: filterSuggestions } = useSearchSuggestions(filters.keyword, 8);
   const keywordChips = filters.keyword
     ? filters.keyword
         .split(",")
@@ -12297,19 +12088,19 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           <input
             type="radio"
             name="source"
-            checked={filters.source === "OpenAlex"}
-            onChange={() => onChangeFilters({ source: "OpenAlex" })}
+            checked={filters.source === "Semantic Scholar"}
+            onChange={() => onChangeFilters({ source: "Semantic Scholar" })}
           />{" "}
-          OpenAlex
+          Semantic Scholar
         </label>
         <label>
           <input
             type="radio"
             name="source"
-            checked={filters.source === "Semantic Scholar"}
-            onChange={() => onChangeFilters({ source: "Semantic Scholar" })}
+            checked={filters.source === "OpenAlex"}
+            onChange={() => onChangeFilters({ source: "OpenAlex" })}
           />{" "}
-          Semantic Scholar
+          OpenAlex
         </label>
       </section>
 
@@ -12351,30 +12142,37 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           <input
             type="search"
             value={filters.keyword}
-            onChange={(event) => onChangeFilters({ keyword: event.target.value })}
+            onChange={(event) =>
+              onChangeFilters({ keyword: event.target.value })
+            }
             placeholder="Keyword..."
             aria-label="Search keyword filter"
+            list="student-search-keyword-suggestions"
           />
+          <datalist id="student-search-keyword-suggestions">
+            {filterSuggestions.map((suggestion) => (
+              <option value={suggestion} key={suggestion} />
+            ))}
+          </datalist>
         </div>
       </section>
     </aside>
   );
 }
 
-function SearchResultCard({ result, onToggleSave }) {
+function SearchResultCard({ result, onToggleSave, onDownloadPaper }) {
   const detailPath = `/student-publication${result.id ? `?id=${encodeURIComponent(result.id)}` : ""}`;
   return (
     <article className="search-result-card">
       <button
         className={`result-save ${result.saved ? "saved" : ""}`}
         type="button"
-        aria-label={result.saved ? "Bỏ lưu bài báo" : "Lưu bài báo"}
+        aria-label={
+          result.saved ? "Remove saved publication" : "Save publication"
+        }
         onClick={() => onToggleSave?.(result)}
       >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
-        <span className="result-save-label">
-          {result.saved ? "Đã lưu" : "Lưu"}
-        </span>
       </button>
       <a
         className="result-title-link"
@@ -12387,9 +12185,27 @@ function SearchResultCard({ result, onToggleSave }) {
       <p className="result-abstract">{result.abstract}</p>
       <div className="result-accuracy-row">
         <span className={result.isPro ? "pro" : ""}>
-          {result.plan || "Free"} accuracy: {result.searchAccuracy}%
+          {result.plan || "Free"} accuracy:{" "}
+          {Number(result.displayAccuracy ?? result.searchAccuracy ?? 0).toFixed(
+            1,
+          )}
+          %
         </span>
       </div>
+      {result.externalLinks?.length ? (
+        <div className="result-source-links" aria-label="External sources">
+          {result.externalLinks.map((link) => (
+            <a
+              href={link.href}
+              key={link.label}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
       <div className="result-meta-row">
         <div className="result-meta">
           <span>
@@ -12402,9 +12218,15 @@ function SearchResultCard({ result, onToggleSave }) {
           </span>
           <strong>{result.citations} Citations</strong>
         </div>
-        <a href={detailPath} onClick={navTo(detailPath)}>
-          View Source <span aria-hidden="true">-&gt;</span>
-        </a>
+        <div className="result-actions">
+          <button type="button" onClick={() => onDownloadPaper?.(result)}>
+            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+            Download DOCX
+          </button>
+          <a href={detailPath} onClick={navTo(detailPath)}>
+            View Source <span aria-hidden="true">-&gt;</span>
+          </a>
+        </div>
       </div>
     </article>
   );
@@ -12415,6 +12237,7 @@ function StudentSearchPage() {
     getLocalBookmarks(),
   );
   const [bookmarkMessage, setBookmarkMessage] = React.useState("");
+  const [page, setPage] = React.useState(1);
   const [filters, setFilters] = React.useState(() => ({
     keyword: getSearchParam("q") || "",
     yearFrom: "2010",
@@ -12422,16 +12245,34 @@ function StudentSearchPage() {
     source: "All Sources",
     sortBy: "relevance",
   }));
+  React.useEffect(() => {
+    const syncUrlQuery = () => {
+      const urlKeyword = getSearchParam("q") || "";
+      setFilters((current) =>
+        current.keyword === urlKeyword
+          ? current
+          : { ...current, keyword: urlKeyword },
+      );
+      setPage(1);
+    };
+
+    window.addEventListener("scholartrend:navigate", syncUrlQuery);
+    window.addEventListener("popstate", syncUrlQuery);
+    syncUrlQuery();
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncUrlQuery);
+      window.removeEventListener("popstate", syncUrlQuery);
+    };
+  }, []);
   const accountPlan = getCurrentAccountPlan();
-  const freeAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, false);
-  const proAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, true);
   const searchApiPath = React.useMemo(() => {
     const params = new URLSearchParams({
-      page: "1",
+      page: String(page),
       pageSize: "10",
     });
     if (filters.keyword.trim()) params.set("keyword", filters.keyword.trim());
-    if (filters.yearTo) params.set("year", filters.yearTo);
+    if (filters.yearFrom) params.set("yearFrom", filters.yearFrom);
+    if (filters.yearTo) params.set("yearTo", filters.yearTo);
     if (filters.sortBy && filters.sortBy !== "relevance") {
       params.set("sortBy", filters.sortBy);
     }
@@ -12439,69 +12280,63 @@ function StudentSearchPage() {
       params.set("source", filters.source);
     }
     return `/api/publications/search?${params.toString()}`;
-  }, [filters.keyword, filters.yearTo, filters.sortBy, filters.source]);
-  const { data: backendResults } = useApiResource(
+  }, [
+    page,
+    filters.keyword,
+    filters.yearFrom,
+    filters.yearTo,
+    filters.sortBy,
+    filters.source,
+  ]);
+  const { data: searchPageData, status: searchStatus } = useApiResource(
     searchApiPath,
-    searchResults,
-    { select: (payload) => unwrapList(payload).map(mapPublicationForCard) },
+    { items: [], totalCount: 0, totalPages: 1, page: 1, pageSize: 10 },
+    {
+      clearOnLoad: true,
+      select: (payload) => ({
+        items: unwrapList(payload).map(mapPublicationForCard),
+        totalCount: Number(payload?.totalCount ?? payload?.TotalCount ?? 0),
+        totalPages: Number(payload?.totalPages ?? payload?.TotalPages ?? 1),
+        page: Number(payload?.page ?? payload?.Page ?? page),
+        pageSize: Number(payload?.pageSize ?? payload?.PageSize ?? 10),
+      }),
+    },
   );
+  const backendResults = searchPageData.items;
   const publishedSearchResults = React.useMemo(
     () => getPublishedPublications().map(mapPublishedPublicationForCard),
     [],
   );
-  const searchResultsForUi = React.useMemo(
-    () => {
-      const keyword = filters.keyword.trim().toLowerCase();
-      const yearFrom = Number(filters.yearFrom || 0);
-      const yearTo = Number(filters.yearTo || 9999);
-      const filtered = mergePublicationsByIdOrTitle(
-        publishedSearchResults,
-        backendResults,
-      )
-        .filter((result) => {
-          const year = Number(result.year || 0);
-          const matchesYear =
-            (!yearFrom || year >= yearFrom) && (!yearTo || year <= yearTo);
-          const haystack = `${result.title} ${result.abstract} ${result.authors} ${result.source}`.toLowerCase();
-          const matchesKeyword = !keyword || haystack.includes(keyword);
-          return matchesYear && matchesKeyword;
-        })
-        .sort((left, right) => {
-          if (filters.sortBy === "year") {
-            return Number(right.year || 0) - Number(left.year || 0);
-          }
-          if (filters.sortBy === "citations") {
-            return (
-              Number(String(right.citations || 0).replace(/,/g, "")) -
-              Number(String(left.citations || 0).replace(/,/g, ""))
-            );
-          }
-          return 0;
-        });
-
-      return filtered.map(
-        (result) => ({
-          ...result,
-          saved: hasLocalBookmark(result, localBookmarks),
-          plan: accountPlan.plan,
-          isPro: accountPlan.isPro,
-          searchAccuracy: accountPlan.searchAccuracy,
-        }),
-      );
-    },
-    [
-      backendResults,
+  // Optimize: Only merge and map saved status, backend already filtered/sorted
+  const searchResultsForUi = React.useMemo(() => {
+    // Backend already handles filtering and sorting, just merge with published
+    const merged = mergePublicationsByIdOrTitle(
       publishedSearchResults,
-      localBookmarks,
-      filters.keyword,
-      filters.yearFrom,
-      filters.yearTo,
-      filters.sortBy,
-      accountPlan.plan,
-      accountPlan.isPro,
-      accountPlan.searchAccuracy,
-    ],
-  );
+      backendResults,
+    );
+
+    // Only add UI-specific fields
+    return merged.map((result) => ({
+      ...result,
+      saved: hasLocalBookmark(result, localBookmarks),
+      plan: accountPlan.plan,
+      isPro: accountPlan.isPro,
+      searchAccuracy: accountPlan.searchAccuracy,
+      displayAccuracy: getPolicyScopedSearchAccuracy(
+        result,
+        filters.keyword,
+        accountPlan.searchAccuracy,
+      ),
+    }));
+  }, [
+    backendResults,
+    publishedSearchResults,
+    localBookmarks,
+    filters.keyword,
+    accountPlan.plan,
+    accountPlan.isPro,
+    accountPlan.searchAccuracy,
+  ]);
 
   const handleToggleSearchSave = async (result) => {
     const nextSaved = !hasLocalBookmark(result, localBookmarks);
@@ -12511,8 +12346,8 @@ function StudentSearchPage() {
     setLocalBookmarkState(nextLocalBookmarks);
     setBookmarkMessage(
       nextSaved
-        ? "Đã lưu bài báo. Mở Bookmarks để xem lại."
-        : "Đã bỏ lưu bài báo khỏi Bookmarks.",
+        ? `Saved "${result.title}" to bookmarks.`
+        : `Removed "${result.title}" from bookmarks.`,
     );
 
     if (isBackendNumericId(result.id) && getStoredAuth().accessToken) {
@@ -12522,8 +12357,16 @@ function StudentSearchPage() {
       }).catch(() => {});
     }
   };
+  const downloadStudentPaper = (result) => {
+    if (!result) return;
+    downloadDocxFile(
+      `${slugifyFilename(result.title)}.docx`,
+      buildPaperDocxData(result, filters.keyword),
+    );
+  };
   const handleChangeFilters = (patch) => {
     setFilters((current) => ({ ...current, ...patch }));
+    setPage(1);
   };
   const clearFilters = () => {
     setFilters({
@@ -12533,15 +12376,25 @@ function StudentSearchPage() {
       source: "All Sources",
       sortBy: "relevance",
     });
+    setPage(1);
   };
-  const exportSearchMetadata = () => {
-    downloadXlsxFile("scholartrend-search-metadata.xlsx", {
-      Papers: getPapersMetadataRows(searchResultsForUi),
-    });
-  };
-  const downloadSearchPapersText = () => {
-    downloadPapersTextBundle("scholartrend-search-papers.txt", searchResultsForUi);
-  };
+  const totalSearchPages = Math.max(1, searchPageData.totalPages || 1);
+  const totalSearchCount =
+    searchPageData.totalCount || searchResultsForUi.length;
+  const emptySourceLinks = React.useMemo(() => {
+    const query = filters.keyword.trim();
+    if (!query) return [];
+    const links = buildExternalSourceLinks({ title: query });
+    if (!filters.source || filters.source === "All Sources") return links;
+    return links.filter((link) => link.label === filters.source);
+  }, [filters.keyword, filters.source]);
+  const pageNumbers = Array.from(
+    { length: Math.min(5, totalSearchPages) },
+    (_, index) => {
+      const start = Math.max(1, Math.min(page - 2, totalSearchPages - 4));
+      return start + index;
+    },
+  ).filter((number) => number <= totalSearchPages);
 
   return (
     <main className="student-app">
@@ -12550,7 +12403,10 @@ function StudentSearchPage() {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+              <a
+                href="/student-dashboard"
+                onClick={navTo("/student-dashboard")}
+              >
                 Dashboard
               </a>
               <span>&gt;</span>
@@ -12564,14 +12420,10 @@ function StudentSearchPage() {
         <div className="student-content search-content">
           <h1 className="search-page-title">Publication Search</h1>
           <div className="search-accuracy-banner">
-            <span>
-              {accountPlan.role} {accountPlan.plan} account
-            </span>
+            <span>{accountPlan.plan} account</span>
             <strong>{accountPlan.searchAccuracy}% article accuracy</strong>
             <p>
-              {accountPlan.role} Free is {freeAccuracyForRole}%.{" "}
-              {accountPlan.role} Pro increases search accuracy to{" "}
-              {proAccuracyForRole}%.
+              Student Free is 15%. Student Pro increases search accuracy to 35%.
             </p>
           </div>
 
@@ -12586,14 +12438,20 @@ function StudentSearchPage() {
               className="search-results-area"
               aria-label="Publication search results"
             >
+              {bookmarkMessage ? (
+                <p className="bookmark-save-message" role="status">
+                  {bookmarkMessage}{" "}
+                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
+                    Open bookmarks
+                  </a>
+                </p>
+              ) : null}
               <div className="search-results-toolbar">
-                <p>Found {searchResultsForUi.length} publications</p>
-                <button type="button" onClick={exportSearchMetadata}>
-                  Export Excel
-                </button>
-                <button type="button" onClick={downloadSearchPapersText}>
-                  Download Papers TXT
-                </button>
+                <p>
+                  {searchStatus === "loading"
+                    ? "Loading publications..."
+                    : `Found ${formatCount(totalSearchCount)} publications`}
+                </p>
                 <label>
                   <span>Sort by:</span>
                   <select
@@ -12608,39 +12466,90 @@ function StudentSearchPage() {
                   </select>
                 </label>
               </div>
-              {bookmarkMessage ? (
-                <p className="bookmark-save-message" role="status">
-                  {bookmarkMessage}{" "}
-                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
-                    Xem Bookmarks
-                  </a>
-                </p>
-              ) : null}
 
               <div className="search-results-list">
-                {searchResultsForUi.map((result) => (
-                  <SearchResultCard
-                    result={result}
-                    onToggleSave={handleToggleSearchSave}
-                    key={result.title}
-                  />
-                ))}
+                {searchResultsForUi.length ? (
+                  searchResultsForUi.map((result) => (
+                    <SearchResultCard
+                      result={result}
+                      onToggleSave={handleToggleSearchSave}
+                      onDownloadPaper={downloadStudentPaper}
+                      key={result.title}
+                    />
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <p>
+                      {searchStatus === "loading"
+                        ? "Loading publications..."
+                        : "No publications matched your filters."}
+                    </p>
+                    {searchStatus !== "loading" && emptySourceLinks.length ? (
+                      <div
+                        className="result-source-links"
+                        aria-label="Search external sources"
+                      >
+                        {emptySourceLinks.map((link) => (
+                          <a
+                            href={link.href}
+                            key={link.label}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open {link.label}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
 
               <div className="pagination-row">
-                <p>Showing 1-{searchResultsForUi.length} of {searchResultsForUi.length} results</p>
+                <p>
+                  Showing{" "}
+                  {searchResultsForUi.length
+                    ? (page - 1) * searchPageData.pageSize + 1
+                    : 0}
+                  -
+                  {(page - 1) * searchPageData.pageSize +
+                    searchResultsForUi.length}{" "}
+                  of {formatCount(totalSearchCount)} results
+                </p>
                 <nav className="pagination" aria-label="Search result pages">
-                  <button type="button" aria-label="Previous page">
+                  <button
+                    type="button"
+                    aria-label="Previous page"
+                    disabled={page <= 1}
+                    onClick={() =>
+                      setPage((current) => Math.max(1, current - 1))
+                    }
+                  >
                     &lt;
                   </button>
-                  <button className="active" type="button">
-                    1
-                  </button>
-                  <button type="button">2</button>
-                  <button type="button">3</button>
-                  <span>...</span>
-                  <button type="button">125</button>
-                  <button type="button" aria-label="Next page">
+                  {pageNumbers.map((number) => (
+                    <button
+                      className={number === page ? "active" : ""}
+                      type="button"
+                      onClick={() => setPage(number)}
+                      key={number}
+                    >
+                      {number}
+                    </button>
+                  ))}
+                  {totalSearchPages > pageNumbers[pageNumbers.length - 1] ? (
+                    <span>...</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Next page"
+                    disabled={page >= totalSearchPages}
+                    onClick={() =>
+                      setPage((current) =>
+                        Math.min(totalSearchPages, current + 1),
+                      )
+                    }
+                  >
                     &gt;
                   </button>
                 </nav>
@@ -12658,9 +12567,14 @@ function BookmarkPaperCard({
   detailPath = "/student-publication",
   onRemove,
 }) {
+  const paperDetailPath = getBookmarkDetailPath(detailPath, paper);
   return (
     <article className="bookmark-paper-card">
-      <a href={detailPath} onClick={navTo(detailPath)}>
+      <a
+        className="bookmark-title-link"
+        href={paperDetailPath}
+        onClick={navTo(paperDetailPath)}
+      >
         <h2>{paper.title}</h2>
       </a>
       <p>{paper.excerpt}</p>
@@ -12678,6 +12592,14 @@ function BookmarkPaperCard({
           Impact: {paper.impact}
         </span>
       </div>
+      <a
+        className="bookmark-open"
+        href={paperDetailPath}
+        onClick={navTo(paperDetailPath)}
+      >
+        Open detail
+        <MiniIcon path="M9 5l7 7-7 7" />
+      </a>
       {onRemove ? (
         <button
           type="button"
@@ -12693,11 +12615,10 @@ function BookmarkPaperCard({
 
 function FollowSuggestionsSection() {
   const [followedKeywordIds, setFollowedKeywordIds] = React.useState([]);
-  const { data: suggestions } = useApiResource(
-    "/api/follows/suggestions",
-    [],
-    { auth: true, select: (payload) => (Array.isArray(payload) ? payload : []) },
-  );
+  const { data: suggestions } = useApiResource("/api/follows/suggestions", [], {
+    auth: true,
+    select: (payload) => (Array.isArray(payload) ? payload : []),
+  });
 
   const followKeyword = (keyword) => {
     if (!isBackendNumericId(keyword.id)) return;
@@ -12715,7 +12636,10 @@ function FollowSuggestionsSection() {
   if (!suggestions.length) return null;
 
   return (
-    <div className="bookmark-keyword-suggestions" aria-label="Suggested keywords">
+    <div
+      className="bookmark-keyword-suggestions"
+      aria-label="Suggested keywords"
+    >
       {suggestions.slice(0, 6).map((keyword) => {
         const followed = followedKeywordIds.includes(keyword.id);
         return (
@@ -12745,7 +12669,10 @@ function FollowSuggestionsSection() {
   );
 }
 
-function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }) {
+function FollowJournalSuggestionsSection({
+  detailPath = "/student-publication",
+}) {
+  const { t } = useTranslation();
   const [followedJournalIds, setFollowedJournalIds] = React.useState([]);
   const { data: journals } = useApiResource("/api/journals", [], {
     select: unwrapList,
@@ -12767,7 +12694,10 @@ function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }
   if (!journals.length) return null;
 
   return (
-    <div className="bookmark-keyword-suggestions" aria-label="Suggested journals">
+    <div
+      className="bookmark-keyword-suggestions"
+      aria-label="Suggested journals"
+    >
       {journals.slice(0, 4).map((journal) => {
         const id = journal.id ?? journal.Id;
         const name = journal.name || journal.Name || "Indexed Journal";
@@ -12793,7 +12723,7 @@ function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }
               {followed ? "Followed" : "Follow journal"}
             </button>
             <a href={detailPath} onClick={navTo(detailPath)}>
-              View Journal -&gt;
+              {t("bookmarks.viewJournal")} -&gt;
             </a>
           </article>
         );
@@ -12803,6 +12733,7 @@ function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }
 }
 
 function BookmarksPage({ role = "student" }) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = React.useState("Publications");
   const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
     getLocalBookmarks(),
@@ -12810,21 +12741,9 @@ function BookmarksPage({ role = "student" }) {
   const [removedBookmarkKeys, setRemovedBookmarkKeyState] = React.useState(() =>
     getRemovedBookmarkKeys(),
   );
-  React.useEffect(() => {
-    const refreshBookmarks = () => {
-      setLocalBookmarkState(getLocalBookmarks());
-      setRemovedBookmarkKeyState(getRemovedBookmarkKeys());
-    };
-    window.addEventListener("scholartrend:bookmarks-changed", refreshBookmarks);
-    window.addEventListener("storage", refreshBookmarks);
-    return () => {
-      window.removeEventListener("scholartrend:bookmarks-changed", refreshBookmarks);
-      window.removeEventListener("storage", refreshBookmarks);
-    };
-  }, []);
   const { data: backendBookmarkedPapers } = useApiResource(
     "/api/bookmarks",
-    bookmarkedPapers,
+    [],
     {
       auth: true,
       select: (payload) =>
@@ -12844,8 +12763,42 @@ function BookmarksPage({ role = "student" }) {
   const bookmarkPapersForUi = mergeBookmarkLists(
     backendBookmarkedPapers,
     localBookmarks,
-    bookmarkedPapers,
   ).filter((paper) => !removedBookmarkKeys.includes(getBookmarkKey(paper)));
+  const { data: followedItems } = useApiResource("/api/follows", [], {
+    auth: true,
+    select: unwrapList,
+  });
+  const followedKeywords = followedItems
+    .filter((item) =>
+      String(item.followType || item.FollowType).includes("Keyword"),
+    )
+    .map((item) => ({
+      id: item.id || item.Id || item.followTargetId || item.FollowTargetId,
+      name:
+        item.followTargetName ||
+        item.FollowTargetName ||
+        `Keyword ${item.followTargetId || item.FollowTargetId || ""}`.trim(),
+      count: "Followed keyword",
+      trend: "Tracked",
+    }));
+  const followedJournals = followedItems
+    .filter((item) =>
+      String(item.followType || item.FollowType).includes("Journal"),
+    )
+    .map((item) => ({
+      id: item.id || item.Id || item.followTargetId || item.FollowTargetId,
+      name:
+        item.followTargetName ||
+        item.FollowTargetName ||
+        `Journal ${item.followTargetId || item.FollowTargetId || ""}`.trim(),
+      impactFactor: "N/A",
+      status: "Active alerts",
+    }));
+  const bookmarkTopicsForUi = followedKeywords.map((keyword) => ({
+    name: keyword.name,
+    tracked: keyword.count,
+    activity: keyword.trend,
+  }));
   const handleRemoveBookmark = async (paper) => {
     setLocalBookmarkState(removeLocalBookmark(paper));
     setRemovedBookmarkKeyState(markBookmarkRemoved(paper));
@@ -12865,14 +12818,6 @@ function BookmarksPage({ role = "student" }) {
   const dashboardPath = isAcademic
     ? getAcademicPath("/researcher-dashboard", rolePrefix)
     : "/student-dashboard";
-  const exportBookmarkMetadata = () => {
-    downloadXlsxFile("scholartrend-bookmark-metadata.xlsx", {
-      Papers: getPapersMetadataRows(bookmarkPapersForUi),
-    });
-  };
-  const downloadBookmarkPapersText = () => {
-    downloadPapersTextBundle("scholartrend-bookmark-papers.txt", bookmarkPapersForUi);
-  };
 
   if (isAcademic) {
     return (
@@ -12884,14 +12829,6 @@ function BookmarksPage({ role = "student" }) {
       >
         <div className="researcher-bookmarks-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
-          <div className="paper-download-actions">
-            <button type="button" onClick={exportBookmarkMetadata}>
-              Export Excel
-            </button>
-            <button type="button" onClick={downloadBookmarkPapersText}>
-              Download Papers TXT
-            </button>
-          </div>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
             {bookmarkTabs.map((tab) => (
@@ -12911,14 +12848,18 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-paper-list"
               aria-label="Bookmarked publications"
             >
-              {bookmarkPapersForUi.map((paper) => (
-                <BookmarkPaperCard
-                  paper={paper}
-                  detailPath={detailPath}
-                  onRemove={handleRemoveBookmark}
-                  key={paper.title}
-                />
-              ))}
+              {bookmarkPapersForUi.length ? (
+                bookmarkPapersForUi.map((paper) => (
+                  <BookmarkPaperCard
+                    paper={paper}
+                    detailPath={detailPath}
+                    onRemove={handleRemoveBookmark}
+                    key={paper.title}
+                  />
+                ))
+              ) : (
+                <p className="empty-state">No bookmarked publications yet.</p>
+              )}
             </section>
           )}
 
@@ -12928,7 +12869,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked keywords"
             >
               <FollowSuggestionsSection />
-              {bookmarkedKeywords.map((keyword) => (
+              {followedKeywords.map((keyword) => (
                 <article className="bookmark-keyword-card" key={keyword.name}>
                   <div className="card-header">
                     <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
@@ -12954,7 +12895,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked journals"
             >
               <FollowJournalSuggestionsSection detailPath={detailPath} />
-              {bookmarkedJournals.map((journal) => (
+              {followedJournals.map((journal) => (
                 <article className="bookmark-journal-card" key={journal.name}>
                   <div className="card-header">
                     <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
@@ -12962,12 +12903,13 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Impact Factor: <strong>{journal.impactFactor}</strong>
+                      {t("bookmarks.impactFactor")}:{" "}
+                      <strong>{journal.impactFactor}</strong>
                     </span>
                     <span className="status-badge">{journal.status}</span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Journal -&gt;
+                    {t("bookmarks.viewJournal")} -&gt;
                   </a>
                 </article>
               ))}
@@ -12979,7 +12921,7 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-topic-list"
               aria-label="Bookmarked topics"
             >
-              {bookmarkedTopics.map((topic) => (
+              {bookmarkTopicsForUi.map((topic) => (
                 <article className="bookmark-topic-card" key={topic.name}>
                   <div className="card-header">
                     <MiniIcon path="M12 4.5a5 5 0 0 0-2.5 9.35v2.15h5v-2.15A5 5 0 0 0 12 4.5Z" />
@@ -12987,7 +12929,7 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Tracked: <strong>{topic.tracked}</strong>
+                      {t("bookmarks.tracked")}: <strong>{topic.tracked}</strong>
                     </span>
                     <span
                       className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}
@@ -12996,7 +12938,7 @@ function BookmarksPage({ role = "student" }) {
                     </span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Topic -&gt;
+                    {t("bookmarks.viewTopic")} -&gt;
                   </a>
                 </article>
               ))}
@@ -13014,7 +12956,10 @@ function BookmarksPage({ role = "student" }) {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+              <a
+                href="/student-dashboard"
+                onClick={navTo("/student-dashboard")}
+              >
                 Dashboard
               </a>
               <span>&gt;</span>
@@ -13027,14 +12972,6 @@ function BookmarksPage({ role = "student" }) {
 
         <div className="student-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
-          <div className="paper-download-actions">
-            <button type="button" onClick={exportBookmarkMetadata}>
-              Export Excel
-            </button>
-            <button type="button" onClick={downloadBookmarkPapersText}>
-              Download Papers TXT
-            </button>
-          </div>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
             {bookmarkTabs.map((tab) => (
@@ -13054,14 +12991,18 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-paper-list"
               aria-label="Bookmarked publications"
             >
-              {bookmarkPapersForUi.map((paper) => (
-                <BookmarkPaperCard
-                  paper={paper}
-                  detailPath={detailPath}
-                  onRemove={handleRemoveBookmark}
-                  key={paper.title}
-                />
-              ))}
+              {bookmarkPapersForUi.length ? (
+                bookmarkPapersForUi.map((paper) => (
+                  <BookmarkPaperCard
+                    paper={paper}
+                    detailPath={detailPath}
+                    onRemove={handleRemoveBookmark}
+                    key={paper.title}
+                  />
+                ))
+              ) : (
+                <p className="empty-state">No bookmarked publications yet.</p>
+              )}
             </section>
           )}
 
@@ -13071,7 +13012,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked keywords"
             >
               <FollowSuggestionsSection />
-              {bookmarkedKeywords.map((keyword) => (
+              {followedKeywords.map((keyword) => (
                 <article className="bookmark-keyword-card" key={keyword.name}>
                   <div className="card-header">
                     <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
@@ -13097,7 +13038,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked journals"
             >
               <FollowJournalSuggestionsSection detailPath={detailPath} />
-              {bookmarkedJournals.map((journal) => (
+              {followedJournals.map((journal) => (
                 <article className="bookmark-journal-card" key={journal.name}>
                   <div className="card-header">
                     <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
@@ -13105,12 +13046,13 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Impact Factor: <strong>{journal.impactFactor}</strong>
+                      {t("bookmarks.impactFactor")}:{" "}
+                      <strong>{journal.impactFactor}</strong>
                     </span>
                     <span className="status-badge">{journal.status}</span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Journal -&gt;
+                    {t("bookmarks.viewJournal")} -&gt;
                   </a>
                 </article>
               ))}
@@ -13122,7 +13064,7 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-topic-list"
               aria-label="Bookmarked topics"
             >
-              {bookmarkedTopics.map((topic) => (
+              {bookmarkTopicsForUi.map((topic) => (
                 <article className="bookmark-topic-card" key={topic.name}>
                   <div className="card-header">
                     <MiniIcon path="M12 4.5a5 5 0 0 0-2.5 9.35v2.15h5v-2.15A5 5 0 0 0 12 4.5Z" />
@@ -13130,7 +13072,7 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Tracked: <strong>{topic.tracked}</strong>
+                      {t("bookmarks.tracked")}: <strong>{topic.tracked}</strong>
                     </span>
                     <span
                       className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}
@@ -13139,7 +13081,7 @@ function BookmarksPage({ role = "student" }) {
                     </span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Topic -&gt;
+                    {t("bookmarks.viewTopic")} -&gt;
                   </a>
                 </article>
               ))}
@@ -13365,14 +13307,16 @@ const extraNotificationItems = [
 function NotificationsPage({ role = "student" }) {
   const session = React.useMemo(() => {
     try {
-      return JSON.parse(window.localStorage.getItem("scholartrend.session") || "{}");
+      return JSON.parse(
+        window.localStorage.getItem("scholartrend.session") || "{}",
+      );
     } catch {
       return {};
     }
   }, []);
   const { data: backendNotifications } = useApiResource(
     "/api/notifications",
-    notificationItems,
+    [],
     {
       auth: true,
       select: (payload) =>
@@ -13382,18 +13326,20 @@ function NotificationsPage({ role = "student" }) {
           time: item.createdAt
             ? new Date(item.createdAt).toLocaleString()
             : "Just now",
-          title: item.title || item.notificationType || "",
+          title: item.notificationType || "",
           text: item.message,
           icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
           tone: item.isRead ? "gray" : "green",
           unread: !item.isRead,
-          route: item.route || `/${
-            role === "lecturer"
-              ? "lecturer"
-              : role === "researcher"
-                ? "researcher"
-                : "student"
-          }-search?view=list`,
+          route:
+            item.route ||
+            `/${
+              role === "lecturer"
+                ? "lecturer"
+                : role === "researcher"
+                  ? "researcher"
+                  : "student"
+            }-search?view=list`,
         })),
     },
   );
@@ -13403,11 +13349,10 @@ function NotificationsPage({ role = "student" }) {
       .filter((item) => {
         const recipientEmail = String(item.recipientEmail || "").toLowerCase();
         const recipientRole = String(item.recipientRole || "").toLowerCase();
-        if (sessionEmail && recipientEmail) return recipientEmail === sessionEmail;
+        if (sessionEmail && recipientEmail)
+          return recipientEmail === sessionEmail;
         if (recipientRole === "all") return true;
-        return (
-          recipientRole === String(role).toLowerCase()
-        );
+        return recipientRole === String(role).toLowerCase();
       })
       .map((item) => ({
         id: item.id,
@@ -13426,9 +13371,8 @@ function NotificationsPage({ role = "student" }) {
   }, [role, session.email]);
   const [notifications, setNotifications] = React.useState(() => [
     ...mapReviewNotifications(),
-    ...notificationItems,
   ]);
-  const [hasMore, setHasMore] = React.useState(true);
+  const [hasMore, setHasMore] = React.useState(false);
   const [activeFilters, setActiveFilters] = React.useState({
     0: "All Notifications",
     1: "Any Time",
@@ -13437,7 +13381,11 @@ function NotificationsPage({ role = "student" }) {
   const isResearcher = role === "researcher" || role === "lecturer";
   const isAcademic = isResearcher;
   const rolePrefix =
-    role === "lecturer" ? "lecturer" : role === "researcher" ? "researcher" : "student";
+    role === "lecturer"
+      ? "lecturer"
+      : role === "researcher"
+        ? "researcher"
+        : "student";
   const roleNotificationsPath = `/${rolePrefix}-notifications`;
 
   React.useEffect(() => {
@@ -13447,11 +13395,10 @@ function NotificationsPage({ role = "student" }) {
       setHasMore(false);
       return;
     }
-    setNotifications([...reviewNotifications, ...notificationItems]);
+    setNotifications(reviewNotifications);
   }, [backendNotifications, mapReviewNotifications]);
 
   const handleLoadMore = () => {
-    setNotifications((prev) => [...prev, ...extraNotificationItems]);
     setHasMore(false);
   };
 
@@ -13538,7 +13485,11 @@ function NotificationsPage({ role = "student" }) {
 
     const timeFilter = activeFilters[1];
     if (timeFilter === "Today") {
-      return item.time === "Just now" || item.time.includes("mins") || item.time.includes("hours");
+      return (
+        item.time === "Just now" ||
+        item.time.includes("mins") ||
+        item.time.includes("hours")
+      );
     }
     if (timeFilter === "This Week") {
       return !item.time.includes("week");
@@ -13550,7 +13501,9 @@ function NotificationsPage({ role = "student" }) {
     ? resolveNotificationRoute(selectedNotification)
     : "";
   const detailRoute =
-    selectedRoute && selectedRoute !== roleNotificationsPath ? selectedRoute : "";
+    selectedRoute && selectedRoute !== roleNotificationsPath
+      ? selectedRoute
+      : "";
 
   const pageContent = (
     <div
@@ -13581,14 +13534,18 @@ function NotificationsPage({ role = "student" }) {
           onChangeFilter={handleChangeFilter}
         />
         <section className="notification-list" aria-label="Notifications list">
-          {filteredNotifications.map((item, index) => (
-            <NotificationCard
-              item={item}
-              key={`${item.type}-${item.time}-${index}`}
-              onOpen={handleOpenNotification}
-              onToggleBookmark={handleToggleBookmark}
-            />
-          ))}
+          {filteredNotifications.length ? (
+            filteredNotifications.map((item, index) => (
+              <NotificationCard
+                item={item}
+                key={`${item.type}-${item.time}-${index}`}
+                onOpen={handleOpenNotification}
+                onToggleBookmark={handleToggleBookmark}
+              />
+            ))
+          ) : (
+            <p className="empty-state">No notifications yet.</p>
+          )}
           {hasMore ? (
             <button
               type="button"
@@ -13665,7 +13622,10 @@ function NotificationsPage({ role = "student" }) {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+              <a
+                href="/student-dashboard"
+                onClick={navTo("/student-dashboard")}
+              >
                 Dashboard
               </a>
               <span>&gt;</span>
@@ -13814,7 +13774,10 @@ function ProfilePage({ role = "student" }) {
       return {
         ...defaultProfileData,
         ...parsed,
-        personal: { ...defaultProfileData.personal, ...(parsed.personal || {}) },
+        personal: {
+          ...defaultProfileData.personal,
+          ...(parsed.personal || {}),
+        },
         preferences: {
           ...defaultProfileData.preferences,
           ...(parsed.preferences || {}),
@@ -13938,8 +13901,14 @@ function ProfilePage({ role = "student" }) {
 
   const saveProfileChanges = async () => {
     if (passwords.next || passwords.confirm || passwords.current) {
-      if (!passwords.current || !passwords.next || passwords.next !== passwords.confirm) {
-        setProfileMessage("Check your current password and matching new password.");
+      if (
+        !passwords.current ||
+        !passwords.next ||
+        passwords.next !== passwords.confirm
+      ) {
+        setProfileMessage(
+          "Check your current password and matching new password.",
+        );
         return;
       }
     }
@@ -14325,7 +14294,10 @@ function ProfilePage({ role = "student" }) {
                   </button>
                 </span>
               ))}
-              <form className="profile-interest-form" onSubmit={addProfileInterest}>
+              <form
+                className="profile-interest-form"
+                onSubmit={addProfileInterest}
+              >
                 <input
                   value={newInterest}
                   onChange={(event) => setNewInterest(event.target.value)}
@@ -14587,7 +14559,10 @@ function ProfilePage({ role = "student" }) {
                       label: "Real-time publication alerts",
                     },
                     { key: "syncStatusUpdates", label: "Sync status updates" },
-                    { key: "systemAnnouncements", label: "System announcements" },
+                    {
+                      key: "systemAnnouncements",
+                      label: "System announcements",
+                    },
                   ].map((item, i) => (
                     <label
                       key={i}
@@ -14704,7 +14679,11 @@ function ProfilePage({ role = "student" }) {
                         name="visibility"
                         checked={profileData.privacy.visibility === value}
                         onChange={() =>
-                          updateNestedProfileField("privacy", "visibility", value)
+                          updateNestedProfileField(
+                            "privacy",
+                            "visibility",
+                            value,
+                          )
                         }
                         style={{ margin: 0, cursor: "pointer" }}
                       />
@@ -14907,7 +14886,9 @@ function ProfilePage({ role = "student" }) {
         )}
       </div>
 
-      {profileMessage && <p className="profile-status-message">{profileMessage}</p>}
+      {profileMessage && (
+        <p className="profile-status-message">{profileMessage}</p>
+      )}
       <div className="profile-action-bar">
         <button
           type="button"
@@ -15019,13 +15000,45 @@ function ExtractedTopicsCard() {
 
 function StudentPublicationDetailPage({ role = "student" }) {
   const [activeTab, setActiveTab] = React.useState("Abstract");
-  const [detailMessage, setDetailMessage] = React.useState("");
-  const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
-    getLocalBookmarks(),
-  );
   const isAcademic = role === "researcher" || role === "lecturer";
   const rolePrefix = role === "lecturer" ? "lecturer" : "researcher";
   const publicationId = getSearchParam("id");
+  const localBookmarkDetail = React.useMemo(() => {
+    if (!publicationId) return null;
+    const normalizedPublicationId = String(publicationId).trim().toLowerCase();
+    const bookmark = getLocalBookmarks().find(
+      (paper) =>
+        getBookmarkKey(paper) === normalizedPublicationId ||
+        String(paper.detailId || "").trim().toLowerCase() ===
+          normalizedPublicationId ||
+        String(paper.title || "").trim().toLowerCase() ===
+          normalizedPublicationId,
+    );
+    if (!bookmark) return null;
+
+    const authorList = Array.isArray(bookmark.authors)
+      ? bookmark.authors
+      : String(bookmark.authors || "")
+          .split(",")
+          .map((author) => author.trim())
+          .filter(Boolean);
+    const citationCount =
+      Number(String(bookmark.citationCount || bookmark.citations || 0).replaceAll(",", "")) ||
+      0;
+
+    return mapPublicationDetailForUi({
+      id: bookmark.detailId || bookmark.id,
+      title: bookmark.title,
+      abstract: bookmark.abstract || bookmark.excerpt,
+      authors: authorList.length ? authorList : ["Unknown author"],
+      year: bookmark.year || bookmark.date,
+      doi: bookmark.doi,
+      journalName: bookmark.journalName || bookmark.source,
+      sourceApi: bookmark.sourceApi,
+      citationCount,
+      keywords: bookmark.keywords,
+    });
+  }, [publicationId]);
   const localPublishedDetail = React.useMemo(() => {
     if (!publicationId) return null;
     const published = getPublishedPublications().find(
@@ -15038,7 +15051,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
     : "/api/publications/search?page=1&pageSize=1";
   const { data: publicationDetail } = useApiResource(
     publicationApiPath,
-    localPublishedDetail || mapPublicationDetailForUi({}),
+    localBookmarkDetail || localPublishedDetail || mapPublicationDetailForUi({}),
     {
       select: (payload) =>
         publicationId
@@ -15050,55 +15063,10 @@ function StudentPublicationDetailPage({ role = "student" }) {
     ? getAcademicPath("/researcher-publication", rolePrefix)
     : "/student-publication";
   const publicationRoute = `${publicationBaseRoute}${
-    publicationDetail.id ? `?id=${encodeURIComponent(publicationDetail.id)}` : ""
+    publicationDetail.id
+      ? `?id=${encodeURIComponent(publicationDetail.id)}`
+      : ""
   }`;
-  const detailBookmark = React.useMemo(
-    () => mapPublicationForBookmark(publicationDetail),
-    [publicationDetail],
-  );
-  const isBookmarked = hasLocalBookmark(detailBookmark, localBookmarks);
-  const toggleDetailBookmark = async () => {
-    const nextBookmarks = isBookmarked
-      ? removeLocalBookmark(detailBookmark)
-      : upsertLocalBookmark(detailBookmark);
-    setLocalBookmarkState(nextBookmarks);
-    setDetailMessage(isBookmarked ? "Bookmark removed." : "Publication bookmarked.");
-    if (isBackendNumericId(publicationDetail.id) && getStoredAuth().accessToken) {
-      apiFetch(`/api/bookmarks/${publicationDetail.id}`, {
-        method: isBookmarked ? "DELETE" : "POST",
-        auth: true,
-      }).catch(() => {});
-    }
-  };
-  const shareDetailPublication = async () => {
-    const message = await sharePublicationLink({
-      title: publicationDetail.title,
-      text: publicationDetail.abstract,
-      url: `${window.location.origin}${publicationRoute}`,
-    });
-    setDetailMessage(message);
-  };
-  const citeDetailPublication = async () => {
-    const citation = getPublicationCitation(publicationDetail);
-    await copyTextToClipboard(citation);
-    downloadBlobFile(
-      `citation-${String(publicationDetail.id || "publication")}.bib`,
-      new Blob(
-        [
-          `@article{scholartrend${publicationDetail.id || Date.now()},\n  title={${publicationDetail.title}},\n  author={${publicationDetail.authors.join(" and ")}},\n  journal={${publicationDetail.journalName}},\n  year={${publicationDetail.year}},\n  doi={${publicationDetail.doi}}\n}\n`,
-        ],
-        { type: "application/x-bibtex" },
-      ),
-    );
-    setDetailMessage("Citation copied and BibTeX downloaded.");
-  };
-  const downloadDetailPdf = () => {
-    setDetailMessage(downloadPaperPdf(publicationDetail));
-  };
-  const downloadDetailTxt = () => {
-    downloadPaperTxt(publicationDetail);
-    setDetailMessage("TXT downloaded.");
-  };
   const relatedForUi = publicationDetail.relatedPublications.length
     ? publicationDetail.relatedPublications.map((paper) => ({
         title: paper.title,
@@ -15120,29 +15088,23 @@ function StudentPublicationDetailPage({ role = "student" }) {
             <div className="detail-hero-actions">
               <span className="article-type">Journal Article</span>
               <div>
-                <button
-                  type="button"
-                  aria-label={isBookmarked ? "Remove bookmark" : "Bookmark article"}
-                  className={isBookmarked ? "saved" : ""}
-                  onClick={toggleDetailBookmark}
-                >
+                <button type="button" aria-label="Bookmark article">
                   <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
                 </button>
-                <button type="button" aria-label="Share article" onClick={shareDetailPublication}>
+                <button type="button" aria-label="Share article">
                   <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
                 </button>
-                <button type="button" className="cite-button" onClick={citeDetailPublication}>
+                <button type="button" className="cite-button">
                   {formatCount(publicationDetail.citationCount)} Cite
                 </button>
               </div>
             </div>
 
             <h1>{publicationDetail.title}</h1>
-            {detailMessage ? (
-              <p className="publication-action-message">{detailMessage}</p>
-            ) : null}
             <p className="detail-authors">
-              <strong>{publicationDetail.authors[0] || "Unknown author"}</strong>
+              <strong>
+                {publicationDetail.authors[0] || "Unknown author"}
+              </strong>
               {publicationDetail.authors.length > 1
                 ? `, ${publicationDetail.authors.slice(1).join(", ")}`
                 : ""}
@@ -15158,22 +15120,9 @@ function StudentPublicationDetailPage({ role = "student" }) {
                 {formatCount(publicationDetail.citationCount)}
                 Citations
               </span>
-              <a
-                href={publicationRoute}
-                onClick={navTo(publicationRoute)}
-              >
+              <a href={publicationRoute} onClick={navTo(publicationRoute)}>
                 DOI: {publicationDetail.doi || "Not available"} -&gt;
               </a>
-            </div>
-            <div className="paper-download-actions">
-              <button type="button" onClick={downloadDetailPdf}>
-                <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
-                Download PDF
-              </button>
-              <button type="button" onClick={downloadDetailTxt}>
-                <MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5" />
-                Download TXT
-              </button>
             </div>
           </article>
 
@@ -15200,12 +15149,8 @@ function StudentPublicationDetailPage({ role = "student" }) {
 
                 <h3>Key Findings</h3>
                 <ul>
-                  <li>
-                    Indexed in {publicationDetail.journalName}.
-                  </li>
-                  <li>
-                    Published in {publicationDetail.year}.
-                  </li>
+                  <li>Indexed in {publicationDetail.journalName}.</li>
+                  <li>Published in {publicationDetail.year}.</li>
                   <li>
                     Cited {formatCount(publicationDetail.citationCount)} times.
                   </li>
@@ -15522,12 +15467,19 @@ function StudentPublicationDetailPage({ role = "student" }) {
 function PublicationSubmissionPage({ role = "Student" }) {
   const session = React.useMemo(() => {
     try {
-      return JSON.parse(window.localStorage.getItem("scholartrend.session") || "{}");
+      return JSON.parse(
+        window.localStorage.getItem("scholartrend.session") || "{}",
+      );
     } catch {
       return {};
     }
   }, []);
-  const roleLabel = role === "Lecturer" ? "Lecturer" : role === "Researcher" ? "Researcher" : "Student";
+  const roleLabel =
+    role === "Lecturer"
+      ? "Lecturer"
+      : role === "Researcher"
+        ? "Researcher"
+        : "Student";
   const [form, setForm] = React.useState({
     title: "",
     authors: session.name || "",
@@ -15630,7 +15582,10 @@ function PublicationSubmissionPage({ role = "Student" }) {
   const isStudent = roleLabel === "Student";
   const activeRoute = isStudent
     ? "/student-submit-publication"
-    : getAcademicPath("/researcher-submit-publication", roleLabel.toLowerCase());
+    : getAcademicPath(
+        "/researcher-submit-publication",
+        roleLabel.toLowerCase(),
+      );
   const formContent = (
     <div className="submission-page-content">
       <header className="submission-heading">
@@ -15711,9 +15666,15 @@ function PublicationSubmissionPage({ role = "Student" }) {
               : "PDF, DOCX, or TXT accepted"}
           </small>
         </label>
-        <button type="submit" className="submission-submit" disabled={isChecking}>
+        <button
+          type="submit"
+          className="submission-submit"
+          disabled={isChecking}
+        >
           <MiniIcon path="M4.5 17.5 9 13l3.2 2.6 6.3-7.1M15.5 8.5h3v3M5 20h14" />
-          {isChecking ? "Checking Google Scholar..." : "Check Similarity and Submit"}
+          {isChecking
+            ? "Checking Google Scholar..."
+            : "Check Similarity and Submit"}
         </button>
       </form>
 
@@ -15774,42 +15735,42 @@ function PublicationSubmissionPage({ role = "Student" }) {
 
 const adminNavItems = [
   {
-    label: "Admin Dashboard",
+    label: "admin.dashboard",
     route: "/admin-dashboard",
     icon: "M4.5 11.2 12 5l7.5 6.2v8.3a1 1 0 0 1-1 1h-4.2v-5.2H9.7v5.2H5.5a1 1 0 0 1-1-1v-8.3ZM7.5 11.8v5.7M16.5 11.8v5.7",
   },
   {
-    label: "Sync Management",
+    label: "admin.syncManagement",
     route: "/admin-sync-management",
     icon: "M5 7.5h9.5a4.5 4.5 0 0 1 4.2 6.1M18.8 7.5h-4.3V3.2M19 16.5H9.5a4.5 4.5 0 0 1-4.2-6.1M5.2 16.5h4.3v4.3M12 9.2v3.1l2.2 1.3",
   },
   {
-    label: "User Management",
+    label: "admin.userManagement",
     route: "/admin-user-management",
     icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
   },
   {
-    label: "Payment Management",
+    label: "admin.paymentManagement",
     route: "/admin-payments",
     icon: "M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9",
   },
   {
-    label: "Plan Management",
+    label: "admin.planManagement",
     route: "/admin-plans",
     icon: "M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2",
   },
   {
-    label: "Notification Management",
+    label: "admin.notificationManagement",
     route: "/admin-notifications",
     icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M18.5 5.5l1.7-1.7",
   },
   {
-    label: "Publication Management",
+    label: "admin.publicationManagement",
     route: "/admin-publications",
     icon: "M6 4.5h8.2L18 8.3v11.2H6zM13.8 4.8v4h4M8.8 12h6.4M8.8 15h6.4M8.8 18h3.8",
   },
   {
-    label: "System Logs",
+    label: "admin.systemLogs",
     route: "/admin-system-logs",
     icon: "M6 4.5h12v15H6zM9 8h6M9 11.5h6M9 15h3.5M16.5 15h.01",
   },
@@ -15817,28 +15778,28 @@ const adminNavItems = [
 
 const adminStats = [
   {
-    label: "Total Users",
+    label: "admin.totalUsers",
     value: "24,592",
     note: "+12% from last month",
     tone: "users",
     icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
   },
   {
-    label: "Total Publications",
+    label: "admin.totalPublications",
     value: "14.2M+",
     note: "Indexed across repositories",
     tone: "publications",
     icon: "M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4M4 7v14h11",
   },
   {
-    label: "Last Sync Status",
+    label: "admin.lastSyncStatusLabel",
     value: "Success",
     note: "2 hours ago",
     tone: "sync",
     icon: "M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9",
   },
   {
-    label: "API Health",
+    label: "admin.apiHealth",
     tone: "api",
     icon: "M4 8h5l2 4 2-7 2 7 2-4h3M4 17h16",
     values: [
@@ -15896,7 +15857,9 @@ const mapAdminUserForUi = (user) => ({
   email: user.email || "",
   role: normalizeRoleForUi(user.role),
   status: user.status || "Active",
-  lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Created",
+  lastLogin: user.lastLogin
+    ? new Date(user.lastLogin).toLocaleDateString()
+    : "Created",
   avatar:
     user.avatar ||
     String(user.name || user.fullName || "ST")
@@ -15906,6 +15869,7 @@ const mapAdminUserForUi = (user) => ({
 });
 
 function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
+  const { t } = useTranslation();
   return (
     <aside className={`admin-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       <div
@@ -16025,7 +15989,7 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
             key={item.route}
           >
             <MiniIcon path={item.icon} />
-            <span>{item.label}</span>
+            <span>{t(item.label)}</span>
           </a>
         ))}
       </nav>
@@ -16036,7 +16000,7 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
           className="admin-status-button"
           onClick={() => onOpenPanel("status")}
         >
-          <i></i> System Status: Healthy
+          <i></i> {t("admin.systemStatusHealthy")}
         </button>
         <button type="button" onClick={() => onOpenPanel("settings")}>
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
@@ -16065,6 +16029,7 @@ function AdminTopbar({
   sectionPage = false,
   onOpenPanel,
 }) {
+  const { t } = useTranslation();
   return (
     <header
       className={`admin-topbar ${sectionPage ? "admin-section-topbar" : ""}`}
@@ -16162,6 +16127,7 @@ const adminPanelNotifications = [
 ];
 
 function AdminUtilityPanel({ panel, onClose }) {
+  const { t } = useTranslation();
   const avatarInputRef = React.useRef(null);
   const defaultHealthRows = [
     {
@@ -16176,8 +16142,7 @@ function AdminUtilityPanel({ panel, onClose }) {
       name: "Auth Service",
       state: "Operational",
       value: "OAuth2 ready",
-      icon:
-        "M12 3.5 18.5 7v5c0 3.8-2.6 6.7-6.5 8-3.9-1.3-6.5-4.2-6.5-8V7L12 3.5ZM9.5 12l1.6 1.6 3.5-4",
+      icon: "M12 3.5 18.5 7v5c0 3.8-2.6 6.7-6.5 8-3.9-1.3-6.5-4.2-6.5-8V7L12 3.5ZM9.5 12l1.6 1.6 3.5-4",
       tone: "blue",
       route: "/admin-user-management",
     },
@@ -16185,8 +16150,7 @@ function AdminUtilityPanel({ panel, onClose }) {
       name: "Search Index",
       state: "Operational",
       value: "99.9% uptime",
-      icon:
-        "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8 10.5h5M10.5 8v5",
+      icon: "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8 10.5h5M10.5 8v5",
       tone: "violet",
       route: "/admin-sync-management",
     },
@@ -16207,14 +16171,15 @@ function AdminUtilityPanel({ panel, onClose }) {
   };
   const [settings, setSettings] = React.useState(defaultAdminSettings);
   const [supportMessage, setSupportMessage] = React.useState("");
-  const [supportTickets, setSupportTickets] = React.useState([]);
   const [statusMessage, setStatusMessage] = React.useState("");
   const [healthRows, setHealthRows] = React.useState(defaultHealthRows);
   const [healthCheckedAt, setHealthCheckedAt] = React.useState("just now");
   const [checkingHealth, setCheckingHealth] = React.useState(false);
   const [ticketMessage, setTicketMessage] = React.useState("");
   const [readNotificationIds, setReadNotificationIds] = React.useState(() => {
-    const saved = window.localStorage.getItem("scholartrend.admin.readNotifications");
+    const saved = window.localStorage.getItem(
+      "scholartrend.admin.readNotifications",
+    );
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -16239,10 +16204,18 @@ function AdminUtilityPanel({ panel, onClose }) {
     bio: "Manages ScholarTrend access, sync operations, and platform health.",
     avatarUrl: "",
   };
-  const [adminProfile, setAdminProfile] = React.useState(defaultAdminProfile);
+  const [adminProfile, setAdminProfile] = React.useState(() => {
+    const session = getStoredSession();
+    return {
+      ...defaultAdminProfile,
+      name: session.fullName || session.name || defaultAdminProfile.name,
+      email: session.email || defaultAdminProfile.email,
+      role: session.role || defaultAdminProfile.role,
+    };
+  });
 
   React.useEffect(() => {
-    if (!panel) return;
+    if (!panel || !getStoredAuth().accessToken) return;
 
     if (panel === "settings") {
       apiFetch("/api/admin/settings", { auth: true })
@@ -16255,28 +16228,35 @@ function AdminUtilityPanel({ panel, onClose }) {
     if (panel === "profile") {
       apiFetch("/api/admin/profile", { auth: true })
         .then((payload) =>
-          setAdminProfile({ ...defaultAdminProfile, ...(payload.value || {}) }),
+          setAdminProfile({
+            ...defaultAdminProfile,
+            ...(payload.value || {}),
+          }),
         )
         .catch((error) => setProfileMessage(error.message));
     }
 
-    if (panel === "support") {
-      apiFetch("/api/admin/support-tickets", { auth: true })
-        .then((payload) => setSupportTickets(unwrapList(payload)))
-        .catch((error) => setTicketMessage(error.message));
-    }
-
     if (panel === "status") {
-      apiFetch("/api/admin/status-state", { auth: true })
+      apiFetch("/api/admin/health", { auth: true })
         .then((payload) => {
-          if (payload.value?.healthCheckedAt) {
-            setHealthCheckedAt(payload.value.healthCheckedAt);
+          const services = Array.isArray(payload.services)
+            ? payload.services
+            : [];
+          if (services.length) {
+            setHealthRows((current) =>
+              services.map((service, index) => ({
+                ...current[index % current.length],
+                name: service.name,
+                state: service.state,
+                value: service.value,
+              })),
+            );
           }
-          if (payload.value?.message) {
-            setStatusMessage(payload.value.message);
+          if (payload.checkedAt) {
+            setHealthCheckedAt(new Date(payload.checkedAt).toLocaleString());
           }
         })
-        .catch(() => {});
+        .catch((error) => setStatusMessage(error.message));
     }
   }, [panel]);
 
@@ -16284,12 +16264,13 @@ function AdminUtilityPanel({ panel, onClose }) {
 
   const saveSettings = async () => {
     try {
-      await apiFetch("/api/admin/settings", {
+      const payload = await apiFetch("/api/admin/settings", {
         method: "PUT",
         auth: true,
         body: { value: settings },
       });
-      setStatusMessage("Settings saved to admin API.");
+      setSettings({ ...defaultAdminSettings, ...(payload.value || settings) });
+      setStatusMessage("Settings saved to backend.");
     } catch (error) {
       setStatusMessage(error.message);
     }
@@ -16297,44 +16278,23 @@ function AdminUtilityPanel({ panel, onClose }) {
 
   const submitTicket = async (event) => {
     event.preventDefault();
+    if (!supportMessage.trim()) {
+      setTicketMessage("Please describe the issue before creating a ticket.");
+      return;
+    }
+
     try {
-      const payload = await apiFetch("/api/admin/support-tickets", {
+      await apiFetch("/api/admin/support-tickets", {
         method: "POST",
         auth: true,
-        body: { message: supportMessage },
+        body: { message: supportMessage.trim() },
       });
-      setSupportTickets((current) => [payload.ticket, ...current]);
-      setTicketMessage("Support ticket created.");
+      setTicketMessage("Support ticket created in backend.");
       setSupportMessage("");
-    } catch (error) {
-      setTicketMessage(error.message);
-    }
-  };
-
-  const updateSupportTicket = async (id, patch) => {
-    try {
-      const payload = await apiFetch(`/api/admin/support-tickets/${id}`, {
-        method: "PUT",
-        auth: true,
-        body: patch,
-      });
-      setSupportTickets((current) =>
-        current.map((ticket) => (ticket.id === id ? payload.ticket : ticket)),
-      );
-      setTicketMessage("Support ticket updated.");
-    } catch (error) {
-      setTicketMessage(error.message);
-    }
-  };
-
-  const deleteSupportTicket = async (id) => {
-    try {
-      await apiFetch(`/api/admin/support-tickets/${id}`, {
-        method: "DELETE",
-        auth: true,
-      });
-      setSupportTickets((current) => current.filter((ticket) => ticket.id !== id));
-      setTicketMessage("Support ticket deleted.");
+      window.setTimeout(() => {
+        onClose();
+        goToRoute("/admin-system-logs");
+      }, 650);
     } catch (error) {
       setTicketMessage(error.message);
     }
@@ -16342,15 +16302,24 @@ function AdminUtilityPanel({ panel, onClose }) {
 
   const saveAdminProfile = async (event) => {
     event.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminProfile.email || "")) {
+      setProfileMessage("Please enter a valid email address.");
+      return;
+    }
+
     try {
-      await apiFetch("/api/admin/profile", {
+      const payload = await apiFetch("/api/admin/profile", {
         method: "PUT",
         auth: true,
         body: { value: adminProfile },
       });
+      setAdminProfile({
+        ...defaultAdminProfile,
+        ...(payload.value || adminProfile),
+      });
       setIsEditingProfile(false);
       setEditingProfileField(null);
-      setProfileMessage("Admin account updated.");
+      setProfileMessage("Admin account saved to backend.");
     } catch (error) {
       setProfileMessage(error.message);
     }
@@ -16382,8 +16351,14 @@ function AdminUtilityPanel({ panel, onClose }) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setProfileMessage("Please choose an image file for the avatar.");
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      setProfileMessage("Please choose a PNG, JPG, WebP, or GIF avatar.");
+      return;
+    }
+
+    if (file.size > 1024 * 1024) {
+      setProfileMessage("Avatar must be 1 MB or smaller.");
       return;
     }
 
@@ -16405,13 +16380,7 @@ function AdminUtilityPanel({ panel, onClose }) {
       return;
     }
 
-    const avatarWindow = window.open();
-    if (avatarWindow) {
-      avatarWindow.document.write(
-        `<title>${adminProfile.name} Avatar</title><img src="${adminProfile.avatarUrl}" alt="${adminProfile.name}" style="max-width:100%;height:auto;display:block;margin:24px auto;border-radius:16px;" />`,
-      );
-      avatarWindow.document.close();
-    }
+    window.open(adminProfile.avatarUrl, "_blank", "noopener,noreferrer");
   };
 
   const removeAdminAvatar = () => {
@@ -16419,7 +16388,9 @@ function AdminUtilityPanel({ panel, onClose }) {
       ...current,
       avatarUrl: "",
     }));
-    setProfileMessage("Avatar removed. Press Save Account to keep this change.");
+    setProfileMessage(
+      "Avatar removed. Press Save Account to keep this change.",
+    );
   };
 
   const openAdminRoute = (route) => {
@@ -16432,32 +16403,22 @@ function AdminUtilityPanel({ panel, onClose }) {
     setStatusMessage("Running service checks...");
     try {
       const payload = await apiFetch("/api/admin/health", { auth: true });
-      const checkedAt = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      if (Array.isArray(payload.services)) {
+      const checkedAt = payload.checkedAt
+        ? new Date(payload.checkedAt).toLocaleString()
+        : new Date().toLocaleString();
+      const services = Array.isArray(payload.services) ? payload.services : [];
+      if (services.length) {
         setHealthRows((current) =>
-          current.map((row) => {
-            const service = payload.services.find((item) => item.name === row.name);
-            return service
-              ? { ...row, state: service.state, value: service.value }
-              : row;
-          }),
+          services.map((service, index) => ({
+            ...current[index % current.length],
+            name: service.name,
+            state: service.state,
+            value: service.value,
+          })),
         );
       }
       setHealthCheckedAt(checkedAt);
       setStatusMessage(`Health check completed at ${checkedAt}.`);
-      await apiFetch("/api/admin/status-state", {
-        method: "PUT",
-        auth: true,
-        body: {
-          value: {
-            healthCheckedAt: checkedAt,
-            message: `Health check completed at ${checkedAt}.`,
-          },
-        },
-      });
     } catch (error) {
       setStatusMessage(error.message);
     } finally {
@@ -16536,11 +16497,11 @@ function AdminUtilityPanel({ panel, onClose }) {
   };
 
   const panelTitles = {
-    status: "System Status",
-    settings: "Admin Settings",
-    support: "Support Center",
-    notifications: "Notifications",
-    profile: "Admin Account",
+    status: t("admin.systemStatus"),
+    settings: t("admin.adminSettings"),
+    support: t("admin.supportCenter"),
+    notifications: t("admin.notifications"),
+    profile: t("admin.adminAccount"),
   };
   const panelMeta = {
     status: {
@@ -16584,7 +16545,9 @@ function AdminUtilityPanel({ panel, onClose }) {
       >
         <header className="admin-utility-header">
           <div className="admin-utility-title-row">
-            <span className={`admin-utility-title-icon ${panelMeta[panel].tone}`}>
+            <span
+              className={`admin-utility-title-icon ${panelMeta[panel].tone}`}
+            >
               <MiniIcon path={panelMeta[panel].icon} />
             </span>
             <div>
@@ -16629,7 +16592,9 @@ function AdminUtilityPanel({ panel, onClose }) {
             >
               {checkingHealth ? "Checking..." : "Run Health Check"}
             </button>
-            {statusMessage && <p className="admin-panel-note">{statusMessage}</p>}
+            {statusMessage && (
+              <p className="admin-panel-note">{statusMessage}</p>
+            )}
           </div>
         )}
 
@@ -16701,7 +16666,9 @@ function AdminUtilityPanel({ panel, onClose }) {
             >
               Save Settings
             </button>
-            {statusMessage && <p className="admin-panel-note">{statusMessage}</p>}
+            {statusMessage && (
+              <p className="admin-panel-note">{statusMessage}</p>
+            )}
           </div>
         )}
 
@@ -16727,31 +16694,9 @@ function AdminUtilityPanel({ panel, onClose }) {
             <button type="submit" className="admin-panel-primary">
               Create Support Ticket
             </button>
-            <div className="admin-support-ticket-list">
-              {supportTickets.map((ticket) => (
-                <article key={ticket.id}>
-                  <span>{ticket.ticketNumber || ticket.id}</span>
-                  <strong>{ticket.message}</strong>
-                  <small>{ticket.status} - {new Date(ticket.createdAt).toLocaleString()}</small>
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => updateSupportTicket(ticket.id, { status: "Closed" })}
-                    >
-                      Close
-                    </button>
-                    <button type="button" onClick={() => openAdminRoute("/admin-system-logs")}>
-                      Logs
-                    </button>
-                    <button type="button" onClick={() => deleteSupportTicket(ticket.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </article>
-              ))}
-              {!supportTickets.length ? <p>No support tickets yet.</p> : null}
-            </div>
-            {ticketMessage && <p className="admin-panel-note">{ticketMessage}</p>}
+            {ticketMessage && (
+              <p className="admin-panel-note">{ticketMessage}</p>
+            )}
           </form>
         )}
 
@@ -16982,8 +16927,23 @@ function AdminStatCard({ stat }) {
   );
 }
 
-function AdminUserGrowthChart() {
+function AdminUserGrowthChart({ rows = [] }) {
   const canvasRef = React.useRef(null);
+  const chartRows =
+    Array.isArray(rows) && rows.length
+      ? rows
+      : [{ label: "No data", count: 0 }];
+  const labels = chartRows.map((row) => {
+    if (row.label) return row.label;
+    const month = Number(row.month || row.Month || 1);
+    const year = Number(row.year || row.Year || new Date().getFullYear());
+    return new Date(year, month - 1, 1).toLocaleString("en-US", {
+      month: "short",
+      year: "2-digit",
+    });
+  });
+  const values = chartRows.map((row) => Number(row.count ?? row.Count ?? 0));
+  const suggestedMax = Math.max(4, Math.ceil(Math.max(...values, 1) * 1.2));
 
   React.useEffect(() => {
     if (!canvasRef.current) return undefined;
@@ -16995,11 +16955,11 @@ function AdminUserGrowthChart() {
     const chart = new Chart(context, {
       type: "bar",
       data: {
-        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        labels,
         datasets: [
           {
             label: "Users",
-            data: [9800, 13600, 12400, 17200, 20800, 24592],
+            data: values,
             backgroundColor: gradient,
             borderColor: "#6c63e7",
             borderWidth: 1,
@@ -17035,14 +16995,14 @@ function AdminUserGrowthChart() {
           },
           y: {
             beginAtZero: true,
-            suggestedMax: 26000,
+            suggestedMax,
             border: { display: false },
             grid: { color: "rgba(148, 163, 184, 0.2)" },
             ticks: {
-              stepSize: 5000,
+              stepSize: Math.max(1, Math.ceil(suggestedMax / 5)),
               color: "#667085",
               font: { size: 10 },
-              callback: (value) => (value === 0 ? "0" : `${value / 1000}k`),
+              callback: (value) => (value >= 1000 ? `${value / 1000}k` : value),
             },
           },
         },
@@ -17050,7 +17010,7 @@ function AdminUserGrowthChart() {
     });
 
     return () => chart.destroy();
-  }, []);
+  }, [labels.join("|"), suggestedMax, values.join("|")]);
 
   return (
     <canvas
@@ -17061,8 +17021,15 @@ function AdminUserGrowthChart() {
   );
 }
 
-function AdminRoleDistributionChart() {
+function AdminRoleDistributionChart({ rows = [], totalUsers = 0 }) {
   const canvasRef = React.useRef(null);
+  const chartRows =
+    Array.isArray(rows) && rows.length
+      ? rows
+      : [{ role: "No users", count: 0 }];
+  const labels = chartRows.map((row) => row.role || row.Role || "Unknown");
+  const values = chartRows.map((row) => Number(row.count ?? row.Count ?? 0));
+  const total = totalUsers || values.reduce((sum, value) => sum + value, 0);
 
   React.useEffect(() => {
     if (!canvasRef.current) return undefined;
@@ -17080,7 +17047,7 @@ function AdminRoleDistributionChart() {
         ctx.font = "700 17px Inter, sans-serif";
         ctx.fillText("Total", centerX, centerY - 8);
         ctx.font = "800 13px Inter, sans-serif";
-        ctx.fillText("24,592", centerX, centerY + 14);
+        ctx.fillText(formatCount(total), centerX, centerY + 14);
         ctx.restore();
       },
     };
@@ -17088,10 +17055,10 @@ function AdminRoleDistributionChart() {
     const chart = new Chart(canvasRef.current, {
       type: "doughnut",
       data: {
-        labels: ["Researcher", "Student", "Lecturer", "Admin"],
+        labels,
         datasets: [
           {
-            data: [45, 30, 20, 5],
+            data: values,
             backgroundColor: ["#5145e5", "#45d6aa", "#cfe1fb", "#101827"],
             borderColor: "#ffffff",
             borderWidth: 3,
@@ -17107,7 +17074,7 @@ function AdminRoleDistributionChart() {
         plugins: {
           legend: { display: false },
           tooltip: {
-            callbacks: { label: (item) => `${item.label}: ${item.raw}%` },
+            callbacks: { label: (item) => `${item.label}: ${item.raw}` },
           },
         },
       },
@@ -17115,7 +17082,7 @@ function AdminRoleDistributionChart() {
     });
 
     return () => chart.destroy();
-  }, []);
+  }, [labels.join("|"), total, values.join("|")]);
 
   return (
     <canvas ref={canvasRef} aria-label="Role distribution" role="img"></canvas>
@@ -17207,9 +17174,9 @@ const getAdminSyncHistory = () => {
     const saved = JSON.parse(
       window.localStorage.getItem(ADMIN_SYNC_HISTORY_KEY) || "null",
     );
-    return Array.isArray(saved) && saved.length ? saved : adminSyncHistory;
+    return Array.isArray(saved) && saved.length ? saved : [];
   } catch {
-    return adminSyncHistory;
+    return [];
   }
 };
 
@@ -17220,6 +17187,23 @@ const setAdminSyncConfig = (config) => {
 const setAdminSyncHistory = (history) => {
   window.localStorage.setItem(ADMIN_SYNC_HISTORY_KEY, JSON.stringify(history));
 };
+
+const normalizeSyncLogForUi = (log) => ({
+  source: log.sourceApi || log.SourceApi || log.source || "Unknown source",
+  status: log.status || log.Status || "Unknown",
+  records: formatCount(log.recordsSynced ?? log.RecordsSynced ?? 0),
+  time:
+    log.finishedAt || log.FinishedAt || log.startedAt || log.StartedAt
+      ? new Date(
+          log.finishedAt || log.FinishedAt || log.startedAt || log.StartedAt,
+        ).toLocaleString()
+      : "N/A",
+  error: log.errorMessage || log.ErrorMessage || "",
+  detail:
+    log.errorMessage ||
+    log.ErrorMessage ||
+    `${log.status || log.Status || "Sync"} run from backend log.`,
+});
 
 function AdminSourceToggle({ enabled, onToggle, label, detail }) {
   return (
@@ -17250,6 +17234,13 @@ function AdminSyncConfiguration({ config, onChange }) {
   const [cron, setCron] = React.useState(config.cron);
   const [rateLimit, setRateLimit] = React.useState(config.rateLimit);
   const [saved, setSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    setSources(config.sources);
+    setKeywords(config.keywords);
+    setCron(config.cron);
+    setRateLimit(config.rateLimit);
+  }, [config]);
 
   const emitConfig = (next = {}) => {
     const merged = {
@@ -17507,7 +17498,9 @@ function AdminSyncHistory({ history }) {
         </table>
       </div>
       <footer className="admin-sync-pagination">
-        <span>Showing {pagedRows.length} of {rows.length} runs</span>
+        <span>
+          Showing {pagedRows.length} of {rows.length} runs
+        </span>
         <div>
           <button
             type="button"
@@ -17516,16 +17509,18 @@ function AdminSyncHistory({ history }) {
           >
             <MiniIcon path="M15 18l-6-6 6-6" />
           </button>
-          {Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => (
-            <button
-              type="button"
-              className={safePage === number ? "active" : ""}
-              onClick={() => setPage(number)}
-              key={number}
-            >
-              {number}
-            </button>
-          ))}
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+            (number) => (
+              <button
+                type="button"
+                className={safePage === number ? "active" : ""}
+                onClick={() => setPage(number)}
+                key={number}
+              >
+                {number}
+              </button>
+            ),
+          )}
           <button
             type="button"
             disabled={safePage === totalPages}
@@ -17545,6 +17540,38 @@ function AdminSyncManagementPage() {
   const [running, setRunning] = React.useState(false);
   const [syncMessage, setSyncMessage] = React.useState("");
 
+  React.useEffect(() => {
+    apiFetch("/api/admin/sync-config", { auth: true })
+      .then((payload) => {
+        if (payload.value) {
+          setConfig({
+            sources: {
+              semantic: true,
+              openAlex: true,
+              ...(payload.value.sources || {}),
+            },
+            keywords: Array.isArray(payload.value.keywords)
+              ? payload.value.keywords
+              : ["Machine Learning", "NLP"],
+            cron: payload.value.cron || "0 0 * * *",
+            rateLimit: Number(payload.value.rateLimit || 120),
+          });
+        }
+      })
+      .catch((error) => {
+        setSyncMessage(error.message);
+      });
+
+    apiFetch("/api/admin/sync-logs?page=1&pageSize=20", { auth: true })
+      .then((payload) => {
+        const rows = unwrapList(payload).map(normalizeSyncLogForUi);
+        setHistory(rows);
+      })
+      .catch((error) => {
+        setSyncMessage(error.message);
+      });
+  }, []);
+
   const persistHistory = (nextHistory) => {
     setHistory(nextHistory);
     setAdminSyncHistory(nextHistory);
@@ -17553,6 +17580,11 @@ function AdminSyncManagementPage() {
   const saveConfig = (nextConfig) => {
     setConfig(nextConfig);
     setAdminSyncConfig(nextConfig);
+    apiFetch("/api/admin/sync-config", {
+      method: "PUT",
+      auth: true,
+      body: { value: nextConfig },
+    }).catch((error) => setSyncMessage(error.message));
   };
 
   const formatSyncRunTime = () =>
@@ -17592,9 +17624,10 @@ function AdminSyncManagementPage() {
     const runTime = formatSyncRunTime();
     const nextRows = enabledSources.length
       ? settledResults.map((result, index) => {
-          const source = result.status === "fulfilled"
-            ? result.value.source
-            : enabledSources[index];
+          const source =
+            result.status === "fulfilled"
+              ? result.value.source
+              : enabledSources[index];
           if (result.status !== "fulfilled") {
             return {
               source,
@@ -17602,7 +17635,9 @@ function AdminSyncManagementPage() {
               records: "0",
               time: runTime,
               error: "Sync request failed",
-              detail: result.reason?.message || "Backend sync endpoint did not complete.",
+              detail:
+                result.reason?.message ||
+                "Backend sync endpoint did not complete.",
             };
           }
 
@@ -17688,7 +17723,7 @@ function AdminSyncManagementPage() {
           <article className="success-card">
             <div>
               <span>Last Successful Sync</span>
-                <MiniIcon path="M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5" />
+              <MiniIcon path="M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5" />
             </div>
             <strong>{lastSuccess?.time || "No sync yet"}</strong>
             <p>{lastSuccess?.records || "0"} records</p>
@@ -17700,14 +17735,17 @@ function AdminSyncManagementPage() {
               <MiniIcon path="M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM12 8.2v5.2M12 16.5h.01" />
             </div>
             <strong>
-              {failedCount}<small>events</small>
+              {failedCount}
+              <small>events</small>
             </strong>
             <button type="button" onClick={reviewLogs}>
               Review Logs
             </button>
           </article>
         </section>
-        {syncMessage ? <p className="admin-sync-message">{syncMessage}</p> : null}
+        {syncMessage ? (
+          <p className="admin-sync-message">{syncMessage}</p>
+        ) : null}
 
         <div className="admin-sync-layout">
           <AdminSyncConfiguration config={config} onChange={saveConfig} />
@@ -17719,29 +17757,28 @@ function AdminSyncManagementPage() {
 }
 
 function AdminDashboard() {
-  const { data: adminOverview } = useApiResource(
-    "/api/admin/overview",
-    null,
-    { auth: true },
-  );
+  const { t } = useTranslation();
+  const { data: adminOverview } = useApiResource("/api/admin/overview", null, {
+    auth: true,
+  });
   const overviewStats = React.useMemo(() => {
     if (!adminOverview) return adminStats;
     return adminStats.map((stat) => {
-      if (stat.label === "Total Users") {
+      if (stat.label === "admin.totalUsers") {
         return {
           ...stat,
           value: formatCount(adminOverview.totalUsers),
           note: "Registered backend users",
         };
       }
-      if (stat.label === "Total Publications") {
+      if (stat.label === "admin.totalPublications") {
         return {
           ...stat,
           value: formatCount(adminOverview.totalPublications),
           note: `${formatCount(adminOverview.totalKeywords)} tracked keywords`,
         };
       }
-      if (stat.label === "Last Sync Status") {
+      if (stat.label === "admin.lastSyncStatusLabel") {
         return {
           ...stat,
           value: adminOverview.lastSync?.status || "Idle",
@@ -17750,7 +17787,7 @@ function AdminDashboard() {
             : "No completed sync yet",
         };
       }
-      if (stat.label === "API Health") {
+      if (stat.label === "admin.apiHealth") {
         return {
           ...stat,
           values: (adminOverview.apiHealth || stat.values).map((item) => [
@@ -17764,8 +17801,19 @@ function AdminDashboard() {
   }, [adminOverview]);
 
   const exportUserData = () => {
-    const csv =
-      "Month,Users\nJan,9800\nFeb,13600\nMar,12400\nApr,17200\nMay,20800\nJun,24592";
+    const rows = adminOverview?.userGrowth || [];
+    const csv = [
+      "Month,Users",
+      ...rows.map((row) => {
+        const month = Number(row.month || row.Month || 1);
+        const year = Number(row.year || row.Year || new Date().getFullYear());
+        const label = new Date(year, month - 1, 1).toLocaleString("en-US", {
+          month: "short",
+          year: "numeric",
+        });
+        return `${label},${Number(row.count ?? row.Count ?? 0)}`;
+      }),
+    ].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -17790,8 +17838,7 @@ function AdminDashboard() {
       detail: "Invite, edit, deactivate, delete, and assign roles.",
       value: `${managedUserCount} accounts`,
       route: "/admin-user-management",
-      icon:
-        "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
+      icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
     },
     {
       title: "Payments",
@@ -17809,7 +17856,8 @@ function AdminDashboard() {
     },
     {
       title: "Notifications",
-      detail: "Publish system notices for students, lecturers, and researchers.",
+      detail:
+        "Publish system notices for students, lecturers, and researchers.",
       value: "Broadcast",
       route: "/admin-notifications",
       icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
@@ -17846,7 +17894,10 @@ function AdminDashboard() {
           ))}
         </section>
 
-        <section className="admin-control-center" aria-label="Admin control center">
+        <section
+          className="admin-control-center"
+          aria-label="Admin control center"
+        >
           <div className="admin-control-heading">
             <div>
               <span>Full Access</span>
@@ -17859,7 +17910,11 @@ function AdminDashboard() {
           </div>
           <div className="admin-control-grid">
             {adminControlCards.map((item) => (
-              <button type="button" key={item.title} onClick={navTo(item.route)}>
+              <button
+                type="button"
+                key={item.title}
+                onClick={navTo(item.route)}
+              >
                 <i>
                   <MiniIcon path={item.icon} />
                 </i>
@@ -17883,7 +17938,7 @@ function AdminDashboard() {
                 </button>
               </div>
               <div className="admin-growth-chart">
-                <AdminUserGrowthChart />
+                <AdminUserGrowthChart rows={adminOverview?.userGrowth || []} />
               </div>
             </section>
 
@@ -17893,7 +17948,10 @@ function AdminDashboard() {
               </div>
               <div className="admin-role-layout">
                 <div className="admin-role-chart">
-                  <AdminRoleDistributionChart />
+                  <AdminRoleDistributionChart
+                    rows={adminOverview?.roleDistribution || []}
+                    totalUsers={adminOverview?.totalUsers || 0}
+                  />
                 </div>
                 <div className="admin-role-legend">
                   {[
@@ -18023,14 +18081,19 @@ const formatAdminDateTime = (value, fallback = "N/A") => {
 };
 
 const normalizeAdminManagedUser = (user) => ({
-  id: user.id || `admin-user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  id:
+    user.id ||
+    `admin-user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   name: user.name || user.fullName || "Unnamed User",
   email: user.email || "",
   role: normalizeRoleForUi(user.role || "Viewer"),
   status: user.status || (user.isActive === false ? "Inactive" : "Active"),
   createdAt: user.createdAt || user.createdOn || "",
   lastLoginAt: user.lastLoginAt || user.lastLogin || "",
-  lastLogin: formatAdminDateTime(user.lastLoginAt || user.lastLogin, "Never signed in"),
+  lastLogin: formatAdminDateTime(
+    user.lastLoginAt || user.lastLogin,
+    "Never signed in",
+  ),
   createdLabel: formatAdminDateTime(
     user.createdAt || user.createdOn,
     "Created date unavailable",
@@ -18060,7 +18123,9 @@ const normalizeAdminManagedUser = (user) => ({
 
 const getAdminManagedUsers = () => {
   try {
-    const saved = JSON.parse(window.localStorage.getItem(ADMIN_USERS_KEY) || "null");
+    const saved = JSON.parse(
+      window.localStorage.getItem(ADMIN_USERS_KEY) || "null",
+    );
     return Array.isArray(saved) && saved.length
       ? saved.map(normalizeAdminManagedUser)
       : adminManagedUsers.map(normalizeAdminManagedUser);
@@ -18092,7 +18157,8 @@ const upsertAdminManagedUserFromAccount = (account) => {
     subscriptionStatus: account.subscriptionStatus,
     searchAccuracy: account.searchAccuracy,
     lastLogin: account.lastLoginAt || account.signedInAt || "Just now",
-    lastLoginAt: account.lastLoginAt || account.signedInAt || new Date().toISOString(),
+    lastLoginAt:
+      account.lastLoginAt || account.signedInAt || new Date().toISOString(),
     createdAt: account.createdAt,
   });
   const nextUsers =
@@ -18103,7 +18169,9 @@ const upsertAdminManagedUserFromAccount = (account) => {
 };
 
 function AdminSimilarityReviewPanel() {
-  const [submissions, setSubmissions] = React.useState(getPublicationSubmissions);
+  const [submissions, setSubmissions] = React.useState(
+    getPublicationSubmissions,
+  );
   const [selectedSubmission, setSelectedSubmission] = React.useState(null);
   const [rejectDialog, setRejectDialog] = React.useState(null);
   const [deleteDialog, setDeleteDialog] = React.useState(null);
@@ -18178,7 +18246,8 @@ function AdminSimilarityReviewPanel() {
     if (status === "approved" && isBackendSubmissionId(id)) {
       try {
         setQueueMessage("Approving submission...");
-        const approvedSubmission = await approvePublicationSubmissionOnBackend(id);
+        const approvedSubmission =
+          await approvePublicationSubmissionOnBackend(id);
         replaceSubmission(approvedSubmission);
         publishApprovedSubmission(approvedSubmission);
         sendPublicationApprovedNotification(approvedSubmission);
@@ -18321,7 +18390,11 @@ function AdminSimilarityReviewPanel() {
     const { submission } = deleteDialog;
     if (isBackendSubmissionId(submission.id)) {
       try {
-        await deletePublicationSubmissionOnBackend(submission.id, reason, evidence);
+        await deletePublicationSubmissionOnBackend(
+          submission.id,
+          reason,
+          evidence,
+        );
         setQueueMessage("Submission deleted in backend.");
       } catch (error) {
         setQueueMessage(error.message);
@@ -18359,7 +18432,9 @@ function AdminSimilarityReviewPanel() {
       </div>
 
       {queueMessage ? (
-        <p className={`admin-panel-note ${queueStatus === "error" ? "error" : ""}`}>
+        <p
+          className={`admin-panel-note ${queueStatus === "error" ? "error" : ""}`}
+        >
           {queueMessage}
         </p>
       ) : null}
@@ -18535,7 +18610,8 @@ function AdminSimilarityReviewPanel() {
               </div>
               <strong
                 className={
-                  selectedSubmission.similarityPercent > SIMILARITY_LIMIT_PERCENT
+                  selectedSubmission.similarityPercent >
+                  SIMILARITY_LIMIT_PERCENT
                     ? "danger"
                     : "safe"
                 }
@@ -18588,7 +18664,9 @@ function AdminSimilarityReviewPanel() {
               <section className="admin-submission-candidates">
                 <h3>Google Scholar Candidates</h3>
                 {selectedSubmission.candidates.slice(0, 5).map((candidate) => (
-                  <article key={`${candidate.title}-${candidate.similarityPercent}`}>
+                  <article
+                    key={`${candidate.title}-${candidate.similarityPercent}`}
+                  >
                     <strong>{candidate.similarityPercent}%</strong>
                     <div>
                       <p>{candidate.title}</p>
@@ -18601,7 +18679,8 @@ function AdminSimilarityReviewPanel() {
 
             <footer className="admin-submission-modal-actions">
               {selectedSubmission.status === "pending" &&
-              selectedSubmission.similarityPercent <= SIMILARITY_LIMIT_PERCENT ? (
+              selectedSubmission.similarityPercent <=
+                SIMILARITY_LIMIT_PERCENT ? (
                 <>
                   <button
                     type="button"
@@ -18801,7 +18880,10 @@ function AdminSimilarityReviewPanel() {
 
 function AdminPublicationManagementPage() {
   return (
-    <AdminShell activeRoute="/admin-publications" current="Publication Management">
+    <AdminShell
+      activeRoute="/admin-publications"
+      current="Publication Management"
+    >
       <div className="admin-publications-content">
         <header className="admin-users-heading">
           <div>
@@ -18810,8 +18892,8 @@ function AdminPublicationManagementPage() {
             </p>
             <h1>Publication Management</h1>
             <small>
-              Manage submitted papers, AI similarity results, approval decisions,
-              and rejection notices
+              Manage submitted papers, AI similarity results, approval
+              decisions, and rejection notices
             </small>
           </div>
         </header>
@@ -18865,7 +18947,7 @@ function AdminUserManagementPage() {
   );
   const summaryCards = [
     {
-      label: "Total Users",
+      label: "admin.totalUsers",
       value: formatCount(users.length),
       note: `${formatCount(activeCount)} active accounts`,
       icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
@@ -18899,7 +18981,10 @@ function AdminUserManagementPage() {
     let backendPage = 1;
     let totalBackendUsers = null;
 
-    while (totalBackendUsers === null || backendUsers.length < totalBackendUsers) {
+    while (
+      totalBackendUsers === null ||
+      backendUsers.length < totalBackendUsers
+    ) {
       const payload = await apiFetch(
         `/api/admin/users?page=${backendPage}&pageSize=${backendPageSize}`,
         { auth: true },
@@ -18920,9 +19005,12 @@ function AdminUserManagementPage() {
     let googleUsers = [];
     if (GOOGLE_AUTH_BASE_URL) {
       try {
-        const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/users`, {
-          credentials: "include",
-        });
+        const response = await fetch(
+          `${GOOGLE_AUTH_BASE_URL}/api/admin/users`,
+          {
+            credentials: "include",
+          },
+        );
         const googlePayload = await response.json().catch(() => ({}));
         googleUsers = Array.isArray(googlePayload?.items)
           ? googlePayload.items.map(normalizeAdminManagedUser)
@@ -19000,8 +19088,7 @@ function AdminUserManagementPage() {
 
     const emailExists = users.some(
       (user) =>
-        user.email.toLowerCase() === normalizedEmail &&
-        user.id !== editor.id,
+        user.email.toLowerCase() === normalizedEmail && user.id !== editor.id,
     );
     if (emailExists) {
       setMessage("This email already exists.");
@@ -19018,7 +19105,9 @@ function AdminUserManagementPage() {
           isPro: editor.plan === "Pro",
           plan: editor.plan,
         });
-        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
+        persistUsers(
+          users.map((user) => (user.id === editor.id ? nextUser : user)),
+        );
         setMessage("Demo user updated locally.");
         closeEditor();
         return;
@@ -19033,8 +19122,12 @@ function AdminUserManagementPage() {
           isPro: editor.plan === "Pro",
           plan: editor.plan,
         });
-        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
-        setMessage("User updated locally. Sign in as Administrator to sync SQL Server.");
+        persistUsers(
+          users.map((user) => (user.id === editor.id ? nextUser : user)),
+        );
+        setMessage(
+          "User updated locally. Sign in as Administrator to sync SQL Server.",
+        );
         setEditor(null);
         return;
       }
@@ -19055,7 +19148,9 @@ function AdminUserManagementPage() {
           },
         });
         const nextUser = normalizeAdminManagedUser(payload.user);
-        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
+        persistUsers(
+          users.map((user) => (user.id === editor.id ? nextUser : user)),
+        );
         setMessage("User updated in SQL Server.");
         setEditor(null);
         loadBackendUsers().catch(() => {});
@@ -19079,7 +19174,9 @@ function AdminUserManagementPage() {
         plan: editor.plan,
       });
       persistUsers([nextUser, ...users]);
-      setMessage(`User created locally for ${normalizedEmail}. Sign in as Administrator to sync SQL Server.`);
+      setMessage(
+        `User created locally for ${normalizedEmail}. Sign in as Administrator to sync SQL Server.`,
+      );
       setEditor(null);
       return;
     }
@@ -19123,7 +19220,9 @@ function AdminUserManagementPage() {
     }
 
     if (!hasAdminBackendAccess()) {
-      setMessage("User updated locally. Sign in as Administrator to sync SQL Server.");
+      setMessage(
+        "User updated locally. Sign in as Administrator to sync SQL Server.",
+      );
       return;
     }
 
@@ -19149,9 +19248,11 @@ function AdminUserManagementPage() {
       }
       if (payload?.user) {
         const syncedUser = normalizeAdminManagedUser(payload.user);
-        persistUsers((payload ? users : nextUsers).map((user) =>
-          user.id === id ? syncedUser : user,
-        ));
+        persistUsers(
+          (payload ? users : nextUsers).map((user) =>
+            user.id === id ? syncedUser : user,
+          ),
+        );
       }
     } catch (error) {
       setMessage(`User updated locally. Backend sync failed: ${error.message}`);
@@ -19251,23 +19352,24 @@ function AdminUserManagementPage() {
   };
 
   const downloadUsers = () => {
-    const header = "Name,Email,Role,Status,Plan,Search Accuracy,Created At,Last Login";
-    const csvEscape = (value) => `"${String(value || "").replaceAll('"', '""')}"`;
+    const header =
+      "Name,Email,Role,Status,Plan,Search Accuracy,Created At,Last Login";
+    const csvEscape = (value) =>
+      `"${String(value || "").replaceAll('"', '""')}"`;
     const body = visibleUsers
-      .map(
-        (user) =>
-          [
-            user.name,
-            user.email,
-            user.role,
-            user.status,
-            user.plan,
-            `${user.searchAccuracy}%`,
-            user.createdLabel,
-            user.lastLogin,
-          ]
-            .map(csvEscape)
-            .join(","),
+      .map((user) =>
+        [
+          user.name,
+          user.email,
+          user.role,
+          user.status,
+          user.plan,
+          `${user.searchAccuracy}%`,
+          user.createdLabel,
+          user.lastLogin,
+        ]
+          .map(csvEscape)
+          .join(","),
       )
       .join("\n");
     const url = URL.createObjectURL(
@@ -19314,7 +19416,7 @@ function AdminUserManagementPage() {
           {summaryCards.map((item) => (
             <article className="admin-user-summary-card" key={item.label}>
               <div>
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
                 <MiniIcon path={item.icon} />
               </div>
               <strong>{item.value}</strong>
@@ -19462,7 +19564,9 @@ function AdminUserManagementPage() {
                           disabled={Boolean(pendingAction)}
                           onChange={(event) =>
                             updateUser(user.id, {
-                              status: event.target.checked ? "Active" : "Inactive",
+                              status: event.target.checked
+                                ? "Active"
+                                : "Inactive",
                             })
                           }
                           aria-label={`Toggle status for ${user.name}`}
@@ -19539,9 +19643,11 @@ function AdminUserManagementPage() {
 
           <footer className="admin-users-pagination">
             <span>
-              Showing {pagedUsers.length ? (safePage - 1) * pageSize + 1 : 0}
-              {" "}to {pagedUsers.length ? (safePage - 1) * pageSize + pagedUsers.length : 0} of{" "}
-              {visibleUsers.length} entries
+              Showing {pagedUsers.length ? (safePage - 1) * pageSize + 1 : 0} to{" "}
+              {pagedUsers.length
+                ? (safePage - 1) * pageSize + pagedUsers.length
+                : 0}{" "}
+              of {visibleUsers.length} entries
             </span>
             <div>
               <button
@@ -19551,9 +19657,7 @@ function AdminUserManagementPage() {
               >
                 <MiniIcon path="M15 18l-6-6 6-6" />
               </button>
-              <span className="admin-pagination-current">
-                Page {safePage}
-              </span>
+              <span className="admin-pagination-current">Page {safePage}</span>
               <button
                 type="button"
                 onClick={() => setPage((value) => value + 1)}
@@ -19581,7 +19685,9 @@ function AdminUserManagementPage() {
                 <MiniIcon path="M6 6l12 12M18 6 6 18" />
               </button>
               <header>
-                <span>{editor.mode === "edit" ? "Edit Account" : "Invite User"}</span>
+                <span>
+                  {editor.mode === "edit" ? "Edit Account" : "Invite User"}
+                </span>
                 <h2>
                   {editor.mode === "edit"
                     ? `Manage ${editor.name}`
@@ -19675,13 +19781,18 @@ function AdminUserManagementPage() {
                     readOnly
                     value={`${getSearchAccuracyForAccount(
                       editor.role,
-                      (editor.plan || (editor.isPro ? "Pro" : "Free")) === "Pro",
+                      (editor.plan || (editor.isPro ? "Pro" : "Free")) ===
+                        "Pro",
                     )}%`}
                   />
                 </label>
               </div>
               <footer>
-                <button type="button" onClick={closeEditor} disabled={Boolean(pendingAction)}>
+                <button
+                  type="button"
+                  onClick={closeEditor}
+                  disabled={Boolean(pendingAction)}
+                >
                   Cancel
                 </button>
                 <button type="submit" disabled={Boolean(pendingAction)}>
@@ -19703,7 +19814,11 @@ function AdminUserManagementPage() {
               if (event.target === event.currentTarget) closeDeleteDialog();
             }}
           >
-            <section className="admin-user-modal admin-delete-modal" role="dialog" aria-modal="true">
+            <section
+              className="admin-user-modal admin-delete-modal"
+              role="dialog"
+              aria-modal="true"
+            >
               <button
                 type="button"
                 className="admin-user-modal-close"
@@ -19717,15 +19832,22 @@ function AdminUserManagementPage() {
                 <span>Delete Account</span>
                 <h2>Delete {deleteCandidate.name}?</h2>
                 <p>
-                  This removes the account from the SQL Server user list. The action is applied immediately.
+                  This removes the account from the SQL Server user list. The
+                  action is applied immediately.
                 </p>
               </header>
               <div className="admin-delete-summary">
                 <strong>{deleteCandidate.email}</strong>
-                <span>{deleteCandidate.role} / {deleteCandidate.status}</span>
+                <span>
+                  {deleteCandidate.role} / {deleteCandidate.status}
+                </span>
               </div>
               <footer>
-                <button type="button" onClick={closeDeleteDialog} disabled={Boolean(pendingAction)}>
+                <button
+                  type="button"
+                  onClick={closeDeleteDialog}
+                  disabled={Boolean(pendingAction)}
+                >
                   Cancel
                 </button>
                 <button
@@ -19753,9 +19875,7 @@ const normalizeAdminPayment = (payment) => ({
   plan: payment.plan || "Pro",
   priceLabel:
     payment.priceLabel ||
-    (payment.billingCycle === "monthly"
-      ? "$5 / month"
-      : "$49 / year"),
+    (payment.billingCycle === "monthly" ? "$5 / month" : "$49 / year"),
   status: payment.status || "PENDING",
   email: payment.email || "",
   userName: payment.userName || payment.name || payment.email || "Unknown user",
@@ -19784,7 +19904,9 @@ function AdminPaymentManagementPage() {
         return nextPayments;
       })
       .catch(() => {
-        setMessage("Payment data is unavailable. Check the auth/payment server.");
+        setMessage(
+          "Payment data is unavailable. Check the auth/payment server.",
+        );
         setPayments([]);
       });
   }, []);
@@ -19794,9 +19916,10 @@ function AdminPaymentManagementPage() {
   }, [loadPayments]);
 
   const visiblePayments = payments.filter((payment) => {
-    const matchesQuery = `${payment.orderCode} ${payment.email} ${payment.userName}`
-      .toLowerCase()
-      .includes(query.toLowerCase());
+    const matchesQuery =
+      `${payment.orderCode} ${payment.email} ${payment.userName}`
+        .toLowerCase()
+        .includes(query.toLowerCase());
     const matchesStatus =
       statusFilter === "All Statuses" || payment.status === statusFilter;
     return matchesQuery && matchesStatus;
@@ -19820,7 +19943,11 @@ function AdminPaymentManagementPage() {
       return;
     }
 
-    const popup = window.open(payment.checkoutUrl, "_blank", "noopener,noreferrer");
+    const popup = window.open(
+      payment.checkoutUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
     setMessage(
       popup
         ? `Opened PayOS checkout for payment ${payment.orderCode}.`
@@ -19830,7 +19957,9 @@ function AdminPaymentManagementPage() {
 
   const runPaymentAction = async (payment, action) => {
     if (action === "cancel" && !canCancelPayment(payment)) {
-      setMessage(`Payment ${payment.orderCode} is PAID; it cannot be cancelled.`);
+      setMessage(
+        `Payment ${payment.orderCode} is PAID; it cannot be cancelled.`,
+      );
       setPaymentActionNotes((current) => ({
         ...current,
         [payment.orderCode]: "Paid payments cannot be cancelled.",
@@ -19842,7 +19971,8 @@ function AdminPaymentManagementPage() {
     setMessage("");
     setPaymentActionNotes((current) => ({
       ...current,
-      [payment.orderCode]: action === "verify" ? "Checking PayOS..." : "Cancelling...",
+      [payment.orderCode]:
+        action === "verify" ? "Checking PayOS..." : "Cancelling...",
     }));
     try {
       const payload = await apiFetch(
@@ -19904,7 +20034,9 @@ function AdminPaymentManagementPage() {
               Dashboard <span>/</span> <strong>Payment Management</strong>
             </p>
             <h1>Payment Management</h1>
-            <small>Manage PayOS Pro upgrades, payment statuses, and plan activation</small>
+            <small>
+              Manage PayOS Pro upgrades, payment statuses, and plan activation
+            </small>
           </div>
         </header>
 
@@ -19919,7 +20051,11 @@ function AdminPaymentManagementPage() {
             ["Total Payments", payments.length, "All PayOS checkout links"],
             ["Paid", paymentCounts.PAID || 0, "Activated Pro accounts"],
             ["Pending", paymentCounts.PENDING || 0, "Waiting for checkout"],
-            ["Expired", paymentCounts.EXPIRED || 0, "15 minute checkout window"],
+            [
+              "Expired",
+              paymentCounts.EXPIRED || 0,
+              "15 minute checkout window",
+            ],
           ].map(([label, value, note]) => (
             <article className="admin-user-summary-card" key={label}>
               <div>
@@ -19993,7 +20129,9 @@ function AdminPaymentManagementPage() {
                       </span>
                     </td>
                     <td>
-                      <span className={`admin-payment-status ${payment.status.toLowerCase()}`}>
+                      <span
+                        className={`admin-payment-status ${payment.status.toLowerCase()}`}
+                      >
                         {payment.status}
                       </span>
                     </td>
@@ -20003,7 +20141,8 @@ function AdminPaymentManagementPage() {
                         : "N/A"}
                     </td>
                     <td>
-                      {payment.status === "PENDING" && payment.expiresInSeconds > 0
+                      {payment.status === "PENDING" &&
+                      payment.expiresInSeconds > 0
                         ? `${Math.ceil(payment.expiresInSeconds / 60)} min left`
                         : payment.expiresAt
                           ? new Date(payment.expiresAt).toLocaleString()
@@ -20036,7 +20175,10 @@ function AdminPaymentManagementPage() {
                           aria-label={`Check payment ${payment.orderCode}`}
                         >
                           {loadingOrderCode === payment.orderCode ? (
-                            <span className="admin-payment-action-spinner" aria-hidden="true" />
+                            <span
+                              className="admin-payment-action-spinner"
+                              aria-hidden="true"
+                            />
                           ) : (
                             <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
                           )}
@@ -20118,7 +20260,9 @@ function AdminPlanManagementPage() {
     try {
       const savedSettings = await savePlanPolicyToBackend(settings);
       setSettings(savedSettings);
-      setMessage("Plan policy saved to backend and will be used for pricing, checkout expiry, and enforced accuracy.");
+      setMessage(
+        "Plan policy saved to backend and will be used for pricing, checkout expiry, and enforced accuracy.",
+      );
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -20150,7 +20294,10 @@ function AdminPlanManagementPage() {
               Dashboard <span>/</span> <strong>Plan Management</strong>
             </p>
             <h1>Plan Management</h1>
-            <small>Manage Pro pricing display, role accuracy, and checkout expiry policy</small>
+            <small>
+              Manage Pro pricing display, role accuracy, and checkout expiry
+              policy
+            </small>
           </div>
         </header>
 
@@ -20195,7 +20342,9 @@ function AdminPlanManagementPage() {
                   type="number"
                   min="1"
                   value={settings.monthlyPrice}
-                  onChange={(event) => updateField("monthlyPrice", event.target.value)}
+                  onChange={(event) =>
+                    updateField("monthlyPrice", event.target.value)
+                  }
                 />
               </label>
               <label>
@@ -20292,14 +20441,14 @@ function AdminPlanManagementPage() {
 
 const normalizeAdminNotification = (notification) => ({
   id: notification.id || `admin-notification-${Date.now()}`,
-  type: notification.type || notification.notificationType || "SYSTEM ALERT",
+  type: notification.type || "SYSTEM ALERT",
   title: notification.title || "NOTICE:",
-  text: notification.text || notification.message || "",
+  text: notification.text || "",
   recipientRole: notification.recipientRole || "All",
   recipientEmail: notification.recipientEmail || "",
   route: notification.route || "",
   createdAt: notification.createdAt || new Date().toISOString(),
-  unread: notification.unread ?? notification.isRead === false,
+  unread: notification.unread !== false,
 });
 
 const getNotificationRouteForRole = (role) => {
@@ -20309,10 +20458,11 @@ const getNotificationRouteForRole = (role) => {
 };
 
 function AdminNotificationManagementPage() {
-  const [notifications, setNotifications] = React.useState([]);
+  const [notifications, setNotifications] = React.useState(() =>
+    getPublicationReviewNotifications().map(normalizeAdminNotification),
+  );
   const [roleFilter, setRoleFilter] = React.useState("All");
   const [message, setMessage] = React.useState("");
-  const [editingNotificationId, setEditingNotificationId] = React.useState("");
   const [form, setForm] = React.useState({
     type: "SYSTEM ALERT",
     title: "NOTICE:",
@@ -20321,21 +20471,10 @@ function AdminNotificationManagementPage() {
     route: "/student-notifications",
   });
 
-  const loadNotifications = React.useCallback(async () => {
-    try {
-      const query = roleFilter === "All" ? "" : `?role=${encodeURIComponent(roleFilter)}`;
-      const payload = await apiFetch(`/api/admin/notifications${query}`, {
-        auth: true,
-      });
-      setNotifications(unwrapList(payload).map(normalizeAdminNotification));
-    } catch (error) {
-      setMessage(error.message);
-    }
-  }, [roleFilter]);
-
-  React.useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+  const persistNotifications = (nextNotifications) => {
+    setNotifications(nextNotifications);
+    setPublicationReviewNotifications(nextNotifications);
+  };
 
   const visibleNotifications = notifications.filter(
     (notification) =>
@@ -20351,40 +20490,6 @@ function AdminNotificationManagementPage() {
       return;
     }
 
-    if (editingNotificationId) {
-      try {
-        const payload = await apiFetch(`/api/admin/notifications/${editingNotificationId}`, {
-          method: "PUT",
-          auth: true,
-          body: {
-            title: form.title,
-            message: form.text.trim(),
-            notificationType: form.type,
-            route: form.route,
-          },
-        });
-        setNotifications((current) =>
-          current.map((notification) =>
-            notification.id === editingNotificationId
-              ? normalizeAdminNotification(payload.notification || notification)
-              : notification,
-          ),
-        );
-        setEditingNotificationId("");
-        setForm({
-          type: "SYSTEM ALERT",
-          title: "NOTICE:",
-          text: "",
-          recipientRole: "All",
-          route: "/student-notifications",
-        });
-        setMessage("Notification updated.");
-      } catch (error) {
-        setMessage(error.message);
-      }
-      return;
-    }
-
     try {
       const payload = await apiFetch("/api/admin/notifications/broadcast", {
         method: "POST",
@@ -20392,75 +20497,39 @@ function AdminNotificationManagementPage() {
         body: {
           recipientRole: form.recipientRole,
           notificationType: form.type,
-          title: form.title,
-          message: form.text.trim(),
-          route: form.route,
+          message: `${form.title} ${form.text.trim()}`,
         },
       });
-      await loadNotifications();
+      const nextNotification = normalizeAdminNotification({
+        id: `admin-broadcast-${Date.now()}`,
+        ...form,
+        text: form.text.trim(),
+        createdAt: new Date().toISOString(),
+        unread: true,
+      });
+      persistNotifications([nextNotification, ...notifications]);
       setForm((current) => ({ ...current, text: "" }));
-      setMessage(`Notification broadcast saved for ${payload.count || 0} users.`);
-    } catch (error) {
-      setMessage(error.message);
-    }
-  };
-
-  const deleteNotification = async (id) => {
-    try {
-      await apiFetch(`/api/admin/notifications/${id}`, {
-        method: "DELETE",
-        auth: true,
-      });
-      setNotifications((current) => current.filter((item) => item.id !== id));
-      setMessage("Notification deleted.");
-    } catch (error) {
-      setMessage(error.message);
-    }
-  };
-
-  const markAllRead = async () => {
-    try {
-      const query = roleFilter === "All" ? "" : `?role=${encodeURIComponent(roleFilter)}`;
-      await apiFetch(`/api/admin/notifications/read-all${query}`, {
-        method: "PUT",
-        auth: true,
-      });
-      setNotifications((current) =>
-        current.map((item) => ({ ...item, unread: false })),
+      setMessage(
+        `Notification broadcast saved for ${payload.count || 0} users.`,
       );
-      setMessage("All notifications marked as read.");
     } catch (error) {
       setMessage(error.message);
     }
   };
 
-  const editNotification = (notification) => {
-    setEditingNotificationId(notification.id);
-    setForm({
-      type: notification.type,
-      title: notification.title,
-      text: notification.text,
-      recipientRole: notification.recipientRole,
-      route: notification.route || getNotificationRouteForRole(notification.recipientRole),
-    });
-    setMessage("Editing notification.");
+  const deleteNotification = (id) => {
+    const nextNotifications = notifications.filter((item) => item.id !== id);
+    persistNotifications(nextNotifications);
+    setMessage("Notification deleted.");
   };
 
-  const exportNotifications = () => {
-    downloadXlsxFile("scholartrend-admin-notifications.xlsx", {
-      Notifications: [
-        ["Type", "Title", "Text", "Role", "Route", "Created At", "Unread"],
-        ...notifications.map((notification) => [
-          notification.type,
-          notification.title,
-          notification.text,
-          notification.recipientRole,
-          notification.route,
-          notification.createdAt,
-          notification.unread ? "Yes" : "No",
-        ]),
-      ],
-    });
+  const markAllRead = () => {
+    const nextNotifications = notifications.map((item) => ({
+      ...item,
+      unread: false,
+    }));
+    persistNotifications(nextNotifications);
+    setMessage("All notifications marked as read.");
   };
 
   return (
@@ -20487,7 +20556,11 @@ function AdminNotificationManagementPage() {
 
         <section className="admin-users-summary-grid admin-notification-summary-grid">
           {[
-            ["Total Notifications", notifications.length, "All user-facing notices"],
+            [
+              "Total Notifications",
+              notifications.length,
+              "All user-facing notices",
+            ],
             [
               "Unread",
               notifications.filter((item) => item.unread).length,
@@ -20495,7 +20568,8 @@ function AdminNotificationManagementPage() {
             ],
             [
               "Broadcasts",
-              notifications.filter((item) => item.recipientRole === "All").length,
+              notifications.filter((item) => item.recipientRole === "All")
+                .length,
               "Sent to all roles",
             ],
           ].map(([label, value, note]) => (
@@ -20511,8 +20585,11 @@ function AdminNotificationManagementPage() {
         </section>
 
         <div className="admin-notification-layout">
-          <form className="admin-notification-form" onSubmit={createNotification}>
-            <h2>{editingNotificationId ? "Edit Notification" : "Create Notification"}</h2>
+          <form
+            className="admin-notification-form"
+            onSubmit={createNotification}
+          >
+            <h2>Create Notification</h2>
             <label>
               <span>Target role</span>
               <select
@@ -20536,7 +20613,10 @@ function AdminNotificationManagementPage() {
               <select
                 value={form.type}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, type: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    type: event.target.value,
+                  }))
                 }
               >
                 <option>SYSTEM ALERT</option>
@@ -20550,7 +20630,10 @@ function AdminNotificationManagementPage() {
               <input
                 value={form.title}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, title: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
                 }
               />
             </label>
@@ -20559,7 +20642,10 @@ function AdminNotificationManagementPage() {
               <input
                 value={form.route}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, route: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    route: event.target.value,
+                  }))
                 }
                 placeholder="/student-notifications"
               />
@@ -20570,31 +20656,15 @@ function AdminNotificationManagementPage() {
                 rows={5}
                 value={form.text}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, text: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    text: event.target.value,
+                  }))
                 }
                 placeholder="Write an announcement for users..."
               />
             </label>
-            <button type="submit">
-              {editingNotificationId ? "Save Notification" : "Publish Notification"}
-            </button>
-            {editingNotificationId ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingNotificationId("");
-                  setForm({
-                    type: "SYSTEM ALERT",
-                    title: "NOTICE:",
-                    text: "",
-                    recipientRole: "All",
-                    route: "/student-notifications",
-                  });
-                }}
-              >
-                Cancel Edit
-              </button>
-            ) : null}
+            <button type="submit">Publish Notification</button>
           </form>
 
           <section className="admin-users-panel admin-notification-panel">
@@ -20610,9 +20680,6 @@ function AdminNotificationManagementPage() {
               </select>
               <button type="button" onClick={markAllRead}>
                 Mark All Read
-              </button>
-              <button type="button" onClick={exportNotifications}>
-                Export
               </button>
             </div>
 
@@ -20632,14 +20699,6 @@ function AdminNotificationManagementPage() {
                       {new Date(notification.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className="admin-user-action"
-                    onClick={() => editNotification(notification)}
-                    title="Edit notification"
-                  >
-                    <MiniIcon path="M4 16.5V20h3.5L18.8 8.7l-3.5-3.5L4 16.5ZM14.5 6l3.5 3.5" />
-                  </button>
                   <button
                     type="button"
                     className="admin-user-action delete"
@@ -20847,14 +20906,16 @@ function AdminSystemLogsPage() {
     visibleLogs.length === 0
       ? 100
       : Math.round(
-          ((visibleLogs.length - visibleErrorCount) / visibleLogs.length) * 1000,
+          ((visibleLogs.length - visibleErrorCount) / visibleLogs.length) *
+            1000,
         ) / 10;
   const getLogSearchText = (log) =>
     `${log.event} ${log.detail} ${log.module} ${log.actor} ${log.code}`.toLowerCase();
   const getLogRoute = (log) => {
     const text = getLogSearchText(log);
     if (/payment|payos|checkout|plan/.test(text)) return "/admin-payments";
-    if (/user|auth|login|role|account/.test(text)) return "/admin-user-management";
+    if (/user|auth|login|role|account/.test(text))
+      return "/admin-user-management";
     if (/sync|semantic scholar|openalex|worker/.test(text)) {
       return "/admin-sync-management";
     }
@@ -20869,9 +20930,12 @@ function AdminSystemLogsPage() {
   );
   const activeAlert = alertLogs[0] || null;
   const getHealthState = (pattern) => {
-    const relatedLogs = logs.filter((log) => pattern.test(getLogSearchText(log)));
+    const relatedLogs = logs.filter((log) =>
+      pattern.test(getLogSearchText(log)),
+    );
     if (relatedLogs.some((log) => log.severity === "Error")) return "Critical";
-    if (relatedLogs.some((log) => log.severity === "Warning")) return "Degraded";
+    if (relatedLogs.some((log) => log.severity === "Warning"))
+      return "Degraded";
     return "Operational";
   };
   const healthRows = [
@@ -21065,7 +21129,7 @@ function AdminSystemLogsPage() {
               key={item.label}
             >
               <div>
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
                 <MiniIcon path={item.icon} />
               </div>
               <strong>{item.value}</strong>
@@ -21108,11 +21172,17 @@ function AdminSystemLogsPage() {
                   <option key={option}>{option}</option>
                 ))}
               </select>
-              <button type="button" aria-label="Refresh logs" onClick={refreshLogs}>
+              <button
+                type="button"
+                aria-label="Refresh logs"
+                onClick={refreshLogs}
+              >
                 <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5" />
               </button>
             </div>
-            {logMessage ? <p className="admin-logs-message">{logMessage}</p> : null}
+            {logMessage ? (
+              <p className="admin-logs-message">{logMessage}</p>
+            ) : null}
 
             <div className="admin-logs-table-wrap">
               <table className="admin-logs-table">
@@ -21127,8 +21197,8 @@ function AdminSystemLogsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedLogs.map((log, index) => (
-                    <tr key={`${log.code}-${log.time}-${index}`}>
+                  {pagedLogs.map((log) => (
+                    <tr key={`${log.code}-${log.time}`}>
                       <td>{log.time}</td>
                       <td>
                         <strong>{log.event}</strong>
@@ -21163,8 +21233,8 @@ function AdminSystemLogsPage() {
 
             <footer className="admin-logs-pagination">
               <span>
-                Showing {pagedLogs.length ? (safePage - 1) * pageSize + 1 : 0} to{" "}
-                {(safePage - 1) * pageSize + pagedLogs.length} of{" "}
+                Showing {pagedLogs.length ? (safePage - 1) * pageSize + 1 : 0}{" "}
+                to {(safePage - 1) * pageSize + pagedLogs.length} of{" "}
                 {visibleLogs.length} events
               </span>
               <div>
@@ -21175,7 +21245,10 @@ function AdminSystemLogsPage() {
                 >
                   <MiniIcon path="M15 18l-6-6 6-6" />
                 </button>
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => (
+                {Array.from(
+                  { length: totalPages },
+                  (_, index) => index + 1,
+                ).map((number) => (
                   <button
                     type="button"
                     className={safePage === number ? "active" : ""}
@@ -21188,7 +21261,9 @@ function AdminSystemLogsPage() {
                 <button
                   type="button"
                   disabled={safePage === totalPages}
-                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  onClick={() =>
+                    setPage((value) => Math.min(totalPages, value + 1))
+                  }
                 >
                   <MiniIcon path="M9 18l6-6-6-6" />
                 </button>
@@ -21222,7 +21297,9 @@ function AdminSystemLogsPage() {
             >
               <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
               <div>
-                <h2>{alertLogs.length ? "Attention Needed" : "No Active Alerts"}</h2>
+                <h2>
+                  {alertLogs.length ? "Attention Needed" : "No Active Alerts"}
+                </h2>
                 <p>
                   {activeAlert
                     ? `${alertLogs.length} alert${alertLogs.length === 1 ? "" : "s"} need admin review.`
@@ -21230,12 +21307,15 @@ function AdminSystemLogsPage() {
                 </p>
                 {alertLogs.length ? (
                   <div className="admin-log-alert-list">
-                    {alertLogs.map((alert, alertIndex) => (
+                    {alertLogs.map((alert) => (
                       <article
                         className={`admin-log-alert-item ${alert.severity.toLowerCase()}`}
-                        key={`${alert.code}-${alert.time}-${alertIndex}`}
+                        key={`${alert.code}-${alert.time}`}
                       >
-                        <button type="button" onClick={() => viewAlertLog(alert)}>
+                        <button
+                          type="button"
+                          onClick={() => viewAlertLog(alert)}
+                        >
                           <strong>{alert.event}</strong>
                           <span>
                             {alert.module} / {alert.code}
@@ -21283,7 +21363,9 @@ function PaymentReturnPage() {
   React.useEffect(() => {
     if (cancelled) {
       setStatus("cancelled");
-      setMessage("Payment was cancelled. Your account is still on the Free plan.");
+      setMessage(
+        "Payment was cancelled. Your account is still on the Free plan.",
+      );
       return;
     }
 
@@ -21294,7 +21376,9 @@ function PaymentReturnPage() {
     }
 
     let cancelledEffect = false;
-    apiFetch(`/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`)
+    apiFetch(
+      `/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`,
+    )
       .then((payload) => {
         if (cancelledEffect) return;
         if (payload.status === "PAID" && payload.user) {
@@ -21349,110 +21433,62 @@ function PaymentReturnPage() {
   );
 }
 
-const legalPageCopy = {
-  "/docs": {
-    title: "Documentation",
-    eyebrow: "Developer Resources",
-    body:
-      "Use the REST API for publication search, trend metrics, bookmarks, notifications, payments, and admin sync operations.",
-    bullets: [
-      "Search: GET /api/publications/search?keyword=ai&source=Semantic%20Scholar",
-      "Reports: POST /api/dashboard/export or export locally from Reports.",
-      "Admin sync: POST /api/admin/sync/semantic-scholar and /api/admin/sync/openalex.",
-    ],
-  },
-  "/blog": {
-    title: "ScholarTrend Blog",
-    eyebrow: "Research Notes",
-    body:
-      "Product notes, research workflow updates, and dataset sync changes are collected here for the project team.",
-    bullets: ["Trend analytics releases", "Semantic Scholar sync notes", "Publication review workflow changes"],
-  },
-  "/guides": {
-    title: "Guides",
-    eyebrow: "Workflow Playbooks",
-    body:
-      "Step-by-step workflows for finding papers, comparing topic velocity, exporting reports, and managing submissions.",
-    bullets: ["Search and save publications", "Build an Excel trend report", "Review publication submissions"],
-  },
-  "/support": {
-    title: "Support",
-    eyebrow: "Help Center",
-    body:
-      "For local development, create an admin support ticket from the Admin Support panel. For user issues, collect route, account role, and error message.",
-    bullets: ["Check System Logs", "Run Admin Health Check", "Attach browser console details"],
-  },
-  "/about": {
-    title: "About ScholarTrend",
-    eyebrow: "Company",
-    body:
-      "ScholarTrend is a research intelligence workspace for academic discovery, publication trend tracking, and institutional analytics.",
-    bullets: ["Semantic search", "Trend dashboards", "Publication governance"],
-  },
-  "/careers": {
-    title: "Careers",
-    eyebrow: "Team",
-    body:
-      "ScholarTrend roles focus on scientific data engineering, research UX, and applied AI for academic discovery.",
-    bullets: ["Frontend engineering", "Data ingestion", "Research product design"],
-  },
-  "/contact": {
-    title: "Contact",
-    eyebrow: "Get in Touch",
-    body:
-      "Contact the project administrators through the Support page or use admin notifications for internal announcements.",
-    bullets: ["admin@university.edu", "Support tickets are stored locally in development", "System logs keep audit context"],
-  },
-  "/privacy": {
-    title: "Privacy Policy",
-    eyebrow: "Legal",
-    body:
-      "ScholarTrend stores account, bookmark, notification, and report preferences to provide a personalized research workspace.",
-    bullets: ["Local demo data stays in browser storage", "Backend data follows API authorization", "Do not commit real .env secrets"],
-  },
-  "/terms": {
-    title: "Terms of Service",
-    eyebrow: "Legal",
-    body:
-      "Use ScholarTrend for academic discovery and internal project workflows. Respect publisher rights and external API terms.",
-    bullets: ["Cite external sources", "Do not misuse API quotas", "Admins are responsible for moderation decisions"],
-  },
-};
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
 
-function StaticInfoPage({ path }) {
-  const page = legalPageCopy[path] || legalPageCopy["/docs"];
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
 
-  return (
-    <main className="page-shell static-info-page">
-      <header className="site-header" aria-label="Primary navigation">
-        <Brand />
-        <nav className="nav-actions" aria-label="Account">
-          <a className="login-link" href="/" onClick={navTo("/")}>
-            Home
-          </a>
-          <a className="primary-button compact" href="/register" onClick={navTo("/register")}>
-            Get Started
-          </a>
-        </nav>
-      </header>
-      <section className="static-info-content">
-        <span>{page.eyebrow}</span>
-        <h1>{page.title}</h1>
-        <p>{page.body}</p>
-        <div className="static-info-list">
-          {page.bullets.map((item) => (
-            <article key={item}>
-              <MiniIcon path="M4.5 12.5 9 17l10.5-10" />
-              <strong>{item}</strong>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
-  );
+  componentDidCatch(error, info) {
+    appendClientSystemLog({
+      event: "React render error",
+      detail:
+        `${error?.message || "Unknown render error"} ${info?.componentStack || ""}`.slice(
+          0,
+          400,
+        ),
+      module: getClientLogModule(window.location.pathname),
+      severity: "Error",
+      actor: "browser@client",
+      code: getClientLogCode("System", "REACT"),
+    });
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="student-app">
+          <section className="student-main">
+            <div className="student-content">
+              <section className="search-results-area">
+                <h1>Something went wrong</h1>
+                <p>{this.state.error.message}</p>
+                <button
+                  type="button"
+                  className="new-project"
+                  onClick={() => {
+                    this.setState({ error: null });
+                    goToRoute("/");
+                  }}
+                >
+                  Return Home
+                </button>
+              </section>
+            </div>
+          </section>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
-export default function App() {
+function AppRoutes() {
   const [, forceRender] = React.useReducer((value) => value + 1, 0);
   const path = window.location.pathname;
 
@@ -21474,7 +21510,8 @@ export default function App() {
           let detail = `${requestUrl}: HTTP ${response.status}`;
           try {
             const clonedResponse = response.clone();
-            const contentType = clonedResponse.headers.get("content-type") || "";
+            const contentType =
+              clonedResponse.headers.get("content-type") || "";
             const payload = contentType.includes("application/json")
               ? await clonedResponse.json()
               : await clonedResponse.text();
@@ -21483,7 +21520,8 @@ export default function App() {
               payload?.error ||
               payload?.title ||
               (typeof payload === "string" ? payload : "");
-            if (message) detail = `${detail} - ${String(message).slice(0, 180)}`;
+            if (message)
+              detail = `${detail} - ${String(message).slice(0, 180)}`;
           } catch {
             // Keep the status-only message if the response body cannot be read.
           }
@@ -21569,7 +21607,10 @@ export default function App() {
       window.removeEventListener("scholartrend:navigate", forceRender);
       window.removeEventListener("popstate", forceRender);
       window.removeEventListener("error", handleClientError);
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.removeEventListener(
+        "unhandledrejection",
+        handleUnhandledRejection,
+      );
       window.fetch = originalFetch;
       window.console.error = originalConsoleError;
     };
@@ -21578,7 +21619,6 @@ export default function App() {
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/payment-return") return <PaymentReturnPage />;
-  if (legalPageCopy[path]) return <StaticInfoPage path={path} />;
   if (path === "/admin-dashboard") return <AdminDashboard />;
   if (path === "/admin-sync-management") return <AdminSyncManagementPage />;
   if (path === "/admin-user-management") return <AdminUserManagementPage />;
@@ -21601,8 +21641,7 @@ export default function App() {
     return <PublicationSubmissionPage role="Lecturer" />;
   if (path === "/lecturer-publication")
     return <StudentPublicationDetailPage role="lecturer" />;
-  if (path === "/lecturer-bookmarks")
-    return <BookmarksPage role="lecturer" />;
+  if (path === "/lecturer-bookmarks") return <BookmarksPage role="lecturer" />;
   if (path === "/lecturer-notifications")
     return <NotificationsPage role="lecturer" />;
   if (path === "/lecturer-profile") return <ProfilePage role="lecturer" />;
@@ -21633,4 +21672,12 @@ export default function App() {
   if (path === "/student-profile") return <ProfilePage />;
   if (path === "/student-publication") return <StudentPublicationDetailPage />;
   return <LandingPage />;
+}
+
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppRoutes />
+    </AppErrorBoundary>
+  );
 }

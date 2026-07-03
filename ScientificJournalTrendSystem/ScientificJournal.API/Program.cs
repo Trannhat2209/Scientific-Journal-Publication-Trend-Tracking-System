@@ -128,6 +128,11 @@ if (hangfireEnabled)
             job => job.ExecuteAsync(),
             Cron.Daily);
 
+        recurringJobManager.AddOrUpdate<OpenAlexSyncJob>(
+            "openalex-sync",
+            job => job.ExecuteAsync(),
+            Cron.Daily);
+
         recurringJobManager.AddOrUpdate<RecommendationJob>(
             "recommendation-processing",
             job => job.ExecuteAsync(),

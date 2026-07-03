@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
@@ -23,15 +24,18 @@ public class PublicationsController : ControllerBase
     private const double SimilarityLimitPercent = 50.0;
     private readonly IPublicationService _publicationService;
     private readonly ISerpApiScholarSimilarityService _scholarSimilarityService;
+    private readonly IRelationshipNetworkService _relationshipNetworkService;
     private readonly AppDbContext _context;
 
     public PublicationsController(
         IPublicationService publicationService,
         ISerpApiScholarSimilarityService scholarSimilarityService,
+        IRelationshipNetworkService relationshipNetworkService,
         AppDbContext context)
     {
         _publicationService = publicationService;
         _scholarSimilarityService = scholarSimilarityService;
+        _relationshipNetworkService = relationshipNetworkService;
         _context = context;
     }
 
@@ -56,6 +60,100 @@ public class PublicationsController : ControllerBase
     {
         var result = await _publicationService.GetPublicationsStatisticsAsync();
         return Ok(result);
+    }
+
+    [HttpGet("autocomplete")]
+    public async Task<IActionResult> Autocomplete([FromQuery] string? q, [FromQuery] int limit = 8)
+    {
+        limit = Math.Clamp(limit, 1, 20);
+        var term = (q ?? string.Empty).Trim();
+
+        var keywordQuery = _context.Keywords.AsNoTracking().AsQueryable();
+        var titleQuery = _context.Publications.AsNoTracking().Where(p => !p.IsDeleted);
+        var authorQuery = _context.Authors.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            var normalizedTerm = term.ToLower();
+            keywordQuery = keywordQuery.Where(k => k.Term.Contains(term) || k.NormalizedTerm.Contains(normalizedTerm));
+            titleQuery = titleQuery.Where(p => p.Title.Contains(term));
+            authorQuery = authorQuery.Where(a => a.Name.Contains(term));
+        }
+
+        var keywords = await keywordQuery
+            .OrderBy(k => k.Term)
+            .Select(k => new { label = k.Term, type = "keyword" })
+            .Take(limit)
+            .ToListAsync();
+
+        var titles = await titleQuery
+            .OrderByDescending(p => p.CitationCount)
+            .Select(p => new { label = p.Title, type = "publication" })
+            .Take(Math.Max(0, limit - keywords.Count))
+            .ToListAsync();
+
+        var authors = await authorQuery
+            .OrderBy(a => a.Name)
+            .Select(a => new { label = a.Name, type = "author" })
+            .Take(Math.Max(0, limit - keywords.Count - titles.Count))
+            .ToListAsync();
+
+        return Ok(new { items = keywords.Concat(titles).Concat(authors) });
+    }
+
+    [HttpGet("{id:int}/network")]
+    public async Task<IActionResult> GetCitationNetwork(int id, [FromQuery] double threshold = 0.3)
+    {
+        var result = await _relationshipNetworkService.GetRelationshipNetworkAsync(id, threshold);
+        return Ok(result);
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> ExportReferences(
+        [FromQuery] string format = "bibtex",
+        [FromQuery] string? q = null,
+        [FromQuery] string? ids = null,
+        [FromQuery] int limit = 50)
+    {
+        limit = Math.Clamp(limit, 1, 200);
+        var idSet = SplitCsv(ids ?? string.Empty)
+            .Select(value => int.TryParse(value, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .ToHashSet();
+
+        var query = _context.Publications
+            .AsNoTracking()
+            .Include(p => p.Journal)
+            .Include(p => p.PublicationAuthors).ThenInclude(pa => pa.Author)
+            .Where(p => !p.IsDeleted)
+            .AsQueryable();
+
+        if (idSet.Count > 0)
+        {
+            query = query.Where(p => idSet.Contains(p.Id));
+        }
+        else if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(p => p.Title.Contains(term) ||
+                                     (p.Abstract != null && p.Abstract.Contains(term)) ||
+                                     p.PublicationAuthors.Any(pa => pa.Author != null && pa.Author.Name.Contains(term)));
+        }
+
+        var publications = await query
+            .OrderByDescending(p => p.Year)
+            .ThenByDescending(p => p.CitationCount)
+            .Take(limit)
+            .ToListAsync();
+
+        var normalizedFormat = format.Trim().ToLowerInvariant();
+        var content = normalizedFormat == "ris" ? BuildRis(publications) : BuildBibTex(publications);
+        var contentType = normalizedFormat == "ris"
+            ? "application/x-research-info-systems; charset=utf-8"
+            : "application/x-bibtex; charset=utf-8";
+        var extension = normalizedFormat == "ris" ? "ris" : "bib";
+
+        return File(Encoding.UTF8.GetBytes(content), contentType, $"scholartrend-references.{extension}");
     }
 
     [HttpPost("similarity-check")]
@@ -345,6 +443,68 @@ public class PublicationsController : ControllerBase
         value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Distinct(StringComparer.OrdinalIgnoreCase);
+
+    private static string BuildBibTex(IEnumerable<Publication> publications)
+    {
+        var builder = new StringBuilder();
+        foreach (var publication in publications)
+        {
+            var authors = string.Join(" and ", publication.PublicationAuthors
+                .OrderBy(pa => pa.AuthorOrder)
+                .Select(pa => pa.Author?.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name)));
+
+            builder.AppendLine($"@article{{{CreateReferenceKey(publication)},");
+            builder.AppendLine($"  title = {{{EscapeBibTex(publication.Title)}}},");
+            if (!string.IsNullOrWhiteSpace(authors)) builder.AppendLine($"  author = {{{EscapeBibTex(authors)}}},");
+            if (!string.IsNullOrWhiteSpace(publication.Journal?.Name)) builder.AppendLine($"  journal = {{{EscapeBibTex(publication.Journal.Name)}}},");
+            builder.AppendLine($"  year = {{{publication.Year}}},");
+            if (!string.IsNullOrWhiteSpace(publication.DOI)) builder.AppendLine($"  doi = {{{EscapeBibTex(publication.DOI)}}},");
+            builder.AppendLine($"  note = {{{publication.CitationCount} citations; source: {EscapeBibTex(publication.SourceApi ?? "ScholarTrend")}}}");
+            builder.AppendLine("}");
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildRis(IEnumerable<Publication> publications)
+    {
+        var builder = new StringBuilder();
+        foreach (var publication in publications)
+        {
+            builder.AppendLine("TY  - JOUR");
+            builder.AppendLine($"TI  - {publication.Title}");
+            foreach (var author in publication.PublicationAuthors
+                         .OrderBy(pa => pa.AuthorOrder)
+                         .Select(pa => pa.Author?.Name)
+                         .Where(name => !string.IsNullOrWhiteSpace(name)))
+            {
+                builder.AppendLine($"AU  - {author}");
+            }
+            if (!string.IsNullOrWhiteSpace(publication.Journal?.Name)) builder.AppendLine($"JO  - {publication.Journal.Name}");
+            builder.AppendLine($"PY  - {publication.Year}");
+            if (!string.IsNullOrWhiteSpace(publication.DOI)) builder.AppendLine($"DO  - {publication.DOI}");
+            builder.AppendLine($"N1  - {publication.CitationCount} citations; source: {publication.SourceApi ?? "ScholarTrend"}");
+            builder.AppendLine("ER  -");
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    private static string CreateReferenceKey(Publication publication)
+    {
+        var firstAuthor = publication.PublicationAuthors
+            .OrderBy(pa => pa.AuthorOrder)
+            .Select(pa => pa.Author?.Name)
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? "scholartrend";
+        var authorKey = new string(firstAuthor.Where(char.IsLetterOrDigit).Take(18).ToArray());
+        return $"{authorKey}{publication.Year}{publication.Id}";
+    }
+
+    private static string EscapeBibTex(string value) =>
+        value.Replace("\\", "\\\\").Replace("{", "\\{").Replace("}", "\\}");
 
     private string ResolveSubmitterEmail(string requestEmail)
     {

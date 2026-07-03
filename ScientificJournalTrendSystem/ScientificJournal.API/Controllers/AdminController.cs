@@ -65,6 +65,24 @@ public class AdminController : ControllerBase
             .Select(g => new { role = g.Key.ToString(), count = g.Count() })
             .ToListAsync();
 
+        var userGrowth = await _context.Users
+            .Where(u => !u.IsDeleted)
+            .GroupBy(u => new { u.CreatedAt.Year, u.CreatedAt.Month })
+            .Select(g => new
+            {
+                year = g.Key.Year,
+                month = g.Key.Month,
+                count = g.Count()
+            })
+            .OrderByDescending(x => x.year)
+            .ThenByDescending(x => x.month)
+            .Take(12)
+            .ToListAsync();
+        userGrowth = userGrowth
+            .OrderBy(x => x.year)
+            .ThenBy(x => x.month)
+            .ToList();
+
         return Ok(new
         {
             totalUsers,
@@ -72,6 +90,7 @@ public class AdminController : ControllerBase
             totalKeywords = await _context.Keywords.CountAsync(),
             lastSync,
             roleDistribution,
+            userGrowth,
             apiHealth = new[]
             {
                 new { label = "Semantic Scholar", value = "Ready via Graph API" },
@@ -626,6 +645,20 @@ public class AdminController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("sync-config")]
+    public async Task<IActionResult> GetAdminSyncConfig()
+    {
+        return Ok(await GetAdminStatePayloadAsync("sync-config", GetDefaultAdminSyncConfig()));
+    }
+
+    [HttpPut("sync-config")]
+    public async Task<IActionResult> SaveAdminSyncConfig([FromBody] AdminStateRequestDto request)
+    {
+        var result = await UpsertAdminStateAsync("sync-config", request.Value, GetDefaultAdminSyncConfig());
+        await LogAuditAsync("Sync Management", "Saved sync configuration.", "Success", "ADMIN-SYNC-CONFIG-SAVE");
+        return Ok(result);
+    }
+
     [HttpGet("profile")]
     public async Task<IActionResult> GetAdminProfile()
     {
@@ -1042,6 +1075,18 @@ public class AdminController : ControllerBase
         {
           "healthCheckedAt": "not checked",
           "message": ""
+        }
+        """);
+
+    private static JsonElement GetDefaultAdminSyncConfig() => ParseJsonElement("""
+        {
+          "sources": {
+            "semantic": true,
+            "openAlex": true
+          },
+          "keywords": ["Machine Learning", "NLP"],
+          "cron": "0 0 * * *",
+          "rateLimit": 120
         }
         """);
 

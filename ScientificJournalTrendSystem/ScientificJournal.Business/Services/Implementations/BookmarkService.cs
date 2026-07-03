@@ -37,6 +37,7 @@ public class BookmarkService : IBookmarkService
             Year = b.Publication.Year,
             DOI = b.Publication.DOI,
             JournalName = b.Publication.Journal?.Name ?? string.Empty,
+            SourceApi = b.Publication.SourceApi,
             CitationCount = b.Publication.CitationCount,
             Authors = b.Publication.PublicationAuthors?.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList() ?? new List<string>(),
             Keywords = b.Publication.PublicationKeywords?.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList() ?? new List<string>()

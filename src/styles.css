@@ -100,19 +100,46 @@
   display: inline-flex;
   min-height: 28px;
   align-items: center;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid rgba(99, 102, 241, 0.28);
   border-radius: 999px;
   padding: 0 11px;
-  color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.12);
+  color: #4f46e5;
+  background: #eef2ff;
   font-size: 12px;
   font-weight: 800;
 }
 
 .result-accuracy-row span.pro {
-  border-color: rgba(16, 185, 129, 0.34);
-  color: #a7f3d0;
-  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.32);
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.result-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.result-source-links a {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.12);
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.result-source-links a:hover {
+  border-color: rgba(6, 182, 212, 0.45);
+  color: #ffffff;
+  background: rgba(6, 182, 212, 0.14);
 }
 
 .researcher-search-accuracy {
@@ -597,7 +624,7 @@
 
 .admin-notification-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) repeat(2, 34px);
   align-items: center;
   gap: 16px;
   border-top: 1px solid #e5e7eb;
@@ -626,6 +653,38 @@
   margin-top: 6px;
   color: #64748b;
   font-size: 12px;
+}
+
+.admin-notification-row .admin-user-action {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #475569;
+  background: transparent;
+  cursor: pointer;
+}
+
+.admin-notification-row .admin-user-action svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.admin-notification-row .admin-user-action:hover {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.admin-notification-row .admin-user-action.delete:hover {
+  border-color: #fecaca;
+  background: #fee2e2;
+  color: #b91c1c;
 }
 
 @keyframes logoRotate {
@@ -3610,6 +3669,49 @@ h1 {
   color: #ffffff;
 }
 
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.result-actions button,
+.result-actions a {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #a5b4fc;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    background 0.2s;
+}
+
+.result-actions button:hover,
+.result-actions a:hover {
+  color: #ffffff;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.result-actions svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.3;
+}
+
 .pagination-row {
   display: flex;
   align-items: center;
@@ -4713,6 +4815,13 @@ h1 {
   color: #a5b4fc;
 }
 
+.bookmark-title-link {
+  display: inline-block;
+  max-width: calc(100% - 92px);
+  color: inherit;
+  text-decoration: none;
+}
+
 .bookmark-paper-card p {
   color: #94a3b8;
   font-size: 13px;
@@ -4739,6 +4848,39 @@ h1 {
   width: 14px;
   height: 14px;
   color: #9ca3af;
+}
+
+.bookmark-open {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  margin-top: 16px;
+  border: 1px solid rgba(129, 140, 248, 0.28);
+  border-radius: 6px;
+  padding: 0 12px;
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.12);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.bookmark-open:hover {
+  border-color: rgba(129, 140, 248, 0.45);
+  color: #ffffff;
+  background: rgba(99, 102, 241, 0.2);
+  transform: translateY(-1px);
+}
+
+.bookmark-open svg {
+  width: 14px;
+  height: 14px;
 }
 
 .bookmark-remove {
@@ -7233,6 +7375,20 @@ h1 {
   text-decoration: none;
 }
 
+.student-app .result-actions button,
+.student-app .result-actions a {
+  border: 1px solid #dbe4ff;
+  color: #4f46e5;
+  background: #f7f9ff;
+}
+
+.student-app .result-actions button:hover,
+.student-app .result-actions a:hover {
+  border-color: #c7d2fe;
+  color: #312e81;
+  background: #eef2ff;
+}
+
 .student-app .search-filter-heading h2::before,
 .student-app .filter-card h3::before,
 .student-app .search-filter-panel .filter-card:nth-of-type(1) h3::before,
@@ -7572,6 +7728,18 @@ h1 {
   color: #0f172a;
 }
 
+.result-source-links a {
+  border-color: #dbe4ff;
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+.result-source-links a:hover {
+  border-color: #bae6fd;
+  color: #075985;
+  background: #ecfeff;
+}
+
 .result-save {
   background: #f1f5f9;
   border-color: #e2e8f0;
@@ -7623,12 +7791,28 @@ h1 {
   color: #0f172a;
 }
 
+.bookmark-title-link {
+  color: inherit;
+}
+
 .bookmark-paper-card p {
   color: #475569;
 }
 
 .bookmark-paper-meta {
   color: #64748b;
+}
+
+.bookmark-paper-card .bookmark-open {
+  border-color: #dbe4ff;
+  color: #4f46e5;
+  background: #f7f9ff;
+}
+
+.bookmark-paper-card .bookmark-open:hover {
+  border-color: #c7d2fe;
+  color: #312e81;
+  background: #eef2ff;
 }
 
 .bookmark-paper-card .bookmark-remove {
@@ -17522,10 +17706,20 @@ button.admin-profile-avatar:focus-visible {
 .graph-3d-label {
   position: absolute;
   z-index: 1;
-  color: rgba(17, 24, 39, 0.86);
-  font-size: 13px;
+  box-sizing: border-box;
+  max-width: 116px;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.58);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: rgba(55, 65, 81, 0.86);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  font-size: 11px;
   font-weight: 500;
-  line-height: 1;
+  line-height: 1.1;
+  text-overflow: ellipsis;
   white-space: nowrap;
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.96),
@@ -17536,8 +17730,11 @@ button.admin-profile-avatar:focus-visible {
 
 .graph-3d-label.selected {
   z-index: 3;
+  max-width: 150px;
+  border-color: rgba(154, 74, 136, 0.32);
   color: #9a4a88;
-  font-size: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 14px;
   font-weight: 800;
   text-shadow:
     0 1px 0 #ffffff,
@@ -23248,6 +23445,49 @@ button.admin-profile-avatar:focus-visible {
   background: rgba(15, 44, 89, 0.05);
   border-color: #003b5c;
   box-shadow: none;
+}
+
+.login-help {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  text-align: center;
+}
+
+.login-help p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login-help-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 10px;
+}
+
+.login-help-links a {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  border: 1px solid #dbe4ff;
+  border-radius: 999px;
+  padding: 0 11px;
+  color: #4f46e5;
+  background: #eef2ff;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.login-help-links a:hover {
+  border-color: #c7d2fe;
+  color: #312e81;
+  background: #e0e7ff;
 }
 
 .page-shell .primary-button {

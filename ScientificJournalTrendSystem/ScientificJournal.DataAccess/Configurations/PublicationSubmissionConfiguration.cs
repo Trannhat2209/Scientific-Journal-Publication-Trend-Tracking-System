@@ -39,11 +39,11 @@ public class PublicationSubmissionConfiguration : IEntityTypeConfiguration<Publi
         builder.HasOne(s => s.ReviewedByUser)
             .WithMany()
             .HasForeignKey(s => s.ReviewedByUserId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
 
         builder.HasOne(s => s.PublishedPublication)
             .WithMany()
             .HasForeignKey(s => s.PublishedPublicationId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

@@ -26,6 +26,7 @@ public class PublicationService : IPublicationService
     private readonly IMongoMetadataRepository _mongoRepository;
     private readonly OpenAlexClient _openAlexClient;
     private readonly SerpApiScholarSearchClient _scholarSearchClient;
+    private readonly SemanticScholarClient _semanticScholarClient;
 
     public PublicationService(
         AppDbContext context, 
@@ -34,7 +35,8 @@ public class PublicationService : IPublicationService
         IPlagiarismCheckService plagiarismCheckService,
         IMongoMetadataRepository mongoRepository,
         OpenAlexClient openAlexClient,
-        SerpApiScholarSearchClient scholarSearchClient)
+        SerpApiScholarSearchClient scholarSearchClient,
+        SemanticScholarClient semanticScholarClient)
     {
         _context = context;
         _recommendationService = recommendationService;
@@ -43,6 +45,7 @@ public class PublicationService : IPublicationService
         _mongoRepository = mongoRepository;
         _openAlexClient = openAlexClient;
         _scholarSearchClient = scholarSearchClient;
+        _semanticScholarClient = semanticScholarClient;
     }
 
     public async Task<PaginatedResponse<PublicationDto>> SearchPublicationsAsync(PublicationSearchRequestDto request, int? userId = null)
@@ -59,15 +62,29 @@ public class PublicationService : IPublicationService
 
         if (!string.IsNullOrWhiteSpace(request.Keyword))
         {
-            var keyword = request.Keyword.Trim();
-            query = query.Where(p => p.Title.Contains(keyword)
-                                    || (p.Abstract != null && p.Abstract.Contains(keyword))
-                                    || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(keyword)));
+            foreach (var term in GetSearchTerms(request.Keyword))
+            {
+                query = query.Where(p => p.Title.Contains(term)
+                                        || (p.Abstract != null && p.Abstract.Contains(term))
+                                        || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(term)));
+            }
         }
 
         if (request.Year > 0)
         {
             query = query.Where(p => p.Year == request.Year);
+        }
+        else
+        {
+            if (request.YearFrom > 0)
+            {
+                query = query.Where(p => p.Year >= request.YearFrom);
+            }
+
+            if (request.YearTo > 0)
+            {
+                query = query.Where(p => p.Year <= request.YearTo);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.JournalId) && int.TryParse(request.JournalId, out var journalId))
@@ -355,6 +372,7 @@ public class PublicationService : IPublicationService
             Year = publication.Year,
             DOI = publication.DOI,
             JournalName = publication.Journal?.Name ?? string.Empty,
+            SourceApi = publication.SourceApi,
             CitationCount = publication.CitationCount,
             Authors = publication.PublicationAuthors.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList(),
             Keywords = publication.PublicationKeywords.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList()
@@ -368,6 +386,11 @@ public class PublicationService : IPublicationService
             : request.Keyword.Trim();
         var maxResults = Math.Clamp(request.PageSize <= 0 ? 10 : request.PageSize, 5, 20);
         var source = NormalizeSourceName(request.Source);
+        var cachedCount = await CountCachedSearchMatchesAsync(request, source);
+        if (cachedCount >= Math.Min(maxResults, Math.Max(5, request.PageSize <= 0 ? 10 : request.PageSize)))
+        {
+            return;
+        }
 
         var importTasks = new List<Task<IReadOnlyList<ExternalPublication>>>();
         if (string.IsNullOrWhiteSpace(source) || source == "OpenAlex")
@@ -380,6 +403,11 @@ public class PublicationService : IPublicationService
             importTasks.Add(_scholarSearchClient.SearchAsync(keyword, Math.Min(maxResults, 10)));
         }
 
+        if (string.IsNullOrWhiteSpace(source) || source == "Semantic Scholar")
+        {
+            importTasks.Add(_semanticScholarClient.SearchAsync(keyword, maxResults));
+        }
+
         if (importTasks.Count == 0)
         {
             return;
@@ -390,6 +418,45 @@ public class PublicationService : IPublicationService
         {
             await UpsertExternalPublicationAsync(publication);
         }
+    }
+
+    private async Task<int> CountCachedSearchMatchesAsync(PublicationSearchRequestDto request, string source)
+    {
+        var query = _context.Publications
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            query = query.Where(p => p.SourceApi == source);
+        }
+
+        if (request.Year > 0)
+        {
+            query = query.Where(p => p.Year == request.Year);
+        }
+        else
+        {
+            if (request.YearFrom > 0)
+            {
+                query = query.Where(p => p.Year >= request.YearFrom);
+            }
+
+            if (request.YearTo > 0)
+            {
+                query = query.Where(p => p.Year <= request.YearTo);
+            }
+        }
+
+        var keywordTerms = GetSearchTerms(request.Keyword);
+        foreach (var term in keywordTerms)
+        {
+            query = query.Where(p => p.Title.Contains(term)
+                                    || (p.Abstract != null && p.Abstract.Contains(term))
+                                    || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(term)));
+        }
+
+        return await query.CountAsync();
     }
 
     private static async Task<IReadOnlyList<ExternalPublication>> FetchSafelyAsync(
@@ -553,13 +620,42 @@ public class PublicationService : IPublicationService
             return "OpenAlex";
         }
 
+        if (source.Contains("semantic", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Semantic Scholar";
+        }
+
         if (source.Contains("google", StringComparison.OrdinalIgnoreCase) ||
             source.Contains("scholar", StringComparison.OrdinalIgnoreCase))
         {
             return "Google Scholar";
         }
 
+        if (source.Contains("researchgate", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("research gate", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ResearchGate";
+        }
+
+        if (source.Contains("connected", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Connected Papers";
+        }
+
         return source.Trim();
+    }
+
+    private static List<string> GetSearchTerms(string? keyword)
+    {
+        return string.IsNullOrWhiteSpace(keyword)
+            ? new List<string>()
+            : keyword
+                .Trim()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(term => term.Length > 2)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
     }
 
     private static string StableHash(string value)
