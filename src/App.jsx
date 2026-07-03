@@ -15614,7 +15614,18 @@ function PublicationSubmissionPage({ role = "Student" }) {
           : "Waiting for admin approval.",
       };
 
-      const savedSubmission = await submitPublicationToBackend(nextSubmission);
+      let savedSubmission;
+      const token = getStoredAuth().accessToken;
+      if (token) {
+        savedSubmission = await submitPublicationToBackend(nextSubmission);
+      } else {
+        // Save locally for unauthenticated/demo users
+        const local = normalizePublicationSubmission(nextSubmission);
+        const current = getPublicationSubmissions();
+        const next = [local, ...current].slice(0, 200);
+        setPublicationSubmissions(next);
+        savedSubmission = local;
+      }
       setResult(savedSubmission);
     } catch (error) {
       setSubmissionError(error.message);
