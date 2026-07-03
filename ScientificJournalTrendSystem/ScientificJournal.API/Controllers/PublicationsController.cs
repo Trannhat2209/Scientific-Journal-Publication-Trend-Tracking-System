@@ -377,7 +377,14 @@ public class PublicationsController : ControllerBase
             ? value[(value.IndexOf(',') + 1)..]
             : value;
 
-        return Convert.FromBase64String(payload);
+        try
+        {
+            return Convert.FromBase64String(payload);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private static PublicationSubmissionDto MapSubmission(PublicationSubmission submission)

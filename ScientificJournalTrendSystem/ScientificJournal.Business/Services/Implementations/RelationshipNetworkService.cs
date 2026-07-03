@@ -24,16 +24,28 @@ public class RelationshipNetworkService : IRelationshipNetworkService
     {
         var network = new RelationshipNetworkDto();
 
-        // 1. Get central publication
-        var centralPub = await _context.Publications.FindAsync(publicationId);
+        // 1. Get central publication with authors
+        var centralPub = await _context.Publications
+            .Include(p => p.PublicationAuthors)
+                .ThenInclude(pa => pa.Author)
+            .FirstOrDefaultAsync(p => p.Id == publicationId);
         if (centralPub == null) return network;
 
-        // Add central node
+        var centralAuthors = centralPub.PublicationAuthors
+            .OrderBy(pa => pa.AuthorOrder)
+            .Select(pa => pa.Author?.Name ?? string.Empty)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
         network.Nodes.Add(new NetworkNodeDto
         {
             Id = centralPub.Id.ToString(),
             Label = centralPub.Title,
-            Type = "Central"
+            Type = "Central",
+            Title = centralPub.Title,
+            Year = centralPub.Year,
+            CitationCount = centralPub.CitationCount,
+            Authors = centralAuthors,
         });
 
         // 2. Fetch candidates (sharing at least one keyword with central pub)
@@ -53,6 +65,8 @@ public class RelationshipNetworkService : IRelationshipNetworkService
 
         var relatedPubs = await _context.Publications
             .Where(p => relatedPubIds.Contains(p.Id))
+            .Include(p => p.PublicationAuthors)
+                .ThenInclude(pa => pa.Author)
             .ToListAsync();
 
         // 3. Compute similarity and add nodes + edges from central
@@ -65,11 +79,21 @@ public class RelationshipNetworkService : IRelationshipNetworkService
             {
                 if (!nodesAdded.Contains(pub.Id))
                 {
+                    var authors = pub.PublicationAuthors
+                        .OrderBy(pa => pa.AuthorOrder)
+                        .Select(pa => pa.Author?.Name ?? string.Empty)
+                        .Where(name => !string.IsNullOrWhiteSpace(name))
+                        .ToList();
+
                     network.Nodes.Add(new NetworkNodeDto
                     {
                         Id = pub.Id.ToString(),
                         Label = pub.Title,
-                        Type = "Publication"
+                        Type = "Publication",
+                        Title = pub.Title,
+                        Year = pub.Year,
+                        CitationCount = pub.CitationCount,
+                        Authors = authors,
                     });
                     nodesAdded.Add(pub.Id);
                 }

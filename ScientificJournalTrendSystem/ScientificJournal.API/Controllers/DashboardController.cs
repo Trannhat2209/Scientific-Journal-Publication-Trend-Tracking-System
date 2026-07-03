@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.DTOs.Request.Export;
+using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 
@@ -106,7 +107,18 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> Export([FromBody] ExportRequestDto request)
     {
         var bytes = await _exportService.ExportTrendReportAsync(request);
-        return File(bytes, "text/csv", $"trend-report-{request.Keyword}.csv");
+        var safeKeyword = string.IsNullOrWhiteSpace(request.Keyword)
+            ? "all"
+            : string.Concat(request.Keyword.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_'));
+        if (request.Format == ExportFormat.Excel)
+        {
+            return File(
+                bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"trend-report-{safeKeyword}.xlsx");
+        }
+
+        return File(bytes, "text/csv; charset=utf-8", $"trend-report-{safeKeyword}.csv");
     }
 }
 

@@ -11,6 +11,12 @@ public class NotificationConfiguration : IEntityTypeConfiguration<Notification>
         builder.ToTable("notifications");
         builder.HasKey(n => n.Id);
 
+        builder.Property(n => n.Title)
+            .HasMaxLength(200);
+
+        builder.Property(n => n.Route)
+            .HasMaxLength(300);
+
         builder.Property(n => n.NotificationType)
             .HasConversion<string>();
 

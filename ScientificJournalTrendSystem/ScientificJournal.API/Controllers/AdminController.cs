@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -440,7 +441,10 @@ public class AdminController : ControllerBase
         var notifications = users.Select(user => new Notification
         {
             UserId = user.Id,
+            User = user,
+            Title = string.IsNullOrWhiteSpace(request.Title) ? "NOTICE:" : request.Title.Trim(),
             Message = message,
+            Route = string.IsNullOrWhiteSpace(request.Route) ? GetNotificationRouteForRole(user.Role) : request.Route.Trim(),
             NotificationType = notificationType,
             IsRead = false,
             CreatedAt = DateTime.UtcNow
@@ -454,15 +458,273 @@ public class AdminController : ControllerBase
         {
             message = "Notification broadcast saved.",
             count = notifications.Count,
-            items = notifications.Select(n => new
-            {
-                n.Id,
-                n.Message,
-                NotificationType = n.NotificationType.ToString(),
-                n.IsRead,
-                n.CreatedAt
-            })
+            items = notifications.Select(MapAdminNotification)
         });
+    }
+
+    [HttpGet("notifications")]
+    public async Task<IActionResult> GetAdminNotifications(
+        [FromQuery] string? role = null,
+        [FromQuery] bool? read = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
+    {
+        page = page <= 0 ? 1 : page;
+        pageSize = pageSize <= 0 ? 50 : Math.Min(pageSize, 200);
+
+        var query = _context.Notifications
+            .Include(n => n.User)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(role) &&
+            !string.Equals(role, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryParseRole(role, out var parsedRole))
+            {
+                return BadRequest(new { message = "Invalid role filter." });
+            }
+
+            query = query.Where(n => n.User != null && n.User.Role == parsedRole);
+        }
+
+        if (read.HasValue)
+        {
+            query = query.Where(n => n.IsRead == read.Value);
+        }
+
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(n => n.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            items = items.Select(MapAdminNotification),
+            totalCount,
+            page,
+            pageSize
+        });
+    }
+
+    [HttpPut("notifications/{id:int}/read")]
+    public async Task<IActionResult> MarkAdminNotificationRead(int id)
+    {
+        var notification = await _context.Notifications.FirstOrDefaultAsync(n => n.Id == id);
+        if (notification == null) return NotFound(new { message = "Notification not found." });
+
+        notification.IsRead = true;
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Notification Management", $"Marked notification {id} as read.", "Success", "ADMIN-NOTIFICATION-READ");
+
+        return Ok(new { message = "Notification marked as read.", notification = MapAdminNotification(notification) });
+    }
+
+    [HttpPut("notifications/read-all")]
+    public async Task<IActionResult> MarkAdminNotificationsReadAll([FromQuery] string? role = null)
+    {
+        var query = _context.Notifications.Include(n => n.User).Where(n => !n.IsRead);
+
+        if (!string.IsNullOrWhiteSpace(role) &&
+            !string.Equals(role, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryParseRole(role, out var parsedRole))
+            {
+                return BadRequest(new { message = "Invalid role filter." });
+            }
+
+            query = query.Where(n => n.User != null && n.User.Role == parsedRole);
+        }
+
+        var notifications = await query.ToListAsync();
+        foreach (var notification in notifications)
+        {
+            notification.IsRead = true;
+        }
+
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Notification Management", $"Marked {notifications.Count} notifications as read.", "Success", "ADMIN-NOTIFICATION-READ-ALL");
+
+        return Ok(new { message = "Notifications marked as read.", count = notifications.Count });
+    }
+
+    [HttpPut("notifications/{id:int}/route")]
+    public async Task<IActionResult> UpdateNotificationRoute(int id, [FromBody] AdminNotificationRouteDto request)
+    {
+        var notification = await _context.Notifications.FirstOrDefaultAsync(n => n.Id == id);
+        if (notification == null) return NotFound(new { message = "Notification not found." });
+
+        notification.Route = string.IsNullOrWhiteSpace(request.Route) ? null : request.Route.Trim();
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Notification Management", $"Updated route for notification {id}.", "Success", "ADMIN-NOTIFICATION-ROUTE");
+
+        return Ok(new { message = "Notification route updated.", notification = MapAdminNotification(notification) });
+    }
+
+    [HttpPut("notifications/{id:int}")]
+    public async Task<IActionResult> UpdateAdminNotification(int id, [FromBody] AdminNotificationUpdateDto request)
+    {
+        var notification = await _context.Notifications.FirstOrDefaultAsync(n => n.Id == id);
+        if (notification == null) return NotFound(new { message = "Notification not found." });
+
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            notification.Title = request.Title.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Message))
+        {
+            notification.Message = request.Message.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Route))
+        {
+            notification.Route = request.Route.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.NotificationType))
+        {
+            notification.NotificationType = ParseNotificationType(request.NotificationType);
+        }
+
+        if (request.IsRead.HasValue)
+        {
+            notification.IsRead = request.IsRead.Value;
+        }
+
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Notification Management", $"Updated notification {id}.", "Success", "ADMIN-NOTIFICATION-UPDATE");
+
+        return Ok(new { message = "Notification updated.", notification = MapAdminNotification(notification) });
+    }
+
+    [HttpDelete("notifications/{id:int}")]
+    public async Task<IActionResult> DeleteAdminNotification(int id)
+    {
+        var notification = await _context.Notifications.FirstOrDefaultAsync(n => n.Id == id);
+        if (notification == null) return NotFound(new { message = "Notification not found." });
+
+        _context.Notifications.Remove(notification);
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Notification Management", $"Deleted notification {id}.", "Success", "ADMIN-NOTIFICATION-DELETE");
+
+        return Ok(new { message = "Notification deleted." });
+    }
+
+    [HttpGet("settings")]
+    public async Task<IActionResult> GetAdminSettings()
+    {
+        return Ok(await GetAdminStatePayloadAsync("settings", GetDefaultAdminSettings()));
+    }
+
+    [HttpPut("settings")]
+    public async Task<IActionResult> SaveAdminSettings([FromBody] AdminStateRequestDto request)
+    {
+        var result = await UpsertAdminStateAsync("settings", request.Value, GetDefaultAdminSettings());
+        await LogAuditAsync("Admin Settings", "Saved admin settings.", "Success", "ADMIN-SETTINGS-SAVE");
+        return Ok(result);
+    }
+
+    [HttpGet("profile")]
+    public async Task<IActionResult> GetAdminProfile()
+    {
+        return Ok(await GetAdminStatePayloadAsync("profile", GetDefaultAdminProfile()));
+    }
+
+    [HttpPut("profile")]
+    public async Task<IActionResult> SaveAdminProfile([FromBody] AdminStateRequestDto request)
+    {
+        var result = await UpsertAdminStateAsync("profile", request.Value, GetDefaultAdminProfile());
+        await LogAuditAsync("Admin Profile", "Saved admin profile.", "Success", "ADMIN-PROFILE-SAVE");
+        return Ok(result);
+    }
+
+    [HttpGet("status-state")]
+    public async Task<IActionResult> GetAdminStatusState()
+    {
+        return Ok(await GetAdminStatePayloadAsync("status", GetDefaultAdminStatusState()));
+    }
+
+    [HttpPut("status-state")]
+    public async Task<IActionResult> SaveAdminStatusState([FromBody] AdminStateRequestDto request)
+    {
+        var result = await UpsertAdminStateAsync("status", request.Value, GetDefaultAdminStatusState());
+        await LogAuditAsync("System Status", "Saved admin status panel state.", "Success", "ADMIN-STATUS-SAVE");
+        return Ok(result);
+    }
+
+    [HttpGet("support-tickets")]
+    public async Task<IActionResult> GetSupportTickets()
+    {
+        var tickets = await _context.AdminSupportTickets
+            .Include(ticket => ticket.CreatedByUser)
+            .OrderByDescending(ticket => ticket.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+
+        return Ok(new { items = tickets.Select(MapSupportTicket) });
+    }
+
+    [HttpPost("support-tickets")]
+    public async Task<IActionResult> CreateSupportTicket([FromBody] AdminSupportTicketRequestDto request)
+    {
+        var message = request.Message?.Trim();
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return BadRequest(new { message = "Support ticket message is required." });
+        }
+
+        var ticket = new AdminSupportTicket
+        {
+            TicketNumber = $"SUP-{DateTime.UtcNow:yyyyMMddHHmmssfff}",
+            Message = message,
+            Status = "Open",
+            CreatedByUserId = GetCurrentUserId(),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.AdminSupportTickets.Add(ticket);
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Support", $"Created support ticket {ticket.TicketNumber}.", "Success", "ADMIN-SUPPORT-CREATE");
+
+        return Ok(new { message = "Support ticket created.", ticket = MapSupportTicket(ticket) });
+    }
+
+    [HttpPut("support-tickets/{id:int}")]
+    public async Task<IActionResult> UpdateSupportTicket(int id, [FromBody] AdminSupportTicketUpdateDto request)
+    {
+        var ticket = await _context.AdminSupportTickets.FirstOrDefaultAsync(item => item.Id == id);
+        if (ticket == null) return NotFound(new { message = "Support ticket not found." });
+
+        if (!string.IsNullOrWhiteSpace(request.Message))
+        {
+            ticket.Message = request.Message.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            ticket.Status = request.Status.Trim();
+        }
+
+        ticket.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Support", $"Updated support ticket {ticket.TicketNumber}.", "Success", "ADMIN-SUPPORT-UPDATE");
+
+        return Ok(new { message = "Support ticket updated.", ticket = MapSupportTicket(ticket) });
+    }
+
+    [HttpDelete("support-tickets/{id:int}")]
+    public async Task<IActionResult> DeleteSupportTicket(int id)
+    {
+        var ticket = await _context.AdminSupportTickets.FirstOrDefaultAsync(item => item.Id == id);
+        if (ticket == null) return NotFound(new { message = "Support ticket not found." });
+
+        _context.AdminSupportTickets.Remove(ticket);
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("Support", $"Deleted support ticket {ticket.TicketNumber}.", "Success", "ADMIN-SUPPORT-DELETE");
+
+        return Ok(new { message = "Support ticket deleted." });
     }
 
     [HttpPost("audit-log")]
@@ -668,6 +930,14 @@ public class AdminController : ControllerBase
         return NotificationType.SYSTEM;
     }
 
+    private static string GetNotificationRouteForRole(UserRole role) => role switch
+    {
+        UserRole.Lecturer => "/lecturer-notifications",
+        UserRole.Researcher => "/researcher-notifications",
+        UserRole.Admin => "/admin-notifications",
+        _ => "/student-notifications"
+    };
+
     private object MapAdminUser(User user) => new
     {
         id = user.Id,
@@ -704,6 +974,125 @@ public class AdminController : ControllerBase
             : 0,
         updatedAt = payment.UpdatedAt
     };
+
+    private object MapAdminNotification(Notification notification) => new
+    {
+        id = notification.Id,
+        type = notification.NotificationType.ToString(),
+        title = string.IsNullOrWhiteSpace(notification.Title) ? "NOTICE:" : notification.Title,
+        text = notification.Message,
+        message = notification.Message,
+        recipientRole = notification.User?.Role.ToString() ?? "Unknown",
+        recipientEmail = notification.User?.Email ?? "",
+        userId = notification.UserId,
+        publicationId = notification.PublicationId,
+        route = notification.Route ?? (notification.User == null ? "" : GetNotificationRouteForRole(notification.User.Role)),
+        createdAt = notification.CreatedAt,
+        unread = !notification.IsRead,
+        isRead = notification.IsRead
+    };
+
+    private object MapSupportTicket(AdminSupportTicket ticket) => new
+    {
+        id = ticket.Id,
+        ticketNumber = ticket.TicketNumber,
+        message = ticket.Message,
+        status = ticket.Status,
+        createdAt = ticket.CreatedAt,
+        updatedAt = ticket.UpdatedAt,
+        createdBy = ticket.CreatedByUser?.Email ?? "admin"
+    };
+
+    private int? GetCurrentUserId()
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        return int.TryParse(userIdValue, out var parsedUserId) ? parsedUserId : null;
+    }
+
+    private static JsonElement ParseJsonElement(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
+    }
+
+    private static JsonElement GetDefaultAdminSettings() => ParseJsonElement("""
+        {
+          "emailAlerts": true,
+          "autoSync": true,
+          "maintenanceMode": false,
+          "syncInterval": "Every 6 hours"
+        }
+        """);
+
+    private static JsonElement GetDefaultAdminProfile() => ParseJsonElement("""
+        {
+          "name": "Admin User",
+          "email": "admin@university.edu",
+          "role": "Administrator",
+          "session": "API managed",
+          "phone": "+84 901 234 567",
+          "department": "System Administration",
+          "location": "Ho Chi Minh City",
+          "bio": "Manages ScholarTrend access, sync operations, and platform health.",
+          "avatarUrl": ""
+        }
+        """);
+
+    private static JsonElement GetDefaultAdminStatusState() => ParseJsonElement("""
+        {
+          "healthCheckedAt": "not checked",
+          "message": ""
+        }
+        """);
+
+    private async Task<object> GetAdminStatePayloadAsync(string key, JsonElement fallback)
+    {
+        var state = await _context.AdminStates.AsNoTracking().FirstOrDefaultAsync(item => item.StateKey == key);
+        var value = state == null ? fallback : ParseJsonElement(state.JsonValue);
+        return new
+        {
+            key,
+            value,
+            updatedAt = state?.UpdatedAt,
+            updatedByUserId = state?.UpdatedByUserId
+        };
+    }
+
+    private async Task<object> UpsertAdminStateAsync(string key, JsonElement value, JsonElement fallback)
+    {
+        var effectiveValue = value.ValueKind == JsonValueKind.Undefined || value.ValueKind == JsonValueKind.Null
+            ? fallback
+            : value.Clone();
+        var jsonValue = JsonSerializer.Serialize(effectiveValue);
+        var state = await _context.AdminStates.FirstOrDefaultAsync(item => item.StateKey == key);
+
+        if (state == null)
+        {
+            state = new AdminState
+            {
+                StateKey = key,
+                JsonValue = jsonValue,
+                UpdatedByUserId = GetCurrentUserId(),
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.AdminStates.Add(state);
+        }
+        else
+        {
+            state.JsonValue = jsonValue;
+            state.UpdatedByUserId = GetCurrentUserId();
+            state.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+        return new
+        {
+            key,
+            value = effectiveValue,
+            updatedAt = state.UpdatedAt,
+            updatedByUserId = state.UpdatedByUserId
+        };
+    }
 
     private async Task LogAuditAsync(string module, string detail, string severity, string code)
     {
@@ -761,7 +1150,39 @@ public class AdminBroadcastNotificationDto
 {
     public string RecipientRole { get; set; } = "All";
     public string NotificationType { get; set; } = "SYSTEM";
+    public string Title { get; set; } = "NOTICE:";
     public string Message { get; set; } = string.Empty;
+    public string Route { get; set; } = string.Empty;
+}
+
+public class AdminNotificationRouteDto
+{
+    public string Route { get; set; } = string.Empty;
+}
+
+public class AdminNotificationUpdateDto
+{
+    public string? Title { get; set; }
+    public string? Message { get; set; }
+    public string? NotificationType { get; set; }
+    public string? Route { get; set; }
+    public bool? IsRead { get; set; }
+}
+
+public class AdminStateRequestDto
+{
+    public JsonElement Value { get; set; }
+}
+
+public class AdminSupportTicketRequestDto
+{
+    public string Message { get; set; } = string.Empty;
+}
+
+public class AdminSupportTicketUpdateDto
+{
+    public string? Message { get; set; }
+    public string? Status { get; set; }
 }
 
 public class AdminAuditLogRequestDto

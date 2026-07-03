@@ -116,7 +116,9 @@ public class PublicationService : IPublicationService
                     {
                         UserId = userId.Value,
                         PublicationId = item.Id,
+                        Title = "Search match",
                         Message = $"Search match: We found '{item.Title}' containing the keyword '{request.Keyword}' you searched.",
+                        Route = $"/student-publication?id={item.Id}",
                         NotificationType = NotificationType.RECOMMENDATION,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow
@@ -268,7 +270,9 @@ public class PublicationService : IPublicationService
                     {
                         UserId = follow.UserId,
                         PublicationId = publication.Id,
+                        Title = "New publication",
                         Message = $"New publication uploaded matching your followed keyword '{follow.FollowTargetName}': {publication.Title}",
+                        Route = $"/student-publication?id={publication.Id}",
                         NotificationType = NotificationType.NEW_PUBLICATION,
                         IsRead = false,
                         CreatedAt = DateTime.UtcNow

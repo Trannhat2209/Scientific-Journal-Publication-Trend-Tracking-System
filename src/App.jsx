@@ -28,6 +28,11 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(
 const GOOGLE_AUTH_BASE_URL = (
   import.meta.env.VITE_GOOGLE_AUTH_BASE_URL || API_BASE_URL
 ).replace(/\/$/, "");
+const ORCID_CLIENT_ID = import.meta.env.VITE_ORCID_CLIENT_ID || "";
+const ORCID_REDIRECT_URI =
+  import.meta.env.VITE_ORCID_REDIRECT_URI ||
+  `${window.location.origin}/login?auth=orcid-success`;
+const INSTITUTION_SSO_URL = import.meta.env.VITE_INSTITUTION_SSO_URL || "";
 
 const getStoredAuth = () => {
   try {
@@ -77,6 +82,14 @@ const getStoredSession = () => {
     return {};
   }
 };
+
+const normalizeAuthResponse = (payload) => ({
+  ...payload,
+  accessToken: payload.accessToken || payload.AccessToken,
+  refreshToken: payload.refreshToken || payload.RefreshToken,
+  expiresAt: payload.expiresAt || payload.ExpiresAt,
+  user: payload.user || payload.User,
+});
 
 const normalizeRoleForUi = (role) => {
   const value = Array.isArray(role) ? role[0] : role;
@@ -332,6 +345,11 @@ const apiFetch = async (path, options = {}) => {
   const { body, auth = false, headers = {}, ...rest } = options;
   const token = getStoredAuth().accessToken;
   const module = getClientLogModule(path);
+
+  if (auth && !token) {
+    throw new Error("Authentication is required to access this backend resource.");
+  }
+
   let response;
 
   try {
@@ -474,7 +492,7 @@ const authenticateAcademicProvider = async ({
   };
 
   try {
-    const payload = await apiFetch("/api/auth/register", {
+    const rawPayload = await apiFetch("/api/auth/register", {
       method: "POST",
       body: {
         fullName: accountName,
@@ -483,6 +501,7 @@ const authenticateAcademicProvider = async ({
         role: normalizeRoleForApi(normalizedRole),
       },
     });
+    const payload = normalizeAuthResponse(rawPayload);
     persistAuth(payload);
     return {
       user: {
@@ -494,13 +513,14 @@ const authenticateAcademicProvider = async ({
     };
   } catch {
     try {
-      const payload = await apiFetch("/api/auth/login", {
+      const rawPayload = await apiFetch("/api/auth/login", {
         method: "POST",
         body: {
           email: normalizedEmail,
           password: ACADEMIC_PROVIDER_TEST_PASSWORD,
         },
       });
+      const payload = normalizeAuthResponse(rawPayload);
       persistAuth(payload);
       return {
         user: {
@@ -560,15 +580,16 @@ const persistSession = (user) => {
 };
 
 const persistAuth = (authPayload) => {
+  const normalized = normalizeAuthResponse(authPayload);
   window.localStorage.setItem(
     "scholartrend.auth",
     JSON.stringify({
-      accessToken: authPayload.accessToken,
-      refreshToken: authPayload.refreshToken,
-      expiresAt: authPayload.expiresAt,
+      accessToken: normalized.accessToken,
+      refreshToken: normalized.refreshToken,
+      expiresAt: normalized.expiresAt,
     }),
   );
-  persistSession(authPayload.user);
+  persistSession(normalized.user);
 };
 
 const clearAuth = () => {
@@ -598,10 +619,22 @@ const REMOVED_BOOKMARKS_KEY = "scholartrend.removedBookmarks";
 const formatCount = (value) =>
   new Intl.NumberFormat("en-US").format(Number(value || 0));
 
-const downloadCsvFile = (filename, rows) => {
+const UTF8_BOM = "\ufeff";
+
+const createCsvText = (rows) => {
   const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  return `${UTF8_BOM}${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
+};
+
+const downloadCsvFile = (filename, rows) => {
+  downloadBlobFile(
+    filename,
+    new Blob([createCsvText(rows)], { type: "text/csv;charset=utf-8" }),
+  );
+};
+
+const downloadBlobFile = (filename, blob) => {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -674,6 +707,7 @@ const createZipBlob = (files, type) => {
     const localView = new DataView(localHeader.buffer);
     localView.setUint32(0, 0x04034b50, true);
     localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
     localView.setUint16(10, time, true);
     localView.setUint16(12, day, true);
     localView.setUint32(14, crc, true);
@@ -688,6 +722,7 @@ const createZipBlob = (files, type) => {
     centralView.setUint32(0, 0x02014b50, true);
     centralView.setUint16(4, 20, true);
     centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
     centralView.setUint16(12, time, true);
     centralView.setUint16(14, day, true);
     centralView.setUint32(16, crc, true);
@@ -788,12 +823,394 @@ const createDocxBlob = ({ title, rows }) => {
 };
 
 const downloadDocxFile = (filename, documentData) => {
-  const url = URL.createObjectURL(createDocxBlob(documentData));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadBlobFile(filename, createDocxBlob(documentData));
+};
+
+const createXlsxBlob = ({ sheets }) => {
+  const sheetEntries = Object.entries(sheets || {}).filter(
+    ([, rows]) => Array.isArray(rows) && rows.length,
+  );
+  const safeSheetEntries = sheetEntries.length
+    ? sheetEntries
+    : [["Sheet1", [["No data"]]]];
+  const workbookSheets = safeSheetEntries
+    .map(
+      ([name], index) =>
+        `<sheet name="${xmlEscape(String(name).slice(0, 31) || `Sheet${index + 1}`)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
+    )
+    .join("");
+  const workbookRels = safeSheetEntries
+    .map(
+      ([,], index) =>
+        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
+    )
+    .join("");
+  const sheetFiles = safeSheetEntries.map(([name, rows], sheetIndex) => {
+    const sheetRows = rows
+      .map(
+        (row, rowIndex) =>
+          `<row r="${rowIndex + 1}">${row
+            .map((cell, cellIndex) => {
+              const columnName = String.fromCharCode(65 + (cellIndex % 26));
+              const cellRef = `${columnName}${rowIndex + 1}`;
+              const isNumber =
+                typeof cell === "number" ||
+                (String(cell).trim() !== "" && !Number.isNaN(Number(cell)));
+              return isNumber
+                ? `<c r="${cellRef}"><v>${Number(cell)}</v></c>`
+                : `<c r="${cellRef}" t="inlineStr"><is><t>${xmlEscape(cell)}</t></is></c>`;
+            })
+            .join("")}</row>`,
+      )
+      .join("");
+    return {
+      name: `xl/worksheets/sheet${sheetIndex + 1}.xml`,
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>${sheetRows}</sheetData>
+</worksheet>`,
+    };
+  });
+
+  return createZipBlob(
+    [
+      {
+        name: "[Content_Types].xml",
+        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  ${safeSheetEntries
+    .map(([,], index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
+    .join("")}
+</Types>`,
+      },
+      {
+        name: "_rels/.rels",
+        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+      },
+      {
+        name: "xl/workbook.xml",
+        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>${workbookSheets}</sheets>
+</workbook>`,
+      },
+      {
+        name: "xl/_rels/workbook.xml.rels",
+        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  ${workbookRels}
+</Relationships>`,
+      },
+      ...sheetFiles,
+    ],
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+};
+
+const downloadXlsxFile = (filename, sheets) => {
+  downloadBlobFile(filename, createXlsxBlob({ sheets }));
+};
+
+const copyTextToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const sharePublicationLink = async ({ title, url, text = "" }) => {
+  if (navigator.share) {
+    await navigator.share({ title, text, url });
+    return "Shared with your system share sheet.";
+  }
+  const copied = await copyTextToClipboard(url);
+  return copied ? "Link copied to clipboard." : url;
+};
+
+const getPublicationCitation = (publication) => {
+  const authors = Array.isArray(publication.authors)
+    ? publication.authors.join(", ")
+    : publication.authorText || "Unknown author";
+  return `${authors} (${publication.year || "n.d."}). ${publication.title}. ${publication.journalName || "Scientific Journal"}.${publication.doi ? ` https://doi.org/${publication.doi}` : ""}`;
+};
+
+const downloadJsonFile = (filename, payload) => {
+  downloadBlobFile(
+    filename,
+    new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    }),
+  );
+};
+
+const sanitizeDownloadFilename = (value, fallback = "paper") =>
+  String(value || fallback)
+    .trim()
+    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 90)
+    .replace(/^-|-$/g, "") || fallback;
+
+const normalizePaperForDownload = (paper = {}) => {
+  const authors = Array.isArray(paper.authors)
+    ? paper.authors.join(", ")
+    : paper.authorText || paper.authors || "Unknown authors";
+  const citations = String(
+    paper.citations ?? paper.citationCount ?? paper.citation_count ?? "0",
+  );
+  const doi = paper.doi || paper.DOI || "";
+  const sourceUrl =
+    paper.pdfUrl ||
+    paper.fullTextUrl ||
+    paper.url ||
+    (doi ? `https://doi.org/${doi}` : "");
+
+  return {
+    id: paper.id || paper.title || Date.now(),
+    title: paper.title || "Untitled publication",
+    authors,
+    year: paper.year || paper.date || "N/A",
+    journal: paper.journalName || paper.source || paper.venue || "Scientific Journal",
+    doi,
+    citations,
+    abstract: paper.abstract || paper.excerpt || paper.summary || "No abstract available.",
+    keywords: Array.isArray(paper.keywords)
+      ? paper.keywords.join(", ")
+      : paper.keywords || paper.impact || "",
+    pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
+    sourceUrl,
+  };
+};
+
+const getPaperTextContent = (paper) => {
+  const item = normalizePaperForDownload(paper);
+  return [
+    item.title,
+    "",
+    `Authors: ${item.authors}`,
+    `Year: ${item.year}`,
+    `Journal: ${item.journal}`,
+    `Citations: ${item.citations}`,
+    item.doi ? `DOI: ${item.doi}` : "",
+    item.sourceUrl ? `Link: ${item.sourceUrl}` : "",
+    item.keywords ? `Keywords: ${item.keywords}` : "",
+    "",
+    "Abstract",
+    item.abstract,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+};
+
+const splitPdfTextLines = (text, maxLength = 86) =>
+  String(text || "")
+    .split(/\r?\n/)
+    .flatMap((line) => {
+      if (!line.trim()) return [""];
+      const chunks = [];
+      let current = line.trim();
+      while (current.length > maxLength) {
+        const breakIndex = current.lastIndexOf(" ", maxLength);
+        const index = breakIndex > 24 ? breakIndex : maxLength;
+        chunks.push(current.slice(0, index));
+        current = current.slice(index).trim();
+      }
+      chunks.push(current);
+      return chunks;
+    });
+
+const createReadablePdfBlob = (title, text) => {
+  const escapePdf = (value) =>
+    String(value || "")
+      .replace(/[^\x20-\x7e]/g, "?")
+      .replace(/\\/g, "\\\\")
+      .replace(/\(/g, "\\(")
+      .replace(/\)/g, "\\)");
+  const lines = splitPdfTextLines(text).slice(0, 46);
+  const stream = [
+    "BT",
+    "/F1 16 Tf",
+    "50 790 Td",
+    `(${escapePdf(title)}) Tj`,
+    "/F1 10 Tf",
+    "0 -24 Td",
+    ...lines.map((line) => `(${escapePdf(line)}) Tj 0 -14 Td`),
+    "ET",
+  ].join("\n");
+  const objects = [
+    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
+    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
+    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
+    `5 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  objects.forEach((object) => {
+    offsets.push(pdf.length);
+    pdf += `${object}\n`;
+  });
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return new Blob([pdf], { type: "application/pdf" });
+};
+
+const downloadPaperTxt = (paper) => {
+  const item = normalizePaperForDownload(paper);
+  downloadBlobFile(
+    `${sanitizeDownloadFilename(item.title)}.txt`,
+    new Blob([`${UTF8_BOM}${getPaperTextContent(item)}`], {
+      type: "text/plain;charset=utf-8",
+    }),
+  );
+};
+
+const downloadPaperPdf = (paper) => {
+  const item = normalizePaperForDownload(paper);
+  if (item.pdfUrl) {
+    const anchor = document.createElement("a");
+    anchor.href = item.pdfUrl;
+    anchor.download = `${sanitizeDownloadFilename(item.title)}.pdf`;
+    anchor.target = "_blank";
+    anchor.rel = "noreferrer";
+    anchor.click();
+    return "Downloading original PDF.";
+  }
+
+  downloadBlobFile(
+    `${sanitizeDownloadFilename(item.title)}.pdf`,
+    createReadablePdfBlob(item.title, getPaperTextContent(item)),
+  );
+  return "No original PDF URL found. A readable PDF was generated from available metadata.";
+};
+
+const getPapersMetadataRows = (papers) => [
+  ["Title", "Authors", "Year", "Journal", "DOI", "Citations", "Link"],
+  ...papers.map((paper) => {
+    const item = normalizePaperForDownload(paper);
+    return [
+      item.title,
+      item.authors,
+      item.year,
+      item.journal,
+      item.doi,
+      item.citations,
+      item.sourceUrl,
+    ];
+  }),
+];
+
+const getPapersTextBundle = (papers) => {
+  const normalizedPapers = papers.map(normalizePaperForDownload);
+  return [
+    "ScholarTrend Papers",
+    `Generated: ${new Date().toLocaleString()}`,
+    `Total papers: ${normalizedPapers.length}`,
+    "",
+    ...normalizedPapers.flatMap((paper, index) => [
+      "============================================================",
+      `Paper ${index + 1}`,
+      "============================================================",
+      getPaperTextContent(paper),
+      "",
+    ]),
+  ].join("\r\n");
+};
+
+const downloadPapersTextBundle = (filename, papers) => {
+  const safeFilename = filename.endsWith(".txt")
+    ? filename
+    : `${filename.replace(/\.[^.]+$/, "")}.txt`;
+  downloadBlobFile(
+    safeFilename,
+    new Blob([`${UTF8_BOM}${getPapersTextBundle(papers)}`], {
+      type: "text/plain;charset=utf-8",
+    }),
+  );
+};
+
+const downloadPapersZip = async (filename, papers) => {
+  const normalizedPapers = papers.map(normalizePaperForDownload);
+  const metadataRows = getPapersMetadataRows(normalizedPapers);
+  const metadataWorkbook = createXlsxBlob({
+    sheets: { Papers: metadataRows },
+  });
+  const metadataBytes = new Uint8Array(await metadataWorkbook.arrayBuffer());
+  const readme = [
+    "ScholarTrend Papers Download",
+    "",
+    "Open these files:",
+    "1. papers.csv - easiest option for Excel, Google Sheets, or Notepad.",
+    "2. papers-metadata.xlsx - Excel workbook with the same metadata. Open this with Excel/LibreOffice, not Notepad.",
+    "3. papers/*.txt - one readable text file for each paper.",
+    "",
+    "Note: .xlsx is a binary Excel format. If you open it in Notepad, it will look like broken characters.",
+  ].join("\r\n");
+  const textFiles = normalizedPapers.map((paper, index) => ({
+    name: `papers/${String(index + 1).padStart(2, "0")}-${sanitizeDownloadFilename(paper.title)}.txt`,
+    content: `${UTF8_BOM}${getPaperTextContent(paper).replace(/\n/g, "\r\n")}`,
+  }));
+  downloadBlobFile(
+    filename,
+    createZipBlob(
+      [
+        {
+          name: "README.txt",
+          content: `${UTF8_BOM}${readme}`,
+        },
+        {
+          name: "papers.csv",
+          content: createCsvText(metadataRows),
+        },
+        {
+          name: "papers-metadata.xlsx",
+          content: metadataBytes,
+        },
+        ...textFiles,
+      ],
+      "application/zip",
+    ),
+  );
+};
+
+const buildAcademicProviderUrl = ({ provider, role, email, fullName }) => {
+  const returnTo = roleDashboardRoutes[normalizeRoleForUi(role)] || "/researcher-dashboard";
+  if (provider === "ORCID" && ORCID_CLIENT_ID) {
+    const url = new URL("https://orcid.org/oauth/authorize");
+    url.searchParams.set("client_id", ORCID_CLIENT_ID);
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("scope", "/authenticate");
+    url.searchParams.set("redirect_uri", ORCID_REDIRECT_URI);
+    url.searchParams.set(
+      "state",
+      btoa(JSON.stringify({ provider, role, email, fullName, returnTo })),
+    );
+    return url.toString();
+  }
+
+  if (provider === "Institution SSO" && INSTITUTION_SSO_URL) {
+    const url = new URL(INSTITUTION_SSO_URL);
+    url.searchParams.set("role", normalizeRoleForUi(role));
+    url.searchParams.set("email", email || "");
+    url.searchParams.set("name", fullName || "");
+    url.searchParams.set("returnTo", `${window.location.origin}${returnTo}`);
+    return url.toString();
+  }
+
+  return "";
 };
 
 const mapPublicationForCard = (paper) => ({
@@ -809,6 +1226,9 @@ const mapPublicationForCard = (paper) => ({
   source: paper.journalName || "Scientific Journal",
   citations: formatCount(paper.citationCount),
   year: paper.year,
+  doi: paper.doi || paper.DOI || "",
+  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
+  url: paper.url || "",
   saved: false,
 });
 
@@ -833,6 +1253,8 @@ const mapPublicationDetailForUi = (payload) => {
       : "Unknown author",
     year: publication.year || "N/A",
     doi: publication.doi || publication.DOI || "",
+    pdfUrl: publication.pdfUrl || publication.fullTextUrl || publication.PdfUrl || "",
+    url: publication.url || publication.sourceUrl || "",
     journalName: publication.journalName || "Scientific Journal",
     citationCount: publication.citationCount || 0,
     keywords: Array.isArray(publication.keywords) ? publication.keywords : [],
@@ -847,6 +1269,9 @@ const mapPublicationForBookmark = (paper) => ({
   date: String(paper.year || paper.date || "N/A"),
   citations: String(paper.citations || paper.citationCount || "0"),
   impact: paper.impact || paper.tags?.[0] || "Indexed",
+  doi: paper.doi || paper.DOI || "",
+  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
+  url: paper.url || paper.sourceUrl || "",
 });
 
 const getBookmarkKey = (paper) =>
@@ -854,34 +1279,51 @@ const getBookmarkKey = (paper) =>
     .trim()
     .toLowerCase();
 
-const getLocalBookmarks = () => {
+const getBookmarkOwnerKey = () => {
+  const session = getStoredSession();
+  return String(session.email || session.id || "guest")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-");
+};
+
+const getUserScopedStorageKey = (baseKey) =>
+  `${baseKey}.${getBookmarkOwnerKey()}`;
+
+const parseStoredArray = (key) => {
   try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(LOCAL_BOOKMARKS_KEY) || "[]",
-    );
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
+};
+
+const getLocalBookmarks = () => {
+  const scopedKey = getUserScopedStorageKey(LOCAL_BOOKMARKS_KEY);
+  if (window.localStorage.getItem(scopedKey) !== null) {
+    return parseStoredArray(scopedKey);
+  }
+  return parseStoredArray(LOCAL_BOOKMARKS_KEY);
 };
 
 const setLocalBookmarks = (bookmarks) => {
-  window.localStorage.setItem(LOCAL_BOOKMARKS_KEY, JSON.stringify(bookmarks));
+  window.localStorage.setItem(
+    getUserScopedStorageKey(LOCAL_BOOKMARKS_KEY),
+    JSON.stringify(bookmarks),
+  );
+  window.dispatchEvent(new Event("scholartrend:bookmarks-changed"));
 };
 
 const getRemovedBookmarkKeys = () => {
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(REMOVED_BOOKMARKS_KEY) || "[]",
-    );
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return parseStoredArray(getUserScopedStorageKey(REMOVED_BOOKMARKS_KEY));
 };
 
 const setRemovedBookmarkKeys = (keys) => {
-  window.localStorage.setItem(REMOVED_BOOKMARKS_KEY, JSON.stringify(keys));
+  window.localStorage.setItem(
+    getUserScopedStorageKey(REMOVED_BOOKMARKS_KEY),
+    JSON.stringify(keys),
+  );
 };
 
 const hasLocalBookmark = (paper, bookmarks) =>
@@ -1392,6 +1834,9 @@ const mapPublishedPublicationForCard = (paper) => ({
   source: paper.journalName || "ScholarTrend Published",
   citations: formatCount(paper.citationCount),
   year: paper.year,
+  doi: paper.doi || paper.DOI || "",
+  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
+  url: paper.url || "",
   saved: false,
 });
 
@@ -1437,6 +1882,8 @@ const mapPublicationForResearcherList = (paper) => ({
   year: paper.year || "N/A",
   citations: Number(paper.citationCount || paper.citations || 0),
   doi: paper.doi || paper.DOI || "",
+  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
+  url: paper.url || "",
   references: paper.keywords?.length || 0,
   similarity: Math.max(10, Math.min(100, Number(paper.similarityPercent || 25))),
   summary: paper.abstract || paper.excerpt || "No abstract provided.",
@@ -1605,16 +2052,26 @@ const sendPublicationDeleteNotification = async (
 };
 
 function useApiResource(path, fallbackValue, options = {}) {
+  const auth = Boolean(options.auth);
   const [data, setData] = React.useState(fallbackValue);
   const [status, setStatus] = React.useState("idle");
   const [error, setError] = React.useState(null);
+  const shouldFetch = !auth || Boolean(getStoredAuth().accessToken);
 
   React.useEffect(() => {
     let cancelled = false;
+
+    if (!shouldFetch) {
+      setStatus("success");
+      setError(null);
+      setData(fallbackValue);
+      return;
+    }
+
     setStatus("loading");
     setError(null);
 
-    apiFetch(path, { auth: options.auth })
+    apiFetch(path, { auth })
       .then((payload) => {
         if (cancelled) return;
         setData(options.select ? options.select(payload) : payload);
@@ -1630,7 +2087,7 @@ function useApiResource(path, fallbackValue, options = {}) {
     return () => {
       cancelled = true;
     };
-  }, [path]);
+  }, [path, shouldFetch, auth]);
 
   return { data, status, error };
 }
@@ -1993,6 +2450,9 @@ function Brand({ boxed = false, small = false }) {
 
 function LandingPage() {
   const [activeDataPoint, setActiveDataPoint] = React.useState(5); // Default to 2025 (index 5)
+  const [landingSearch, setLandingSearch] = React.useState("");
+  const [newsletterEmail, setNewsletterEmail] = React.useState("");
+  const [newsletterMessage, setNewsletterMessage] = React.useState("");
 
   const chartData = [
     { year: "2020", value: 5200, publications: "5,200", growth: "baseline" },
@@ -2002,6 +2462,44 @@ function LandingPage() {
     { year: "2024", value: 60420, publications: "60,420", growth: "+43%" },
     { year: "2025", value: 96847, publications: "96,847", growth: "+160%" },
   ];
+
+  const submitLandingSearch = (event) => {
+    event.preventDefault();
+    const query = landingSearch.trim();
+    goToRoute(query ? `/student-search?q=${encodeURIComponent(query)}` : "/student-search");
+  };
+
+  const subscribeNewsletter = (event) => {
+    event.preventDefault();
+    const email = newsletterEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setNewsletterMessage("Enter a valid email address.");
+      return;
+    }
+
+    const key = "scholartrend.newsletterSubscribers";
+    let subscribers = [];
+    try {
+      subscribers = JSON.parse(window.localStorage.getItem(key) || "[]");
+    } catch {
+      subscribers = [];
+    }
+    const alreadySubscribed = subscribers.some((item) => item.email === email);
+    const nextSubscribers = alreadySubscribed
+      ? subscribers.map((item) =>
+          item.email === email
+            ? { ...item, updatedAt: new Date().toISOString() }
+            : item,
+        )
+      : [{ email, createdAt: new Date().toISOString() }, ...subscribers];
+    window.localStorage.setItem(key, JSON.stringify(nextSubscribers));
+    setNewsletterEmail("");
+    setNewsletterMessage(
+      alreadySubscribed
+        ? "Subscription refreshed."
+        : "Subscribed. Research updates will be queued for this email.",
+    );
+  };
 
   return (
     <main className="page-shell">
@@ -2132,7 +2630,7 @@ function LandingPage() {
             publications from trusted scholarly databases to reveal emerging
             research trends with clarity.
           </p>
-          <div className="lp-search-bar">
+          <form className="lp-search-bar" onSubmit={submitLandingSearch}>
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
@@ -2145,8 +2643,10 @@ function LandingPage() {
               type="text"
               placeholder="Search publications, authors, topics, or journals..."
               className="lp-search-input"
+              value={landingSearch}
+              onChange={(event) => setLandingSearch(event.target.value)}
             />
-            <button className="lp-search-btn">
+            <button className="lp-search-btn" type="submit">
               Search
               <svg
                 viewBox="0 0 24 24"
@@ -2157,7 +2657,7 @@ function LandingPage() {
                 <path d="m16.5 16.5 4 4" />
               </svg>
             </button>
-          </div>
+          </form>
           <div className="lp-hero-actions">
             <a
               className="lp-primary-btn"
@@ -3876,7 +4376,7 @@ function LandingPage() {
               researchers.
             </p>
             <div className="lp-footer-socials">
-              <a href="/" className="lp-social-icon" aria-label="X (Twitter)">
+              <a href="https://x.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="X (Twitter)">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -3886,7 +4386,7 @@ function LandingPage() {
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="LinkedIn">
+              <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="LinkedIn">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -3896,7 +4396,7 @@ function LandingPage() {
                   <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                 </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="Facebook">
+              <a href="https://www.facebook.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="Facebook">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -3906,7 +4406,7 @@ function LandingPage() {
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="GitHub">
+              <a href="https://github.com/Trannhat2209/Scientific-Journal-Publication-Trend-Tracking-System" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="GitHub">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -3916,7 +4416,7 @@ function LandingPage() {
                   <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
                 </svg>
               </a>
-              <a href="/" className="lp-social-icon" aria-label="Instagram">
+              <a href="https://www.instagram.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="Instagram">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -3930,48 +4430,53 @@ function LandingPage() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Product</div>
-            <a href="/">Features</a>
-            <a href="/">Trends</a>
-            <a href="/">Pricing</a>
-            <a href="/">API</a>
+            <a href="#features">Features</a>
+            <a href="#trends">Trends</a>
+            <a href="#pricing">Pricing</a>
+            <a href="/docs" onClick={navTo("/docs")}>API</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Resources</div>
-            <a href="/">Documentation</a>
-            <a href="/">Blog</a>
-            <a href="/">Guides</a>
-            <a href="/">Support</a>
+            <a href="/docs" onClick={navTo("/docs")}>Documentation</a>
+            <a href="/blog" onClick={navTo("/blog")}>Blog</a>
+            <a href="/guides" onClick={navTo("/guides")}>Guides</a>
+            <a href="/support" onClick={navTo("/support")}>Support</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Company</div>
-            <a href="/">About Us</a>
-            <a href="/">Careers</a>
-            <a href="/">Contact</a>
-            <a href="/">Privacy Policy</a>
+            <a href="/about" onClick={navTo("/about")}>About Us</a>
+            <a href="/careers" onClick={navTo("/careers")}>Careers</a>
+            <a href="/contact" onClick={navTo("/contact")}>Contact</a>
+            <a href="/privacy" onClick={navTo("/privacy")}>Privacy Policy</a>
           </div>
           <div className="lp-footer-col newsletter-col">
             <div className="lp-footer-col-title">Newsletter</div>
             <p className="lp-newsletter-desc">
               Stay updated with the latest research trends and platform updates.
             </p>
-            <div className="lp-newsletter-form">
+            <form className="lp-newsletter-form" onSubmit={subscribeNewsletter}>
               <input
                 type="email"
                 placeholder="Enter your email"
                 className="lp-newsletter-input"
+                value={newsletterEmail}
+                onChange={(event) => setNewsletterEmail(event.target.value)}
               />
-              <button className="lp-newsletter-btn" aria-label="Subscribe">
+              <button className="lp-newsletter-btn" type="submit" aria-label="Subscribe">
                 →
               </button>
-            </div>
+            </form>
+            {newsletterMessage ? (
+              <p className="lp-newsletter-status">{newsletterMessage}</p>
+            ) : null}
           </div>
         </div>
         <div className="lp-footer-bottom">
           <span>© 2026 ScholarTrend. All rights reserved.</span>
           <nav className="lp-footer-bottom-links" aria-label="Legal links">
-            <a href="/">Terms of Service</a>
-            <a href="/">Privacy Policy</a>
-            <a href="/">Contact</a>
+            <a href="/terms" onClick={navTo("/terms")}>Terms of Service</a>
+            <a href="/privacy" onClick={navTo("/privacy")}>Privacy Policy</a>
+            <a href="/contact" onClick={navTo("/contact")}>Contact</a>
           </nav>
         </div>
       </footer>
@@ -4017,7 +4522,7 @@ function RegisterPage() {
     setAuthFeedback({ type: "success", text: "Creating backend account..." });
 
     try {
-      const payload = await apiFetch("/api/auth/register", {
+      const rawPayload = await apiFetch("/api/auth/register", {
         method: "POST",
         body: {
           fullName: fullName.trim(),
@@ -4026,6 +4531,7 @@ function RegisterPage() {
           role: normalizeRoleForApi(registerRole),
         },
       });
+      const payload = normalizeAuthResponse(rawPayload);
 
       persistAuth(payload);
       const role = normalizeRoleForUi(payload.user?.role || registerRole);
@@ -4064,7 +4570,7 @@ function RegisterPage() {
     }
   };
 
-  const handleAcademicProviderRegister = (provider) => {
+  const handleAcademicProviderRegister = async (provider) => {
     if (!fullName.trim() || !email.trim() || !password) {
       setAuthFeedback({
         type: "error",
@@ -4082,10 +4588,45 @@ function RegisterPage() {
     }
 
     setSelectedAcademicProvider(provider);
-    setAuthFeedback({
-      type: "success",
-      text: `${provider} selected. Fill the form and click Register Account to continue.`,
+    const providerUrl = buildAcademicProviderUrl({
+      provider,
+      role: registerRole,
+      email,
+      fullName,
     });
+
+    if (providerUrl) {
+      setAuthFeedback({
+        type: "success",
+        text: `Opening ${provider} authentication...`,
+      });
+      window.location.href = providerUrl;
+      return;
+    }
+
+    setIsRegistering(true);
+    setAuthFeedback({ type: "success", text: `Syncing ${provider} profile...` });
+    try {
+      const { user, mode } = await authenticateAcademicProvider({
+        provider,
+        role: registerRole,
+        email,
+        fullName,
+      });
+      const role = normalizeRoleForUi(user.role || registerRole);
+      setAuthFeedback({
+        type: "success",
+        text: `${provider} ${mode === "local" ? "local profile" : "profile"} ready. Loading workspace...`,
+      });
+      window.setTimeout(
+        () => goToRoute(roleDashboardRoutes[role] || "/researcher-dashboard"),
+        450,
+      );
+    } catch (error) {
+      setAuthFeedback({ type: "error", text: error.message });
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   return (
@@ -4713,13 +5254,14 @@ function LoginPage() {
     setFeedback({ type: "success", text: "Checking backend credentials..." });
 
     try {
-      const payload = await apiFetch("/api/auth/login", {
+      const rawPayload = await apiFetch("/api/auth/login", {
         method: "POST",
         body: {
           email: normalizedEmail,
           password: loginPassword,
         },
       });
+      const payload = normalizeAuthResponse(rawPayload);
       persistAuth(payload);
       const role = normalizeRoleForUi(payload.user?.role || requestedRole);
       setSelectedRole(role);
@@ -4820,7 +5362,7 @@ function LoginPage() {
     }
   };
 
-  const handleAcademicProviderLogin = (provider) => {
+  const handleAcademicProviderLogin = async (provider) => {
     if (!email.trim() || !password) {
       setFeedback({
         type: "error",
@@ -4830,10 +5372,38 @@ function LoginPage() {
     }
 
     setSelectedAcademicProvider(provider);
-    setFeedback({
-      type: "success",
-      text: `${provider} selected. Enter your email/password and click Sign In to continue.`,
+    const providerUrl = buildAcademicProviderUrl({
+      provider,
+      role: selectedRole,
+      email,
+      fullName: email.split("@")[0],
     });
+
+    if (providerUrl) {
+      setFeedback({ type: "success", text: `Opening ${provider} authentication...` });
+      window.location.href = providerUrl;
+      return;
+    }
+
+    setIsLoggingIn(true);
+    setFeedback({ type: "success", text: `Syncing ${provider} profile...` });
+    try {
+      const { user, mode } = await authenticateAcademicProvider({
+        provider,
+        role: selectedRole,
+        email,
+        fullName: email.split("@")[0],
+      });
+      const role = normalizeRoleForUi(user.role || selectedRole);
+      finishLogin(
+        role,
+        roleDashboardRoutes[role] || "/researcher-dashboard",
+        `${provider} ${mode === "local" ? "local profile" : "profile"} ready. Loading workspace...`,
+      );
+    } catch (error) {
+      setIsLoggingIn(false);
+      setFeedback({ type: "error", text: error.message });
+    }
   };
 
   return (
@@ -6604,6 +7174,7 @@ function StudentDashboard() {
     getLocalBookmarks(),
   );
   const [dashboardQuery, setDashboardQuery] = React.useState("");
+  const [dashboardBookmarkMessage, setDashboardBookmarkMessage] = React.useState("");
   const { data: publicationData } = useApiResource(
     "/api/publications/search?page=1&pageSize=5",
     publications,
@@ -6668,6 +7239,11 @@ function StudentDashboard() {
       ? upsertLocalBookmark(paper)
       : removeLocalBookmark(paper);
     setLocalBookmarkState(nextLocalBookmarks);
+    setDashboardBookmarkMessage(
+      nextSaved
+        ? `"${paper.title}" saved. Open Bookmarks to view it again.`
+        : `"${paper.title}" removed from Bookmarks.`,
+    );
 
     if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
       apiFetch(`/api/bookmarks/${paper.id}`, {
@@ -6759,13 +7335,22 @@ function StudentDashboard() {
                   View all -&gt;
                 </a>
               </div>
+              {dashboardBookmarkMessage ? (
+                <p className="bookmark-save-message" role="status">
+                  {dashboardBookmarkMessage}{" "}
+                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
+                    View Bookmarks
+                  </a>
+                </p>
+              ) : null}
               {studentPublications.map((paper) => (
                 <article className="publication-card" key={paper.title}>
                   <button
                     type="button"
                     aria-label={
-                      paper.saved ? "Remove bookmark" : "Bookmark publication"
+                      paper.saved ? "Remove from Bookmarks" : "Save to Bookmarks"
                     }
+                    aria-pressed={paper.saved}
                     className={`bookmark-button ${paper.saved ? "saved" : ""}`}
                     onClick={() => handleTogglePublicationBookmark(paper)}
                   >
@@ -7040,6 +7625,8 @@ function UpgradeProModal({ open, onClose }) {
   const [paymentMessage, setPaymentMessage] = React.useState("");
   const planSettings = getProPlanSettings();
   const accountPlan = getCurrentAccountPlan();
+  const freeAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, false);
+  const proAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, true);
   const currentAccuracy = getSearchAccuracyForAccount(
     accountPlan.role,
     accountPlan.isPro,
@@ -8471,6 +9058,7 @@ function LecturerDashboard() {
 }
 
 function ResearcherDashboard() {
+  const [dateRange, setDateRange] = React.useState("30");
   const { data: statsData } = useApiResource("/api/dashboard/stats", null);
   const publishedPublications = React.useMemo(() => getPublishedPublications(), []);
   const { data: growthData } = useApiResource(
@@ -8517,16 +9105,46 @@ function ResearcherDashboard() {
       return stat;
     });
   }, [statsData]);
+  const filteredGrowthData = React.useMemo(() => {
+    if (dateRange === "all") return growthData;
+    const yearsToShow = dateRange === "90" ? 4 : dateRange === "365" ? 6 : 3;
+    return growthData.slice(Math.max(0, growthData.length - yearsToShow));
+  }, [dateRange, growthData]);
+  const downloadDashboardReport = () => {
+    downloadXlsxFile("scholartrend-researcher-dashboard.xlsx", {
+      Summary: [
+        ["Metric", "Value", "Note"],
+        ...dashboardStats.map((stat) => [stat.label, stat.value, stat.note || ""]),
+      ],
+      Growth: [
+        ["Year", "Publications"],
+        ...filteredGrowthData.map((row) => [row.year, row.publications]),
+      ],
+      Keywords: [
+        ["Keyword", "Score"],
+        ...keywordData.map((row) => [row.label, row.percent]),
+      ],
+    });
+  };
 
   return (
     <ResearcherShell activeRoute="/researcher-dashboard" current="Dashboard">
       <div className="researcher-content">
         <div className="researcher-intro-row">
           <p>Here's your latest academic intelligence overview.</p>
-          <button type="button" className="researcher-date-filter">
+          <label className="researcher-date-filter">
             <MiniIcon path="M7 7h10M9 12h6M11 17h2" />
-            Last 30 Days
-          </button>
+            <select
+              value={dateRange}
+              onChange={(event) => setDateRange(event.target.value)}
+              aria-label="Dashboard date range"
+            >
+              <option value="30">Last 30 Days</option>
+              <option value="90">Last 90 Days</option>
+              <option value="365">Last 12 Months</option>
+              <option value="all">All Data</option>
+            </select>
+          </label>
         </div>
 
         <section className="researcher-stats" aria-label="Researcher metrics">
@@ -8536,7 +9154,7 @@ function ResearcherDashboard() {
         </section>
 
         <div className="researcher-dashboard-grid">
-          <PublicationGrowthChart data={growthData} />
+          <PublicationGrowthChart data={filteredGrowthData} />
           <aside className="researcher-side-column">
             <TrendingKeywordsCard keywords={keywordData} />
             <RecentlyPublishedCard publications={publishedPublications} />
@@ -8549,6 +9167,7 @@ function ResearcherDashboard() {
         type="button"
         className="researcher-download"
         aria-label="Download report"
+        onClick={downloadDashboardReport}
       >
         <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
       </button>
@@ -8684,6 +9303,8 @@ function TrendKeywordsOverview() {
 }
 
 function TrendMainChart() {
+  const [activeTrendTab, setActiveTrendTab] = React.useState("time");
+  const [chartMode, setChartMode] = React.useState("count");
   const { data: backendTrendData } = useApiResource(
     "/api/trends?keyword=Machine%20Learning&fromYear=2019&toYear=2023&strategy=StrategyA_RawCount",
     [],
@@ -8714,14 +9335,36 @@ function TrendMainChart() {
   ).slice(0, 5);
   const labels = chartRows.map((item) => item.year);
   const values = chartRows.map((item) => item.value);
+  const distributionValues = values.map((value, index) =>
+    Math.max(1, Math.round(value * (0.42 + index * 0.08))),
+  );
+  const activeValues =
+    activeTrendTab === "journals"
+      ? distributionValues
+      : chartMode === "growth"
+        ? values.map((value, index) =>
+            index ? Math.round(((value - values[index - 1]) / Math.max(values[index - 1], 1)) * 100) : 0,
+          )
+        : values;
   const previousValues = values.map((value, index) =>
     Math.max(0, Math.round(index ? values[index - 1] : value * 0.88)),
   );
   const maxChartValue = Math.max(...values, ...previousValues, 1);
-  const trendAxisMax = Math.max(
-    80000,
-    Math.ceil((maxChartValue * 1.12) / 10000) * 10000,
-  );
+  const trendAxisMax =
+    chartMode === "growth"
+      ? 100
+      : Math.max(
+          80000,
+          Math.ceil((Math.max(...activeValues, ...previousValues, 1) * 1.12) / 10000) * 10000,
+        );
+  const exportTrendChartRows = () => {
+    downloadXlsxFile("scholartrend-trend-chart.xlsx", {
+      Chart: [
+        ["Label", activeTrendTab === "journals" ? "Journal Distribution" : chartMode === "growth" ? "Growth %" : "Publications"],
+        ...labels.map((label, index) => [label, activeValues[index]]),
+      ],
+    });
+  };
 
   return (
     <section
@@ -8729,10 +9372,31 @@ function TrendMainChart() {
       aria-label="Publication trend over time"
     >
       <div className="trend-tabs">
-        <button type="button" className="active">
+        <button
+          type="button"
+          className={activeTrendTab === "time" ? "active" : ""}
+          onClick={() => setActiveTrendTab("time")}
+        >
           Publications Over Time
         </button>
-        <button type="button">Distribution by Journal</button>
+        <button
+          type="button"
+          className={activeTrendTab === "journals" ? "active" : ""}
+          onClick={() => setActiveTrendTab("journals")}
+        >
+          Distribution by Journal
+        </button>
+        <select
+          value={chartMode}
+          onChange={(event) => setChartMode(event.target.value)}
+          aria-label="Trend chart metric"
+        >
+          <option value="count">Raw Count</option>
+          <option value="growth">Growth Rate</option>
+        </select>
+        <button type="button" onClick={exportTrendChartRows}>
+          Download
+        </button>
       </div>
       <div
         className="trend-chart-wrap"
@@ -8743,8 +9407,13 @@ function TrendMainChart() {
             labels,
             datasets: [
               {
-                label: "Publications Over Time",
-                data: values,
+                label:
+                  activeTrendTab === "journals"
+                    ? "Distribution by Journal"
+                    : chartMode === "growth"
+                      ? "Growth Rate"
+                      : "Publications Over Time",
+                data: activeValues,
                 borderColor: "rgba(99, 102, 241, 1)",
                 backgroundColor: "rgba(99, 102, 241, 0.13)",
                 tension: 0.32,
@@ -8810,12 +9479,7 @@ function TrendMainChart() {
                 },
                 callbacks: {
                   label: function (context) {
-                    return (
-                      context.dataset.label +
-                      ": " +
-                      context.parsed.y.toLocaleString() +
-                      " publications"
-                    );
+                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}${chartMode === "growth" ? "%" : " publications"}`;
                   },
                 },
               },
@@ -9214,6 +9878,32 @@ function ReportsPage() {
   );
   const handleGenerateReport = async () => {
     setReportMessage("Generating report...");
+    const filenameBase = `trend-report-${reportKeyword.replace(/\s+/g, "-")}-${reportFromYear}-${reportToYear}`;
+    const summaryRows = [
+      ["Metric", "Value"],
+      ["Keyword", reportKeyword],
+      ["From Year", reportFromYear],
+      ["To Year", reportToYear],
+      ["Total Publications", reportTotals.total],
+      ["Average Growth Rate", reportTotals.averageScore.toFixed(1)],
+    ];
+    const trendRows = [
+      ["Year", "Publications", "Previous Period"],
+      ...reportTotals.labels.map((label, index) => [
+        label,
+        reportTotals.counts[index],
+        reportPreviousCounts[index],
+      ]),
+    ];
+    const rawRows = [
+      ["Keyword", "Year", "Publication Count", "Trending Score"],
+      ...reportTrendRows.map((row) => [
+        row.keyword || row.Keyword || reportKeyword,
+        row.year || row.Year,
+        row.publicationCount ?? row.PublicationCount ?? "",
+        row.trendingScore ?? row.TrendingScore ?? "",
+      ]),
+    ];
     try {
       const token = getStoredAuth().accessToken;
       const response = await fetch(`${API_BASE_URL}/api/dashboard/export`, {
@@ -9234,12 +9924,27 @@ function ReportsPage() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `trend-report-${reportKeyword.replace(/\s+/g, "-")}-${reportFromYear}-${reportToYear}.csv`;
+      anchor.download = `${filenameBase}.${reportFormat === "Excel" ? "xlsx" : "csv"}`;
       anchor.click();
       URL.revokeObjectURL(url);
       setReportMessage("Report exported from backend.");
     } catch (error) {
-      setReportMessage(error.message);
+      if (reportFormat === "Excel") {
+        downloadXlsxFile(`${filenameBase}.xlsx`, {
+          Summary: summaryRows,
+          Trends: trendRows,
+          "Raw Data": rawRows.length > 1 ? rawRows : trendRows,
+        });
+        setReportMessage(`${error.message} Exported local Excel fallback.`);
+        return;
+      }
+
+      downloadCsvFile(`${filenameBase}.csv`, [
+        ...summaryRows,
+        [],
+        ...trendRows,
+      ]);
+      setReportMessage(`${error.message} Exported local CSV fallback.`);
     }
   };
 
@@ -10006,6 +10711,89 @@ function SyncSourceCard({ source }) {
 }
 
 function SyncManagementPage() {
+  const [syncConfig, setSyncConfig] = React.useState(() => {
+    try {
+      return (
+        JSON.parse(window.localStorage.getItem("scholartrend.userSyncConfig") || "null") || {
+          semantic: true,
+          openAlex: true,
+          batchSize: 50,
+          schedule: "Manual",
+        }
+      );
+    } catch {
+      return {
+        semantic: true,
+        openAlex: true,
+        batchSize: 50,
+        schedule: "Manual",
+      };
+    }
+  });
+  const [showSyncConfig, setShowSyncConfig] = React.useState(false);
+  const [syncLogsForUi, setSyncLogsForUi] = React.useState(syncLogs);
+  const [syncMessage, setSyncMessage] = React.useState("");
+  const saveUserSyncConfig = (patch) => {
+    const nextConfig = { ...syncConfig, ...patch };
+    setSyncConfig(nextConfig);
+    window.localStorage.setItem("scholartrend.userSyncConfig", JSON.stringify(nextConfig));
+  };
+  const appendUserSyncLog = (level, message) => {
+    const now = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    setSyncLogsForUi((current) => [
+      { time: now, level, message },
+      ...current,
+    ]);
+  };
+  const runDryCheck = async () => {
+    setSyncMessage("Running dry check...");
+    const enabled = [
+      syncConfig.semantic ? "Semantic Scholar" : null,
+      syncConfig.openAlex ? "OpenAlex" : null,
+    ].filter(Boolean);
+    if (!enabled.length) {
+      appendUserSyncLog("ERROR", "Dry check failed: no source enabled.");
+      setSyncMessage("Enable at least one source before running dry check.");
+      return;
+    }
+    appendUserSyncLog("INFO", `Dry check passed for ${enabled.join(", ")} with batch size ${syncConfig.batchSize}.`);
+    setSyncMessage("Dry check passed. No data was written.");
+  };
+  const startUserSync = async () => {
+    setSyncMessage("Starting sync...");
+    const enabled = [
+      syncConfig.semantic ? "Semantic Scholar" : null,
+      syncConfig.openAlex ? "OpenAlex" : null,
+    ].filter(Boolean);
+    try {
+      await apiFetch("/api/admin/audit-log", {
+        method: "POST",
+        auth: true,
+        body: {
+          module: "Sync Management",
+          detail: `User workspace sync requested for ${enabled.join(", ") || "no source"}.`,
+          severity: enabled.length ? "Info" : "Error",
+          code: "USER-SYNC-REQUEST",
+        },
+      });
+    } catch {
+      // Non-admin users can still run the local sync workflow.
+    }
+    if (!enabled.length) {
+      appendUserSyncLog("ERROR", "Sync blocked: no source configured.");
+      setSyncMessage("Sync blocked. Configure a source first.");
+      return;
+    }
+    appendUserSyncLog("INFO", `Started ${enabled.join(" + ")} sync for ${syncConfig.batchSize} records.`);
+    window.setTimeout(() => {
+      appendUserSyncLog("SUCCESS", `Completed ${enabled.join(" + ")} sync simulation. Search uses synced backend records when available.`);
+      setSyncMessage("Sync completed and logs were updated.");
+    }, 450);
+  };
+
   return (
     <ResearcherShell
       activeRoute="/researcher-sync-management"
@@ -10026,15 +10814,65 @@ function SyncManagementPage() {
             </p>
           </div>
           <div className="sync-hero-actions">
-            <button type="button" className="sync-secondary-button">
+            <button type="button" className="sync-secondary-button" onClick={runDryCheck}>
               <MiniIcon path="M4 4v6h6M20 20v-6h-6M20 8a7 7 0 0 0-12.1-4M4 16a7 7 0 0 0 12.1 4M9 12h6" />{" "}
               Run Dry Check
             </button>
-            <button type="button" className="sync-primary-button">
+            <button type="button" className="sync-primary-button" onClick={startUserSync}>
               <MiniIcon path="M12 5v14M5 12h14M7 7l10 10" /> Start Sync
             </button>
           </div>
         </section>
+        {syncMessage ? <p className="sync-message">{syncMessage}</p> : null}
+        {showSyncConfig ? (
+          <section className="sync-panel sync-user-config-panel">
+            <div className="sync-panel-heading">
+              <h2>Configuration</h2>
+              <button type="button" onClick={() => setShowSyncConfig(false)}>
+                Done
+              </button>
+            </div>
+            <div className="sync-user-config-grid">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={syncConfig.semantic}
+                  onChange={(event) => saveUserSyncConfig({ semantic: event.target.checked })}
+                />
+                Semantic Scholar
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={syncConfig.openAlex}
+                  onChange={(event) => saveUserSyncConfig({ openAlex: event.target.checked })}
+                />
+                OpenAlex
+              </label>
+              <label>
+                Batch size
+                <input
+                  type="number"
+                  min="10"
+                  max="200"
+                  value={syncConfig.batchSize}
+                  onChange={(event) => saveUserSyncConfig({ batchSize: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                Schedule
+                <select
+                  value={syncConfig.schedule}
+                  onChange={(event) => saveUserSyncConfig({ schedule: event.target.value })}
+                >
+                  <option>Manual</option>
+                  <option>Every 6 hours</option>
+                  <option>Daily</option>
+                </select>
+              </label>
+            </div>
+          </section>
+        ) : null}
 
         <section className="sync-source-grid" aria-label="Sync data sources">
           {syncSourceCards.map((source) => (
@@ -10071,7 +10909,7 @@ function SyncManagementPage() {
                 <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6zM9 13h2M13 13h2M9 16h2" />{" "}
                 Hangfire Schedule
               </h2>
-              <button type="button">Configure</button>
+              <button type="button" onClick={() => setShowSyncConfig((value) => !value)}>Configure</button>
             </div>
             <table>
               <thead>
@@ -10141,7 +10979,7 @@ function SyncManagementPage() {
               <span>Live logging</span>
             </div>
             <div className="sync-log-list">
-              {syncLogs.map((log) => (
+              {syncLogsForUi.map((log) => (
                 <article
                   className={`sync-log ${log.level.toLowerCase()}`}
                   key={`${log.time}-${log.message}`}
@@ -10684,11 +11522,43 @@ function KnowledgeGraphCanvas({
   );
 }
 
-function ResearcherPaperPanel({ selectedNode }) {
+function ResearcherPaperPanel({
+  selectedNode,
+  onComparePaper,
+  comparisonCount = 0,
+}) {
   const selectedPaper = getGraphPaperForNode(selectedNode);
+  const [paperMessage, setPaperMessage] = React.useState("");
+  const [saved, setSaved] = React.useState(() =>
+    hasLocalBookmark(selectedPaper, getLocalBookmarks()),
+  );
   const detailPath = `/researcher-publication${
     selectedPaper.id ? `?id=${encodeURIComponent(selectedPaper.id)}` : ""
   }`;
+  const absoluteDetailUrl = `${window.location.origin}${detailPath}`;
+
+  React.useEffect(() => {
+    setSaved(hasLocalBookmark(selectedPaper, getLocalBookmarks()));
+    setPaperMessage("");
+  }, [selectedPaper.id]);
+
+  const sharePaper = async () => {
+    const message = await sharePublicationLink({
+      title: selectedPaper.title,
+      text: selectedPaper.abstract,
+      url: absoluteDetailUrl,
+    });
+    setPaperMessage(message);
+  };
+
+  const savePaper = (mode = "full") => {
+    upsertLocalBookmark({
+      ...selectedPaper,
+      excerpt: mode === "link" ? absoluteDetailUrl : selectedPaper.abstract,
+    });
+    setSaved(true);
+    setPaperMessage(mode === "link" ? "Link saved to bookmarks." : "Paper saved to bookmarks.");
+  };
 
   return (
     <aside
@@ -10698,7 +11568,7 @@ function ResearcherPaperPanel({ selectedNode }) {
       <div className="paper-panel-actions">
         <span>Selected Node</span>
         <div>
-          <button type="button" aria-label="Share paper">
+          <button type="button" aria-label="Share paper" onClick={sharePaper}>
             <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
           </button>
           <button
@@ -10753,15 +11623,20 @@ function ResearcherPaperPanel({ selectedNode }) {
       </section>
 
       <div className="paper-save-actions">
-        <button type="button" className="save-full-text">
+        <button type="button" className="save-full-text" onClick={() => savePaper("full")}>
           <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
-          Save Full Text
+          {saved ? "Saved Full Text" : "Save Full Text"}
         </button>
-        <button type="button" className="save-link-only">
+        <button type="button" className="save-link-only" onClick={() => savePaper("link")}>
           <MiniIcon path="M10 13a5 5 0 0 1 7.1 0l.9.9a5 5 0 0 1-7.1 7.1l-.9-.9M14 11a5 5 0 0 1-7.1 0L6 10.1A5 5 0 0 1 13.1 3l.9.9" />
           Save Link Only
         </button>
+        <button type="button" className="save-link-only" onClick={() => onComparePaper?.(selectedPaper)}>
+          <MiniIcon path="M5 6h14M5 12h14M5 18h14M9 4v16M15 4v16" />
+          Compare ({comparisonCount})
+        </button>
       </div>
+      {paperMessage ? <p className="paper-action-message">{paperMessage}</p> : null}
 
       <section className="paper-access-points">
         <h2>Access Points</h2>
@@ -10923,7 +11798,10 @@ function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
 
 function ResearcherListDetail({ paper }) {
   const [originAdded, setOriginAdded] = React.useState(false);
-  const [saved, setSaved] = React.useState(false);
+  const [saved, setSaved] = React.useState(() =>
+    hasLocalBookmark(paper, getLocalBookmarks()),
+  );
+  const [saveMessage, setSaveMessage] = React.useState("");
   const detailPath = `/researcher-publication${paper.id ? `?id=${encodeURIComponent(paper.id)}` : ""}`;
   const summary =
     paper.summary ||
@@ -10936,8 +11814,26 @@ function ResearcherListDetail({ paper }) {
 
   React.useEffect(() => {
     setOriginAdded(false);
-    setSaved(false);
+    setSaved(hasLocalBookmark(paper, getLocalBookmarks()));
+    setSaveMessage("");
   }, [paper.id]);
+
+  const toggleCollectionSave = () => {
+    const nextSaved = !hasLocalBookmark(paper, getLocalBookmarks());
+    if (nextSaved) {
+      upsertLocalBookmark(paper);
+    } else {
+      removeLocalBookmark(paper);
+    }
+    setSaved(nextSaved);
+    setSaveMessage(nextSaved ? "Saved to Bookmarks." : "Removed from Bookmarks.");
+    if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
+      apiFetch(`/api/bookmarks/${paper.id}`, {
+        method: nextSaved ? "POST" : "DELETE",
+        auth: true,
+      }).catch(() => {});
+    }
+  };
 
   return (
     <aside
@@ -10976,11 +11872,12 @@ function ResearcherListDetail({ paper }) {
       <button
         type="button"
         className={`researcher-list-save ${saved ? "saved" : ""}`}
-        onClick={() => setSaved((value) => !value)}
+        onClick={toggleCollectionSave}
       >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
         {saved ? "Saved to collection" : "Save to collection"}
       </button>
+      {saveMessage ? <p className="bookmark-save-message">{saveMessage}</p> : null}
 
       <section className="researcher-list-open-in">
         <h3>Open in</h3>
@@ -11095,24 +11992,14 @@ function ResearcherListViewPage() {
     papersForUi[0] ||
     listViewPapers[1];
 
-  const downloadResults = () => {
-    const rows = [
-      ["Title", "Authors", "Year", "Citations", "References", "Similarity"],
-      ...papersForUi.map((paper) => [
-        paper.title,
-        paper.authors,
-        paper.year,
-        paper.citations,
-        paper.references,
-        paper.similarity,
-      ]),
-    ];
-    downloadDocxFile("scholartrend-list-results.docx", {
-      title: query.trim()
-        ? `Search results for "${query.trim()}"`
-        : "ScholarTrend List Results",
-      rows,
+  const exportListMetadata = () => {
+    downloadXlsxFile("scholartrend-list-metadata.xlsx", {
+      Papers: getPapersMetadataRows(papersForUi),
     });
+  };
+
+  const downloadListPapersText = () => {
+    downloadPapersTextBundle("scholartrend-list-papers.txt", papersForUi);
   };
 
   return (
@@ -11140,9 +12027,13 @@ function ResearcherListViewPage() {
               </p>
             </div>
             <div>
-              <button type="button" onClick={downloadResults}>
+              <button type="button" onClick={exportListMetadata}>
                 <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
-                Download Results
+                Export Excel
+              </button>
+              <button type="button" onClick={downloadListPapersText}>
+                <MiniIcon path="M4 7h16M6 7v12h12V7M9 11h6M9 15h6" />
+                Download Papers TXT
               </button>
               <label className="researcher-list-inline-filter">
                 <span>Search</span>
@@ -11258,6 +12149,7 @@ function ResearcherSearchPage() {
   const [selectedNodeId, setSelectedNodeId] = React.useState(
     graphNodesForUi[0]?.id || "deepfruits",
   );
+  const [comparisonPapers, setComparisonPapers] = React.useState([]);
   const selectedNode = React.useMemo(
     () =>
       graphNodesForUi.find((node) => node.id === selectedNodeId) ||
@@ -11267,6 +12159,36 @@ function ResearcherSearchPage() {
   );
 
   if (view === "list") return <ResearcherListViewPage />;
+
+  const addComparisonPaper = (paper) => {
+    setComparisonPapers((current) => {
+      const exists = current.some((item) => getBookmarkKey(item) === getBookmarkKey(paper));
+      return exists ? current : [...current, paper].slice(-4);
+    });
+  };
+
+  const exportComparisonPapers = () => {
+    downloadXlsxFile("scholartrend-graph-comparison.xlsx", {
+      Comparison: [
+        ["Title", "Authors", "Year", "Venue", "Citations", "Similarity"],
+        ...comparisonPapers.map((paper) => [
+          paper.title,
+          paper.authors,
+          paper.year,
+          paper.venue,
+          paper.citations,
+          paper.similarity,
+        ]),
+      ],
+    });
+  };
+
+  const shareComparisonPapers = async () => {
+    const text = comparisonPapers
+      .map((paper, index) => `${index + 1}. ${paper.title} (${paper.year})`)
+      .join("\n");
+    await copyTextToClipboard(text || selectedNode.label);
+  };
 
   return (
     <ResearcherShell
@@ -11281,8 +12203,23 @@ function ResearcherSearchPage() {
           selectedNodeId={selectedNode.id}
           onSelectNode={setSelectedNodeId}
         />
-        <ResearcherPaperPanel selectedNode={selectedNode} />
+        <ResearcherPaperPanel
+          selectedNode={selectedNode}
+          onComparePaper={addComparisonPaper}
+          comparisonCount={comparisonPapers.length}
+        />
       </div>
+      {comparisonPapers.length ? (
+        <section className="graph-comparison-bar">
+          <div>
+            <strong>{comparisonPapers.length} papers selected for compare</strong>
+            <span>{comparisonPapers.map((paper) => paper.title).join(" | ")}</span>
+          </div>
+          <button type="button" onClick={shareComparisonPapers}>Copy</button>
+          <button type="button" onClick={exportComparisonPapers}>Export</button>
+          <button type="button" onClick={() => setComparisonPapers([])}>Clear</button>
+        </section>
+      ) : null}
     </ResearcherShell>
   );
 }
@@ -11365,6 +12302,15 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           />{" "}
           OpenAlex
         </label>
+        <label>
+          <input
+            type="radio"
+            name="source"
+            checked={filters.source === "Semantic Scholar"}
+            onChange={() => onChangeFilters({ source: "Semantic Scholar" })}
+          />{" "}
+          Semantic Scholar
+        </label>
       </section>
 
       <section className="filter-card">
@@ -11422,10 +12368,13 @@ function SearchResultCard({ result, onToggleSave }) {
       <button
         className={`result-save ${result.saved ? "saved" : ""}`}
         type="button"
-        aria-label={result.saved ? "Remove saved publication" : "Save publication"}
+        aria-label={result.saved ? "Bỏ lưu bài báo" : "Lưu bài báo"}
         onClick={() => onToggleSave?.(result)}
       >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
+        <span className="result-save-label">
+          {result.saved ? "Đã lưu" : "Lưu"}
+        </span>
       </button>
       <a
         className="result-title-link"
@@ -11465,6 +12414,7 @@ function StudentSearchPage() {
   const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
     getLocalBookmarks(),
   );
+  const [bookmarkMessage, setBookmarkMessage] = React.useState("");
   const [filters, setFilters] = React.useState(() => ({
     keyword: getSearchParam("q") || "",
     yearFrom: "2010",
@@ -11473,6 +12423,8 @@ function StudentSearchPage() {
     sortBy: "relevance",
   }));
   const accountPlan = getCurrentAccountPlan();
+  const freeAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, false);
+  const proAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, true);
   const searchApiPath = React.useMemo(() => {
     const params = new URLSearchParams({
       page: "1",
@@ -11557,6 +12509,11 @@ function StudentSearchPage() {
       ? upsertLocalBookmark(result)
       : removeLocalBookmark(result);
     setLocalBookmarkState(nextLocalBookmarks);
+    setBookmarkMessage(
+      nextSaved
+        ? "Đã lưu bài báo. Mở Bookmarks để xem lại."
+        : "Đã bỏ lưu bài báo khỏi Bookmarks.",
+    );
 
     if (isBackendNumericId(result.id) && getStoredAuth().accessToken) {
       apiFetch(`/api/bookmarks/${result.id}`, {
@@ -11576,6 +12533,14 @@ function StudentSearchPage() {
       source: "All Sources",
       sortBy: "relevance",
     });
+  };
+  const exportSearchMetadata = () => {
+    downloadXlsxFile("scholartrend-search-metadata.xlsx", {
+      Papers: getPapersMetadataRows(searchResultsForUi),
+    });
+  };
+  const downloadSearchPapersText = () => {
+    downloadPapersTextBundle("scholartrend-search-papers.txt", searchResultsForUi);
   };
 
   return (
@@ -11599,10 +12564,14 @@ function StudentSearchPage() {
         <div className="student-content search-content">
           <h1 className="search-page-title">Publication Search</h1>
           <div className="search-accuracy-banner">
-            <span>{accountPlan.plan} account</span>
+            <span>
+              {accountPlan.role} {accountPlan.plan} account
+            </span>
             <strong>{accountPlan.searchAccuracy}% article accuracy</strong>
             <p>
-              Student Free is 15%. Student Pro increases search accuracy to 35%.
+              {accountPlan.role} Free is {freeAccuracyForRole}%.{" "}
+              {accountPlan.role} Pro increases search accuracy to{" "}
+              {proAccuracyForRole}%.
             </p>
           </div>
 
@@ -11619,6 +12588,12 @@ function StudentSearchPage() {
             >
               <div className="search-results-toolbar">
                 <p>Found {searchResultsForUi.length} publications</p>
+                <button type="button" onClick={exportSearchMetadata}>
+                  Export Excel
+                </button>
+                <button type="button" onClick={downloadSearchPapersText}>
+                  Download Papers TXT
+                </button>
                 <label>
                   <span>Sort by:</span>
                   <select
@@ -11633,6 +12608,14 @@ function StudentSearchPage() {
                   </select>
                 </label>
               </div>
+              {bookmarkMessage ? (
+                <p className="bookmark-save-message" role="status">
+                  {bookmarkMessage}{" "}
+                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
+                    Xem Bookmarks
+                  </a>
+                </p>
+              ) : null}
 
               <div className="search-results-list">
                 {searchResultsForUi.map((result) => (
@@ -11827,6 +12810,18 @@ function BookmarksPage({ role = "student" }) {
   const [removedBookmarkKeys, setRemovedBookmarkKeyState] = React.useState(() =>
     getRemovedBookmarkKeys(),
   );
+  React.useEffect(() => {
+    const refreshBookmarks = () => {
+      setLocalBookmarkState(getLocalBookmarks());
+      setRemovedBookmarkKeyState(getRemovedBookmarkKeys());
+    };
+    window.addEventListener("scholartrend:bookmarks-changed", refreshBookmarks);
+    window.addEventListener("storage", refreshBookmarks);
+    return () => {
+      window.removeEventListener("scholartrend:bookmarks-changed", refreshBookmarks);
+      window.removeEventListener("storage", refreshBookmarks);
+    };
+  }, []);
   const { data: backendBookmarkedPapers } = useApiResource(
     "/api/bookmarks",
     bookmarkedPapers,
@@ -11870,6 +12865,14 @@ function BookmarksPage({ role = "student" }) {
   const dashboardPath = isAcademic
     ? getAcademicPath("/researcher-dashboard", rolePrefix)
     : "/student-dashboard";
+  const exportBookmarkMetadata = () => {
+    downloadXlsxFile("scholartrend-bookmark-metadata.xlsx", {
+      Papers: getPapersMetadataRows(bookmarkPapersForUi),
+    });
+  };
+  const downloadBookmarkPapersText = () => {
+    downloadPapersTextBundle("scholartrend-bookmark-papers.txt", bookmarkPapersForUi);
+  };
 
   if (isAcademic) {
     return (
@@ -11881,6 +12884,14 @@ function BookmarksPage({ role = "student" }) {
       >
         <div className="researcher-bookmarks-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
+          <div className="paper-download-actions">
+            <button type="button" onClick={exportBookmarkMetadata}>
+              Export Excel
+            </button>
+            <button type="button" onClick={downloadBookmarkPapersText}>
+              Download Papers TXT
+            </button>
+          </div>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
             {bookmarkTabs.map((tab) => (
@@ -12016,6 +13027,14 @@ function BookmarksPage({ role = "student" }) {
 
         <div className="student-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
+          <div className="paper-download-actions">
+            <button type="button" onClick={exportBookmarkMetadata}>
+              Export Excel
+            </button>
+            <button type="button" onClick={downloadBookmarkPapersText}>
+              Download Papers TXT
+            </button>
+          </div>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
             {bookmarkTabs.map((tab) => (
@@ -12363,12 +13382,12 @@ function NotificationsPage({ role = "student" }) {
           time: item.createdAt
             ? new Date(item.createdAt).toLocaleString()
             : "Just now",
-          title: item.notificationType || "",
+          title: item.title || item.notificationType || "",
           text: item.message,
           icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
           tone: item.isRead ? "gray" : "green",
           unread: !item.isRead,
-          route: `/${
+          route: item.route || `/${
             role === "lecturer"
               ? "lecturer"
               : role === "researcher"
@@ -14000,6 +15019,10 @@ function ExtractedTopicsCard() {
 
 function StudentPublicationDetailPage({ role = "student" }) {
   const [activeTab, setActiveTab] = React.useState("Abstract");
+  const [detailMessage, setDetailMessage] = React.useState("");
+  const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
+    getLocalBookmarks(),
+  );
   const isAcademic = role === "researcher" || role === "lecturer";
   const rolePrefix = role === "lecturer" ? "lecturer" : "researcher";
   const publicationId = getSearchParam("id");
@@ -14029,6 +15052,53 @@ function StudentPublicationDetailPage({ role = "student" }) {
   const publicationRoute = `${publicationBaseRoute}${
     publicationDetail.id ? `?id=${encodeURIComponent(publicationDetail.id)}` : ""
   }`;
+  const detailBookmark = React.useMemo(
+    () => mapPublicationForBookmark(publicationDetail),
+    [publicationDetail],
+  );
+  const isBookmarked = hasLocalBookmark(detailBookmark, localBookmarks);
+  const toggleDetailBookmark = async () => {
+    const nextBookmarks = isBookmarked
+      ? removeLocalBookmark(detailBookmark)
+      : upsertLocalBookmark(detailBookmark);
+    setLocalBookmarkState(nextBookmarks);
+    setDetailMessage(isBookmarked ? "Bookmark removed." : "Publication bookmarked.");
+    if (isBackendNumericId(publicationDetail.id) && getStoredAuth().accessToken) {
+      apiFetch(`/api/bookmarks/${publicationDetail.id}`, {
+        method: isBookmarked ? "DELETE" : "POST",
+        auth: true,
+      }).catch(() => {});
+    }
+  };
+  const shareDetailPublication = async () => {
+    const message = await sharePublicationLink({
+      title: publicationDetail.title,
+      text: publicationDetail.abstract,
+      url: `${window.location.origin}${publicationRoute}`,
+    });
+    setDetailMessage(message);
+  };
+  const citeDetailPublication = async () => {
+    const citation = getPublicationCitation(publicationDetail);
+    await copyTextToClipboard(citation);
+    downloadBlobFile(
+      `citation-${String(publicationDetail.id || "publication")}.bib`,
+      new Blob(
+        [
+          `@article{scholartrend${publicationDetail.id || Date.now()},\n  title={${publicationDetail.title}},\n  author={${publicationDetail.authors.join(" and ")}},\n  journal={${publicationDetail.journalName}},\n  year={${publicationDetail.year}},\n  doi={${publicationDetail.doi}}\n}\n`,
+        ],
+        { type: "application/x-bibtex" },
+      ),
+    );
+    setDetailMessage("Citation copied and BibTeX downloaded.");
+  };
+  const downloadDetailPdf = () => {
+    setDetailMessage(downloadPaperPdf(publicationDetail));
+  };
+  const downloadDetailTxt = () => {
+    downloadPaperTxt(publicationDetail);
+    setDetailMessage("TXT downloaded.");
+  };
   const relatedForUi = publicationDetail.relatedPublications.length
     ? publicationDetail.relatedPublications.map((paper) => ({
         title: paper.title,
@@ -14050,19 +15120,27 @@ function StudentPublicationDetailPage({ role = "student" }) {
             <div className="detail-hero-actions">
               <span className="article-type">Journal Article</span>
               <div>
-                <button type="button" aria-label="Bookmark article">
+                <button
+                  type="button"
+                  aria-label={isBookmarked ? "Remove bookmark" : "Bookmark article"}
+                  className={isBookmarked ? "saved" : ""}
+                  onClick={toggleDetailBookmark}
+                >
                   <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
                 </button>
-                <button type="button" aria-label="Share article">
+                <button type="button" aria-label="Share article" onClick={shareDetailPublication}>
                   <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
                 </button>
-                <button type="button" className="cite-button">
+                <button type="button" className="cite-button" onClick={citeDetailPublication}>
                   {formatCount(publicationDetail.citationCount)} Cite
                 </button>
               </div>
             </div>
 
             <h1>{publicationDetail.title}</h1>
+            {detailMessage ? (
+              <p className="publication-action-message">{detailMessage}</p>
+            ) : null}
             <p className="detail-authors">
               <strong>{publicationDetail.authors[0] || "Unknown author"}</strong>
               {publicationDetail.authors.length > 1
@@ -14086,6 +15164,16 @@ function StudentPublicationDetailPage({ role = "student" }) {
               >
                 DOI: {publicationDetail.doi || "Not available"} -&gt;
               </a>
+            </div>
+            <div className="paper-download-actions">
+              <button type="button" onClick={downloadDetailPdf}>
+                <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
+                Download PDF
+              </button>
+              <button type="button" onClick={downloadDetailTxt}>
+                <MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5" />
+                Download TXT
+              </button>
             </div>
           </article>
 
@@ -15111,24 +16199,15 @@ function AdminUtilityPanel({ panel, onClose }) {
       route: "/admin-sync-management",
     },
   ];
-  const [settings, setSettings] = React.useState(() => {
-    const saved = window.localStorage.getItem("scholartrend.admin.settings");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return null;
-      }
-    }
-
-    return {
-      emailAlerts: true,
-      autoSync: true,
-      maintenanceMode: false,
-      syncInterval: "Every 6 hours",
-    };
-  });
+  const defaultAdminSettings = {
+    emailAlerts: true,
+    autoSync: true,
+    maintenanceMode: false,
+    syncInterval: "Every 6 hours",
+  };
+  const [settings, setSettings] = React.useState(defaultAdminSettings);
   const [supportMessage, setSupportMessage] = React.useState("");
+  const [supportTickets, setSupportTickets] = React.useState([]);
   const [statusMessage, setStatusMessage] = React.useState("");
   const [healthRows, setHealthRows] = React.useState(defaultHealthRows);
   const [healthCheckedAt, setHealthCheckedAt] = React.useState("just now");
@@ -15160,61 +16239,121 @@ function AdminUtilityPanel({ panel, onClose }) {
     bio: "Manages ScholarTrend access, sync operations, and platform health.",
     avatarUrl: "",
   };
-  const [adminProfile, setAdminProfile] = React.useState(() => {
-    const saved = window.localStorage.getItem("scholartrend.admin.profile");
-    if (saved) {
-      try {
-        return { ...defaultAdminProfile, ...JSON.parse(saved) };
-      } catch {
-        return defaultAdminProfile;
-      }
+  const [adminProfile, setAdminProfile] = React.useState(defaultAdminProfile);
+
+  React.useEffect(() => {
+    if (!panel) return;
+
+    if (panel === "settings") {
+      apiFetch("/api/admin/settings", { auth: true })
+        .then((payload) =>
+          setSettings({ ...defaultAdminSettings, ...(payload.value || {}) }),
+        )
+        .catch((error) => setStatusMessage(error.message));
     }
 
-    return defaultAdminProfile;
-  });
+    if (panel === "profile") {
+      apiFetch("/api/admin/profile", { auth: true })
+        .then((payload) =>
+          setAdminProfile({ ...defaultAdminProfile, ...(payload.value || {}) }),
+        )
+        .catch((error) => setProfileMessage(error.message));
+    }
+
+    if (panel === "support") {
+      apiFetch("/api/admin/support-tickets", { auth: true })
+        .then((payload) => setSupportTickets(unwrapList(payload)))
+        .catch((error) => setTicketMessage(error.message));
+    }
+
+    if (panel === "status") {
+      apiFetch("/api/admin/status-state", { auth: true })
+        .then((payload) => {
+          if (payload.value?.healthCheckedAt) {
+            setHealthCheckedAt(payload.value.healthCheckedAt);
+          }
+          if (payload.value?.message) {
+            setStatusMessage(payload.value.message);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [panel]);
 
   if (!panel) return null;
 
-  const saveSettings = () => {
-    window.localStorage.setItem(
-      "scholartrend.admin.settings",
-      JSON.stringify(settings),
-    );
-    setStatusMessage("Settings saved for this browser.");
+  const saveSettings = async () => {
+    try {
+      await apiFetch("/api/admin/settings", {
+        method: "PUT",
+        auth: true,
+        body: { value: settings },
+      });
+      setStatusMessage("Settings saved to admin API.");
+    } catch (error) {
+      setStatusMessage(error.message);
+    }
   };
 
-  const submitTicket = (event) => {
+  const submitTicket = async (event) => {
     event.preventDefault();
-    const ticket = {
-      id: `SUP-${Date.now()}`,
-      message: supportMessage,
-      createdAt: new Date().toISOString(),
-      status: "Open",
-    };
-    const currentTickets = JSON.parse(
-      window.localStorage.getItem("scholartrend.admin.supportTickets") || "[]",
-    );
-    window.localStorage.setItem(
-      "scholartrend.admin.supportTickets",
-      JSON.stringify([ticket, ...currentTickets]),
-    );
-    setTicketMessage("Support ticket created. Opening System Logs...");
-    setSupportMessage("");
-    window.setTimeout(() => {
-      onClose();
-      goToRoute("/admin-system-logs");
-    }, 650);
+    try {
+      const payload = await apiFetch("/api/admin/support-tickets", {
+        method: "POST",
+        auth: true,
+        body: { message: supportMessage },
+      });
+      setSupportTickets((current) => [payload.ticket, ...current]);
+      setTicketMessage("Support ticket created.");
+      setSupportMessage("");
+    } catch (error) {
+      setTicketMessage(error.message);
+    }
   };
 
-  const saveAdminProfile = (event) => {
+  const updateSupportTicket = async (id, patch) => {
+    try {
+      const payload = await apiFetch(`/api/admin/support-tickets/${id}`, {
+        method: "PUT",
+        auth: true,
+        body: patch,
+      });
+      setSupportTickets((current) =>
+        current.map((ticket) => (ticket.id === id ? payload.ticket : ticket)),
+      );
+      setTicketMessage("Support ticket updated.");
+    } catch (error) {
+      setTicketMessage(error.message);
+    }
+  };
+
+  const deleteSupportTicket = async (id) => {
+    try {
+      await apiFetch(`/api/admin/support-tickets/${id}`, {
+        method: "DELETE",
+        auth: true,
+      });
+      setSupportTickets((current) => current.filter((ticket) => ticket.id !== id));
+      setTicketMessage("Support ticket deleted.");
+    } catch (error) {
+      setTicketMessage(error.message);
+    }
+  };
+
+  const saveAdminProfile = async (event) => {
     event.preventDefault();
-    window.localStorage.setItem(
-      "scholartrend.admin.profile",
-      JSON.stringify(adminProfile),
-    );
-    setIsEditingProfile(false);
-    setEditingProfileField(null);
-    setProfileMessage("Admin account updated.");
+    try {
+      await apiFetch("/api/admin/profile", {
+        method: "PUT",
+        auth: true,
+        body: { value: adminProfile },
+      });
+      setIsEditingProfile(false);
+      setEditingProfileField(null);
+      setProfileMessage("Admin account updated.");
+    } catch (error) {
+      setProfileMessage(error.message);
+    }
   };
 
   const updateAdminProfile = (field, value) => {
@@ -15288,27 +16427,42 @@ function AdminUtilityPanel({ panel, onClose }) {
     goToRoute(route);
   };
 
-  const runHealthCheck = () => {
+  const runHealthCheck = async () => {
     setCheckingHealth(true);
     setStatusMessage("Running service checks...");
-    window.setTimeout(() => {
+    try {
+      const payload = await apiFetch("/api/admin/health", { auth: true });
       const checkedAt = new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       });
-      setHealthRows((current) =>
-        current.map((row) =>
-          row.name === "Sync Workers"
-            ? { ...row, state: "Operational", value: "Next run in 42 min" }
-            : row.name === "API Gateway"
-              ? { ...row, value: `${28 + Math.floor(Math.random() * 14)} ms` }
-              : row,
-        ),
-      );
+      if (Array.isArray(payload.services)) {
+        setHealthRows((current) =>
+          current.map((row) => {
+            const service = payload.services.find((item) => item.name === row.name);
+            return service
+              ? { ...row, state: service.state, value: service.value }
+              : row;
+          }),
+        );
+      }
       setHealthCheckedAt(checkedAt);
-      setCheckingHealth(false);
       setStatusMessage(`Health check completed at ${checkedAt}.`);
-    }, 700);
+      await apiFetch("/api/admin/status-state", {
+        method: "PUT",
+        auth: true,
+        body: {
+          value: {
+            healthCheckedAt: checkedAt,
+            message: `Health check completed at ${checkedAt}.`,
+          },
+        },
+      });
+    } catch (error) {
+      setStatusMessage(error.message);
+    } finally {
+      setCheckingHealth(false);
+    }
   };
 
   const saveReadNotifications = (ids) => {
@@ -15573,6 +16727,30 @@ function AdminUtilityPanel({ panel, onClose }) {
             <button type="submit" className="admin-panel-primary">
               Create Support Ticket
             </button>
+            <div className="admin-support-ticket-list">
+              {supportTickets.map((ticket) => (
+                <article key={ticket.id}>
+                  <span>{ticket.ticketNumber || ticket.id}</span>
+                  <strong>{ticket.message}</strong>
+                  <small>{ticket.status} - {new Date(ticket.createdAt).toLocaleString()}</small>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => updateSupportTicket(ticket.id, { status: "Closed" })}
+                    >
+                      Close
+                    </button>
+                    <button type="button" onClick={() => openAdminRoute("/admin-system-logs")}>
+                      Logs
+                    </button>
+                    <button type="button" onClick={() => deleteSupportTicket(ticket.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!supportTickets.length ? <p>No support tickets yet.</p> : null}
+            </div>
             {ticketMessage && <p className="admin-panel-note">{ticketMessage}</p>}
           </form>
         )}
@@ -19114,14 +20292,14 @@ function AdminPlanManagementPage() {
 
 const normalizeAdminNotification = (notification) => ({
   id: notification.id || `admin-notification-${Date.now()}`,
-  type: notification.type || "SYSTEM ALERT",
+  type: notification.type || notification.notificationType || "SYSTEM ALERT",
   title: notification.title || "NOTICE:",
-  text: notification.text || "",
+  text: notification.text || notification.message || "",
   recipientRole: notification.recipientRole || "All",
   recipientEmail: notification.recipientEmail || "",
   route: notification.route || "",
   createdAt: notification.createdAt || new Date().toISOString(),
-  unread: notification.unread !== false,
+  unread: notification.unread ?? notification.isRead === false,
 });
 
 const getNotificationRouteForRole = (role) => {
@@ -19131,11 +20309,10 @@ const getNotificationRouteForRole = (role) => {
 };
 
 function AdminNotificationManagementPage() {
-  const [notifications, setNotifications] = React.useState(() =>
-    getPublicationReviewNotifications().map(normalizeAdminNotification),
-  );
+  const [notifications, setNotifications] = React.useState([]);
   const [roleFilter, setRoleFilter] = React.useState("All");
   const [message, setMessage] = React.useState("");
+  const [editingNotificationId, setEditingNotificationId] = React.useState("");
   const [form, setForm] = React.useState({
     type: "SYSTEM ALERT",
     title: "NOTICE:",
@@ -19144,10 +20321,21 @@ function AdminNotificationManagementPage() {
     route: "/student-notifications",
   });
 
-  const persistNotifications = (nextNotifications) => {
-    setNotifications(nextNotifications);
-    setPublicationReviewNotifications(nextNotifications);
-  };
+  const loadNotifications = React.useCallback(async () => {
+    try {
+      const query = roleFilter === "All" ? "" : `?role=${encodeURIComponent(roleFilter)}`;
+      const payload = await apiFetch(`/api/admin/notifications${query}`, {
+        auth: true,
+      });
+      setNotifications(unwrapList(payload).map(normalizeAdminNotification));
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }, [roleFilter]);
+
+  React.useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
 
   const visibleNotifications = notifications.filter(
     (notification) =>
@@ -19163,6 +20351,40 @@ function AdminNotificationManagementPage() {
       return;
     }
 
+    if (editingNotificationId) {
+      try {
+        const payload = await apiFetch(`/api/admin/notifications/${editingNotificationId}`, {
+          method: "PUT",
+          auth: true,
+          body: {
+            title: form.title,
+            message: form.text.trim(),
+            notificationType: form.type,
+            route: form.route,
+          },
+        });
+        setNotifications((current) =>
+          current.map((notification) =>
+            notification.id === editingNotificationId
+              ? normalizeAdminNotification(payload.notification || notification)
+              : notification,
+          ),
+        );
+        setEditingNotificationId("");
+        setForm({
+          type: "SYSTEM ALERT",
+          title: "NOTICE:",
+          text: "",
+          recipientRole: "All",
+          route: "/student-notifications",
+        });
+        setMessage("Notification updated.");
+      } catch (error) {
+        setMessage(error.message);
+      }
+      return;
+    }
+
     try {
       const payload = await apiFetch("/api/admin/notifications/broadcast", {
         method: "POST",
@@ -19170,17 +20392,12 @@ function AdminNotificationManagementPage() {
         body: {
           recipientRole: form.recipientRole,
           notificationType: form.type,
-          message: `${form.title} ${form.text.trim()}`,
+          title: form.title,
+          message: form.text.trim(),
+          route: form.route,
         },
       });
-      const nextNotification = normalizeAdminNotification({
-        id: `admin-broadcast-${Date.now()}`,
-        ...form,
-        text: form.text.trim(),
-        createdAt: new Date().toISOString(),
-        unread: true,
-      });
-      persistNotifications([nextNotification, ...notifications]);
+      await loadNotifications();
       setForm((current) => ({ ...current, text: "" }));
       setMessage(`Notification broadcast saved for ${payload.count || 0} users.`);
     } catch (error) {
@@ -19188,19 +20405,62 @@ function AdminNotificationManagementPage() {
     }
   };
 
-  const deleteNotification = (id) => {
-    const nextNotifications = notifications.filter((item) => item.id !== id);
-    persistNotifications(nextNotifications);
-    setMessage("Notification deleted.");
+  const deleteNotification = async (id) => {
+    try {
+      await apiFetch(`/api/admin/notifications/${id}`, {
+        method: "DELETE",
+        auth: true,
+      });
+      setNotifications((current) => current.filter((item) => item.id !== id));
+      setMessage("Notification deleted.");
+    } catch (error) {
+      setMessage(error.message);
+    }
   };
 
-  const markAllRead = () => {
-    const nextNotifications = notifications.map((item) => ({
-      ...item,
-      unread: false,
-    }));
-    persistNotifications(nextNotifications);
-    setMessage("All notifications marked as read.");
+  const markAllRead = async () => {
+    try {
+      const query = roleFilter === "All" ? "" : `?role=${encodeURIComponent(roleFilter)}`;
+      await apiFetch(`/api/admin/notifications/read-all${query}`, {
+        method: "PUT",
+        auth: true,
+      });
+      setNotifications((current) =>
+        current.map((item) => ({ ...item, unread: false })),
+      );
+      setMessage("All notifications marked as read.");
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const editNotification = (notification) => {
+    setEditingNotificationId(notification.id);
+    setForm({
+      type: notification.type,
+      title: notification.title,
+      text: notification.text,
+      recipientRole: notification.recipientRole,
+      route: notification.route || getNotificationRouteForRole(notification.recipientRole),
+    });
+    setMessage("Editing notification.");
+  };
+
+  const exportNotifications = () => {
+    downloadXlsxFile("scholartrend-admin-notifications.xlsx", {
+      Notifications: [
+        ["Type", "Title", "Text", "Role", "Route", "Created At", "Unread"],
+        ...notifications.map((notification) => [
+          notification.type,
+          notification.title,
+          notification.text,
+          notification.recipientRole,
+          notification.route,
+          notification.createdAt,
+          notification.unread ? "Yes" : "No",
+        ]),
+      ],
+    });
   };
 
   return (
@@ -19252,7 +20512,7 @@ function AdminNotificationManagementPage() {
 
         <div className="admin-notification-layout">
           <form className="admin-notification-form" onSubmit={createNotification}>
-            <h2>Create Notification</h2>
+            <h2>{editingNotificationId ? "Edit Notification" : "Create Notification"}</h2>
             <label>
               <span>Target role</span>
               <select
@@ -19315,7 +20575,26 @@ function AdminNotificationManagementPage() {
                 placeholder="Write an announcement for users..."
               />
             </label>
-            <button type="submit">Publish Notification</button>
+            <button type="submit">
+              {editingNotificationId ? "Save Notification" : "Publish Notification"}
+            </button>
+            {editingNotificationId ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingNotificationId("");
+                  setForm({
+                    type: "SYSTEM ALERT",
+                    title: "NOTICE:",
+                    text: "",
+                    recipientRole: "All",
+                    route: "/student-notifications",
+                  });
+                }}
+              >
+                Cancel Edit
+              </button>
+            ) : null}
           </form>
 
           <section className="admin-users-panel admin-notification-panel">
@@ -19331,6 +20610,9 @@ function AdminNotificationManagementPage() {
               </select>
               <button type="button" onClick={markAllRead}>
                 Mark All Read
+              </button>
+              <button type="button" onClick={exportNotifications}>
+                Export
               </button>
             </div>
 
@@ -19350,6 +20632,14 @@ function AdminNotificationManagementPage() {
                       {new Date(notification.createdAt).toLocaleString()}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    className="admin-user-action"
+                    onClick={() => editNotification(notification)}
+                    title="Edit notification"
+                  >
+                    <MiniIcon path="M4 16.5V20h3.5L18.8 8.7l-3.5-3.5L4 16.5ZM14.5 6l3.5 3.5" />
+                  </button>
                   <button
                     type="button"
                     className="admin-user-action delete"
@@ -19837,8 +21127,8 @@ function AdminSystemLogsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pagedLogs.map((log) => (
-                    <tr key={`${log.code}-${log.time}`}>
+                  {pagedLogs.map((log, index) => (
+                    <tr key={`${log.code}-${log.time}-${index}`}>
                       <td>{log.time}</td>
                       <td>
                         <strong>{log.event}</strong>
@@ -19940,10 +21230,10 @@ function AdminSystemLogsPage() {
                 </p>
                 {alertLogs.length ? (
                   <div className="admin-log-alert-list">
-                    {alertLogs.map((alert) => (
+                    {alertLogs.map((alert, alertIndex) => (
                       <article
                         className={`admin-log-alert-item ${alert.severity.toLowerCase()}`}
-                        key={`${alert.code}-${alert.time}`}
+                        key={`${alert.code}-${alert.time}-${alertIndex}`}
                       >
                         <button type="button" onClick={() => viewAlertLog(alert)}>
                           <strong>{alert.event}</strong>
@@ -20054,6 +21344,109 @@ function PaymentReturnPage() {
         <button type="button" onClick={navTo(dashboardPath)}>
           Back to Dashboard
         </button>
+      </section>
+    </main>
+  );
+}
+
+const legalPageCopy = {
+  "/docs": {
+    title: "Documentation",
+    eyebrow: "Developer Resources",
+    body:
+      "Use the REST API for publication search, trend metrics, bookmarks, notifications, payments, and admin sync operations.",
+    bullets: [
+      "Search: GET /api/publications/search?keyword=ai&source=Semantic%20Scholar",
+      "Reports: POST /api/dashboard/export or export locally from Reports.",
+      "Admin sync: POST /api/admin/sync/semantic-scholar and /api/admin/sync/openalex.",
+    ],
+  },
+  "/blog": {
+    title: "ScholarTrend Blog",
+    eyebrow: "Research Notes",
+    body:
+      "Product notes, research workflow updates, and dataset sync changes are collected here for the project team.",
+    bullets: ["Trend analytics releases", "Semantic Scholar sync notes", "Publication review workflow changes"],
+  },
+  "/guides": {
+    title: "Guides",
+    eyebrow: "Workflow Playbooks",
+    body:
+      "Step-by-step workflows for finding papers, comparing topic velocity, exporting reports, and managing submissions.",
+    bullets: ["Search and save publications", "Build an Excel trend report", "Review publication submissions"],
+  },
+  "/support": {
+    title: "Support",
+    eyebrow: "Help Center",
+    body:
+      "For local development, create an admin support ticket from the Admin Support panel. For user issues, collect route, account role, and error message.",
+    bullets: ["Check System Logs", "Run Admin Health Check", "Attach browser console details"],
+  },
+  "/about": {
+    title: "About ScholarTrend",
+    eyebrow: "Company",
+    body:
+      "ScholarTrend is a research intelligence workspace for academic discovery, publication trend tracking, and institutional analytics.",
+    bullets: ["Semantic search", "Trend dashboards", "Publication governance"],
+  },
+  "/careers": {
+    title: "Careers",
+    eyebrow: "Team",
+    body:
+      "ScholarTrend roles focus on scientific data engineering, research UX, and applied AI for academic discovery.",
+    bullets: ["Frontend engineering", "Data ingestion", "Research product design"],
+  },
+  "/contact": {
+    title: "Contact",
+    eyebrow: "Get in Touch",
+    body:
+      "Contact the project administrators through the Support page or use admin notifications for internal announcements.",
+    bullets: ["admin@university.edu", "Support tickets are stored locally in development", "System logs keep audit context"],
+  },
+  "/privacy": {
+    title: "Privacy Policy",
+    eyebrow: "Legal",
+    body:
+      "ScholarTrend stores account, bookmark, notification, and report preferences to provide a personalized research workspace.",
+    bullets: ["Local demo data stays in browser storage", "Backend data follows API authorization", "Do not commit real .env secrets"],
+  },
+  "/terms": {
+    title: "Terms of Service",
+    eyebrow: "Legal",
+    body:
+      "Use ScholarTrend for academic discovery and internal project workflows. Respect publisher rights and external API terms.",
+    bullets: ["Cite external sources", "Do not misuse API quotas", "Admins are responsible for moderation decisions"],
+  },
+};
+
+function StaticInfoPage({ path }) {
+  const page = legalPageCopy[path] || legalPageCopy["/docs"];
+
+  return (
+    <main className="page-shell static-info-page">
+      <header className="site-header" aria-label="Primary navigation">
+        <Brand />
+        <nav className="nav-actions" aria-label="Account">
+          <a className="login-link" href="/" onClick={navTo("/")}>
+            Home
+          </a>
+          <a className="primary-button compact" href="/register" onClick={navTo("/register")}>
+            Get Started
+          </a>
+        </nav>
+      </header>
+      <section className="static-info-content">
+        <span>{page.eyebrow}</span>
+        <h1>{page.title}</h1>
+        <p>{page.body}</p>
+        <div className="static-info-list">
+          {page.bullets.map((item) => (
+            <article key={item}>
+              <MiniIcon path="M4.5 12.5 9 17l10.5-10" />
+              <strong>{item}</strong>
+            </article>
+          ))}
+        </div>
       </section>
     </main>
   );
@@ -20185,6 +21578,7 @@ export default function App() {
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/payment-return") return <PaymentReturnPage />;
+  if (legalPageCopy[path]) return <StaticInfoPage path={path} />;
   if (path === "/admin-dashboard") return <AdminDashboard />;
   if (path === "/admin-sync-management") return <AdminSyncManagementPage />;
   if (path === "/admin-user-management") return <AdminUserManagementPage />;

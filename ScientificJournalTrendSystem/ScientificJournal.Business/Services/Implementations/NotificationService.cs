@@ -60,7 +60,9 @@ public class NotificationService : INotificationService
         var notification = new Notification
         {
             UserId = userId,
+            Title = "NOTICE:",
             Message = message,
+            Route = publicationId.HasValue ? $"/student-publication?id={publicationId.Value}" : "/student-notifications",
             IsRead = false,
             PublicationId = publicationId,
             NotificationType = ScientificJournal.Common.Enums.NotificationType.NEW_PUBLICATION,
@@ -76,7 +78,9 @@ public class NotificationService : INotificationService
             await _notificationHubService.SendNotificationAsync(userId.ToString(), new
             {
                 id = notification.Id,
+                title = notification.Title,
                 message = notification.Message,
+                route = notification.Route,
                 isRead = notification.IsRead,
                 publicationId = notification.PublicationId,
                 notificationType = notification.NotificationType.ToString(),
@@ -112,7 +116,9 @@ public class NotificationService : INotificationService
         var notification = new Notification
         {
             UserId = user.Id,
+            Title = "NOTICE:",
             Message = message,
+            Route = publicationId.HasValue ? $"/student-publication?id={publicationId.Value}" : "/student-notifications",
             IsRead = false,
             PublicationId = publicationId,
             NotificationType = notificationType,
@@ -127,7 +133,9 @@ public class NotificationService : INotificationService
             await _notificationHubService.SendNotificationAsync(user.Id.ToString(), new
             {
                 id = notification.Id,
+                title = notification.Title,
                 message = notification.Message,
+                route = notification.Route,
                 isRead = notification.IsRead,
                 publicationId = notification.PublicationId,
                 notificationType = notification.NotificationType.ToString(),
