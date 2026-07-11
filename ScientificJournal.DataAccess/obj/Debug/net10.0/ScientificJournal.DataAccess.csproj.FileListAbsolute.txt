@@ -1,0 +1,15 @@
+D:\SWP\Test\ScientificJournal.DataAccess\bin\Debug\net10.0\ScientificJournal.DataAccess.deps.json
+D:\SWP\Test\ScientificJournal.DataAccess\bin\Debug\net10.0\ScientificJournal.DataAccess.dll
+D:\SWP\Test\ScientificJournal.DataAccess\bin\Debug\net10.0\ScientificJournal.DataAccess.pdb
+D:\SWP\Test\ScientificJournal.DataAccess\bin\Debug\net10.0\ScientificJournal.Common.dll
+D:\SWP\Test\ScientificJournal.DataAccess\bin\Debug\net10.0\ScientificJournal.Common.pdb
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.csproj.AssemblyReference.cache
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.AssemblyInfoInputs.cache
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.AssemblyInfo.cs
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.csproj.CoreCompileInputs.cache
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\Scientif.30A6282A.Up2Date
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.dll
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\refint\ScientificJournal.DataAccess.dll
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ScientificJournal.DataAccess.pdb
+D:\SWP\Test\ScientificJournal.DataAccess\obj\Debug\net10.0\ref\ScientificJournal.DataAccess.dll

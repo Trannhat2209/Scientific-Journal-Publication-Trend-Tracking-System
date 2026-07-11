@@ -1,0 +1,17 @@
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.Business.deps.json
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.Business.dll
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.Business.pdb
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.Common.dll
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.DataAccess.dll
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.DataAccess.pdb
+D:\SWP\Test\ScientificJournal.Business\bin\Debug\net10.0\ScientificJournal.Common.pdb
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.csproj.AssemblyReference.cache
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.AssemblyInfoInputs.cache
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.AssemblyInfo.cs
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.csproj.CoreCompileInputs.cache
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\Scientif.8CA0AFC6.Up2Date
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.dll
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\refint\ScientificJournal.Business.dll
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ScientificJournal.Business.pdb
+D:\SWP\Test\ScientificJournal.Business\obj\Debug\net10.0\ref\ScientificJournal.Business.dll

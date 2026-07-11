@@ -1,0 +1,12 @@
+D:\SWP\Test\ScientificJournal.Common\bin\Debug\net10.0\ScientificJournal.Common.deps.json
+D:\SWP\Test\ScientificJournal.Common\bin\Debug\net10.0\ScientificJournal.Common.dll
+D:\SWP\Test\ScientificJournal.Common\bin\Debug\net10.0\ScientificJournal.Common.pdb
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.csproj.AssemblyReference.cache
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.GeneratedMSBuildEditorConfig.editorconfig
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.AssemblyInfoInputs.cache
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.AssemblyInfo.cs
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.csproj.CoreCompileInputs.cache
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.dll
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\refint\ScientificJournal.Common.dll
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ScientificJournal.Common.pdb
+D:\SWP\Test\ScientificJournal.Common\obj\Debug\net10.0\ref\ScientificJournal.Common.dll
