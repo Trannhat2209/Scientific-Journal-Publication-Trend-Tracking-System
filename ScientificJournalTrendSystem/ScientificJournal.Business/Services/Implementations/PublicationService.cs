@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
@@ -19,6 +21,9 @@ namespace ScientificJournal.Business.Services.Implementations;
 
 public class PublicationService : IPublicationService
 {
+    private static readonly ConcurrentDictionary<string, DateTime> ExternalSearchAttempts = new();
+    private static readonly TimeSpan ExternalSearchAttemptTtl = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan ExternalSearchTimeout = TimeSpan.FromSeconds(10);
     private readonly AppDbContext _context;
     private readonly IRecommendationService _recommendationService;
     private readonly ISimilarityService _similarityService;
@@ -26,15 +31,17 @@ public class PublicationService : IPublicationService
     private readonly IMongoMetadataRepository _mongoRepository;
     private readonly OpenAlexClient _openAlexClient;
     private readonly SerpApiScholarSearchClient _scholarSearchClient;
+    private readonly SemanticScholarClient _semanticScholarClient;
 
     public PublicationService(
-        AppDbContext context, 
+        AppDbContext context,
         IRecommendationService recommendationService,
         ISimilarityService similarityService,
         IPlagiarismCheckService plagiarismCheckService,
         IMongoMetadataRepository mongoRepository,
         OpenAlexClient openAlexClient,
-        SerpApiScholarSearchClient scholarSearchClient)
+        SerpApiScholarSearchClient scholarSearchClient,
+        SemanticScholarClient semanticScholarClient)
     {
         _context = context;
         _recommendationService = recommendationService;
@@ -43,11 +50,18 @@ public class PublicationService : IPublicationService
         _mongoRepository = mongoRepository;
         _openAlexClient = openAlexClient;
         _scholarSearchClient = scholarSearchClient;
+        _semanticScholarClient = semanticScholarClient;
     }
 
     public async Task<PaginatedResponse<PublicationDto>> SearchPublicationsAsync(PublicationSearchRequestDto request, int? userId = null)
     {
-        await EnsureExternalSearchCacheAsync(request);
+        // A keyword search refreshes the local cache from the configured public
+        // scholarly providers. Results are persisted so the graph, list view and
+        // publication detail all use the same real records and source URLs.
+        if (!string.IsNullOrWhiteSpace(request.Keyword))
+        {
+            await EnsureExternalSearchCacheAsync(request);
+        }
 
         var query = _context.Publications
             .AsNoTracking()
@@ -59,15 +73,29 @@ public class PublicationService : IPublicationService
 
         if (!string.IsNullOrWhiteSpace(request.Keyword))
         {
-            var keyword = request.Keyword.Trim();
-            query = query.Where(p => p.Title.Contains(keyword)
-                                    || (p.Abstract != null && p.Abstract.Contains(keyword))
-                                    || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(keyword)));
+            foreach (var term in GetSearchTerms(request.Keyword))
+            {
+                query = query.Where(p => p.Title.Contains(term)
+                                        || (p.Abstract != null && p.Abstract.Contains(term))
+                                        || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(term)));
+            }
         }
 
         if (request.Year > 0)
         {
             query = query.Where(p => p.Year == request.Year);
+        }
+        else
+        {
+            if (request.YearFrom > 0)
+            {
+                query = query.Where(p => p.Year >= request.YearFrom);
+            }
+
+            if (request.YearTo > 0)
+            {
+                query = query.Where(p => p.Year <= request.YearTo);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(request.JournalId) && int.TryParse(request.JournalId, out var journalId))
@@ -88,6 +116,7 @@ public class PublicationService : IPublicationService
         {
             "title" => query.OrderBy(p => p.Title),
             "year" => query.OrderByDescending(p => p.Year),
+            "citations" => query.OrderByDescending(p => p.CitationCount),
             _ => query.OrderByDescending(p => p.CitationCount)
         };
 
@@ -106,10 +135,10 @@ public class PublicationService : IPublicationService
             foreach (var item in items)
             {
                 var existsNotification = await _context.Notifications
-                    .AnyAsync(n => n.UserId == userId.Value 
-                                   && n.PublicationId == item.Id 
+                    .AnyAsync(n => n.UserId == userId.Value
+                                   && n.PublicationId == item.Id
                                    && n.NotificationType == NotificationType.RECOMMENDATION);
-                
+
                 if (!existsNotification)
                 {
                     _context.Notifications.Add(new Notification
@@ -330,7 +359,7 @@ public class PublicationService : IPublicationService
 
         var totalPublications = publications.Count;
         var avgCitation = Math.Round(publications.Average(p => p.CitationCount), 2);
-        
+
         var topYear = publications
             .GroupBy(p => p.Year)
             .OrderByDescending(g => g.Count())
@@ -355,10 +384,42 @@ public class PublicationService : IPublicationService
             Year = publication.Year,
             DOI = publication.DOI,
             JournalName = publication.Journal?.Name ?? string.Empty,
+            SourceApi = publication.SourceApi,
+            SourceUrl = ResolveSourceUrl(publication),
             CitationCount = publication.CitationCount,
             Authors = publication.PublicationAuthors.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList(),
-            Keywords = publication.PublicationKeywords.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList()
+            Keywords = publication.PublicationKeywords.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList(),
+            KeywordIds = publication.PublicationKeywords.Select(pk => pk.KeywordId).ToList()
         };
+    }
+
+    private static string? ResolveSourceUrl(Publication publication)
+    {
+        if (!string.IsNullOrWhiteSpace(publication.SourceUrl))
+        {
+            return publication.SourceUrl;
+        }
+
+        var query = Uri.EscapeDataString(publication.Title);
+        if (publication.SourceApi.Contains("Google Scholar", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"https://scholar.google.com/scholar?q={query}";
+        }
+
+        if (publication.SourceApi.Contains("ResearchGate", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"https://www.researchgate.net/search/publication?q={query}";
+        }
+
+        if (publication.SourceApi.Contains("OpenAlex", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"https://openalex.org/search?q={query}";
+        }
+
+        return string.IsNullOrWhiteSpace(publication.DOI) ||
+               publication.DOI.Contains(':', StringComparison.Ordinal)
+            ? null
+            : $"https://doi.org/{Uri.EscapeDataString(publication.DOI)}";
     }
 
     private async Task EnsureExternalSearchCacheAsync(PublicationSearchRequestDto request)
@@ -366,18 +427,50 @@ public class PublicationService : IPublicationService
         var keyword = string.IsNullOrWhiteSpace(request.Keyword)
             ? "artificial intelligence"
             : request.Keyword.Trim();
-        var maxResults = Math.Clamp(request.PageSize <= 0 ? 10 : request.PageSize, 5, 20);
+        var maxResults = Math.Clamp(request.PageSize <= 0 ? 20 : request.PageSize, 5, 20);
         var source = NormalizeSourceName(request.Source);
+        var cachedCount = await CountCachedSearchMatchesAsync(request, source);
+        if (cachedCount >= Math.Min(maxResults, Math.Max(5, request.PageSize <= 0 ? 10 : request.PageSize)))
+        {
+            return;
+        }
+
+        var attemptKey = string.Join('|',
+            keyword.ToLowerInvariant(),
+            source.ToLowerInvariant(),
+            request.Year,
+            request.YearFrom,
+            request.YearTo,
+            maxResults);
+        var now = DateTime.UtcNow;
+        if (ExternalSearchAttempts.TryGetValue(attemptKey, out var lastAttempt) &&
+            now - lastAttempt < ExternalSearchAttemptTtl)
+        {
+            return;
+        }
+        ExternalSearchAttempts[attemptKey] = now;
+
+        using var timeout = new CancellationTokenSource(ExternalSearchTimeout);
 
         var importTasks = new List<Task<IReadOnlyList<ExternalPublication>>>();
         if (string.IsNullOrWhiteSpace(source) || source == "OpenAlex")
         {
-            importTasks.Add(_openAlexClient.SearchWorksAsync(keyword, maxResults));
+            importTasks.Add(_openAlexClient.SearchWorksAsync(keyword, maxResults, timeout.Token));
         }
 
         if (string.IsNullOrWhiteSpace(source) || source == "Google Scholar")
         {
-            importTasks.Add(_scholarSearchClient.SearchAsync(keyword, Math.Min(maxResults, 10)));
+            importTasks.Add(_scholarSearchClient.SearchAsync(keyword, Math.Min(maxResults, 10), timeout.Token));
+        }
+
+        if (string.IsNullOrWhiteSpace(source) || source == "ResearchGate")
+        {
+            importTasks.Add(_scholarSearchClient.SearchResearchGateAsync(keyword, Math.Min(maxResults, 10), timeout.Token));
+        }
+
+        if (string.IsNullOrWhiteSpace(source) || source == "Semantic Scholar")
+        {
+            importTasks.Add(_semanticScholarClient.SearchAsync(keyword, maxResults, timeout.Token));
         }
 
         if (importTasks.Count == 0)
@@ -386,10 +479,58 @@ public class PublicationService : IPublicationService
         }
 
         var results = await Task.WhenAll(importTasks.Select(FetchSafelyAsync));
-        foreach (var publication in results.SelectMany(items => items))
+        var publications = results
+            .SelectMany(items => items)
+            .Where(item => !string.IsNullOrWhiteSpace(item.Title))
+            .GroupBy(item => string.IsNullOrWhiteSpace(item.DOI)
+                ? item.Title.Trim()
+                : item.DOI.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderByDescending(item => item.CitationCount)
+            .Take(maxResults);
+        foreach (var publication in publications)
         {
-            await UpsertExternalPublicationAsync(publication);
+            await UpsertExternalPublicationAsync(publication, persistRawMetadata: false);
         }
+    }
+
+    private async Task<int> CountCachedSearchMatchesAsync(PublicationSearchRequestDto request, string source)
+    {
+        var query = _context.Publications
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted);
+
+        if (!string.IsNullOrWhiteSpace(source))
+        {
+            query = query.Where(p => p.SourceApi == source);
+        }
+
+        if (request.Year > 0)
+        {
+            query = query.Where(p => p.Year == request.Year);
+        }
+        else
+        {
+            if (request.YearFrom > 0)
+            {
+                query = query.Where(p => p.Year >= request.YearFrom);
+            }
+
+            if (request.YearTo > 0)
+            {
+                query = query.Where(p => p.Year <= request.YearTo);
+            }
+        }
+
+        var keywordTerms = GetSearchTerms(request.Keyword);
+        foreach (var term in keywordTerms)
+        {
+            query = query.Where(p => p.Title.Contains(term)
+                                    || (p.Abstract != null && p.Abstract.Contains(term))
+                                    || p.PublicationKeywords.Any(pk => pk.Keyword != null && pk.Keyword.Term.Contains(term)));
+        }
+
+        return await query.CountAsync();
     }
 
     private static async Task<IReadOnlyList<ExternalPublication>> FetchSafelyAsync(
@@ -405,7 +546,9 @@ public class PublicationService : IPublicationService
         }
     }
 
-    private async Task UpsertExternalPublicationAsync(ExternalPublication external)
+    private async Task UpsertExternalPublicationAsync(
+        ExternalPublication external,
+        bool persistRawMetadata = true)
     {
         var title = external.Title.Trim();
         if (string.IsNullOrWhiteSpace(title))
@@ -427,6 +570,10 @@ public class PublicationService : IPublicationService
         {
             existing.CitationCount = Math.Max(existing.CitationCount, external.CitationCount);
             existing.SourceApi = external.SourceApi;
+            if (!string.IsNullOrWhiteSpace(external.SourceUrl))
+            {
+                existing.SourceUrl = external.SourceUrl;
+            }
             existing.SyncedAt = DateTime.UtcNow;
             if (string.IsNullOrWhiteSpace(existing.Abstract) && !string.IsNullOrWhiteSpace(external.Abstract))
             {
@@ -437,7 +584,9 @@ public class PublicationService : IPublicationService
         }
 
         var journal = await GetOrCreateExternalJournalAsync(external);
-        var mongoId = await TryInsertRawMetadataAsync(external, doi);
+        var mongoId = persistRawMetadata
+            ? await TryInsertRawMetadataAsync(external, doi)
+            : null;
         var publication = new Publication
         {
             Title = title,
@@ -447,6 +596,7 @@ public class PublicationService : IPublicationService
             JournalId = journal?.Id,
             CitationCount = external.CitationCount,
             SourceApi = external.SourceApi,
+            SourceUrl = external.SourceUrl,
             MongoMetadataId = mongoId,
             IsDeleted = false,
             IsOriginal = true,
@@ -532,7 +682,7 @@ public class PublicationService : IPublicationService
                 SyncedAt = DateTime.UtcNow
             });
 
-            var completedTask = await Task.WhenAny(insertTask, Task.Delay(TimeSpan.FromSeconds(2)));
+            var completedTask = await Task.WhenAny(insertTask, Task.Delay(TimeSpan.FromMilliseconds(200)));
             return completedTask == insertTask ? await insertTask : null;
         }
         catch
@@ -553,13 +703,42 @@ public class PublicationService : IPublicationService
             return "OpenAlex";
         }
 
+        if (source.Contains("semantic", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Semantic Scholar";
+        }
+
         if (source.Contains("google", StringComparison.OrdinalIgnoreCase) ||
             source.Contains("scholar", StringComparison.OrdinalIgnoreCase))
         {
             return "Google Scholar";
         }
 
+        if (source.Contains("researchgate", StringComparison.OrdinalIgnoreCase) ||
+            source.Contains("research gate", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ResearchGate";
+        }
+
+        if (source.Contains("connected", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Connected Papers";
+        }
+
         return source.Trim();
+    }
+
+    private static List<string> GetSearchTerms(string? keyword)
+    {
+        return string.IsNullOrWhiteSpace(keyword)
+            ? new List<string>()
+            : keyword
+                .Trim()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(term => term.Length > 2)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(8)
+                .ToList();
     }
 
     private static string StableHash(string value)

@@ -7,18 +7,48 @@ public class SerpApiScholarSearchClient
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly ExternalApiRateLimiter _rateLimiter;
 
-    public SerpApiScholarSearchClient(HttpClient httpClient, IConfiguration configuration)
+    public SerpApiScholarSearchClient(HttpClient httpClient, IConfiguration configuration, ExternalApiRateLimiter rateLimiter)
     {
         _httpClient = httpClient;
         _httpClient.Timeout = TimeSpan.FromSeconds(12);
         _configuration = configuration;
+        _rateLimiter = rateLimiter;
     }
 
     public async Task<IReadOnlyList<ExternalPublication>> SearchAsync(
         string query,
         int maxResults = 10,
         CancellationToken cancellationToken = default)
+    {
+        return await SearchInternalAsync(query, maxResults, "Google Scholar", cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ExternalPublication>> SearchResearchGateAsync(
+        string query,
+        int maxResults = 10,
+        CancellationToken cancellationToken = default)
+    {
+        var searchTerm = string.IsNullOrWhiteSpace(query)
+            ? "artificial intelligence"
+            : query.Trim();
+        var results = await SearchInternalAsync(
+            $"site:researchgate.net/publication {searchTerm}",
+            maxResults,
+            "ResearchGate",
+            cancellationToken);
+
+        return results
+            .Where(item => item.SourceUrl?.Contains("researchgate.net", StringComparison.OrdinalIgnoreCase) == true)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<ExternalPublication>> SearchInternalAsync(
+        string query,
+        int maxResults,
+        string sourceApi,
+        CancellationToken cancellationToken)
     {
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -37,6 +67,7 @@ public class SerpApiScholarSearchClient
             $"&num={num}" +
             $"&api_key={Uri.EscapeDataString(apiKey)}";
 
+        await _rateLimiter.WaitAsync("SerpApi", cancellationToken);
         using var response = await _httpClient.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -57,14 +88,16 @@ public class SerpApiScholarSearchClient
         }
 
         return results.EnumerateArray()
-            .Select(MapResult)
+            .Select(item => MapResult(item, sourceApi))
             .Where(item => !string.IsNullOrWhiteSpace(item.Title))
             .ToList();
     }
 
-    private ExternalPublication MapResult(JsonElement item)
+    private ExternalPublication MapResult(JsonElement item, string sourceApi)
     {
         var title = GetString(item, "title") ?? string.Empty;
+        var link = GetString(item, "link");
+        var resultId = GetString(item, "result_id");
         var snippet = GetString(item, "snippet");
         var summary = string.Empty;
         var authors = new List<string>();
@@ -96,8 +129,8 @@ public class SerpApiScholarSearchClient
 
         var year = ExtractYear(summary) ?? ExtractYear(snippet) ?? 0;
         var journal = string.IsNullOrWhiteSpace(summary)
-            ? "Google Scholar"
-            : $"Google Scholar - {summary}";
+            ? sourceApi
+            : $"{sourceApi} - {summary}";
 
         return new ExternalPublication
         {
@@ -105,7 +138,8 @@ public class SerpApiScholarSearchClient
             Abstract = snippet,
             Year = year,
             DOI = string.Empty,
-            SourceApi = "Google Scholar",
+            SourceUrl = BuildSourceUrl(sourceApi, title, link, resultId),
+            SourceApi = sourceApi,
             JournalName = journal,
             CitationCount = citationCount,
             Authors = authors,
@@ -190,6 +224,18 @@ public class SerpApiScholarSearchClient
 
         var match = System.Text.RegularExpressions.Regex.Match(value, @"\b(19|20)\d{2}\b");
         return match.Success && int.TryParse(match.Value, out var year) ? year : null;
+    }
+
+    private static string? BuildSourceUrl(string sourceApi, string title, string? link, string? resultId)
+    {
+        if (string.Equals(sourceApi, "Google Scholar", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(resultId)
+                ? $"https://scholar.google.com/scholar?q={Uri.EscapeDataString(title)}"
+                : $"https://scholar.google.com/scholar?cluster={Uri.EscapeDataString(resultId)}";
+        }
+
+        return link;
     }
 
     private static string? GetString(JsonElement element, string propertyName) =>

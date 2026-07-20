@@ -30,6 +30,7 @@ public class PublicationSubmissionConfiguration : IEntityTypeConfiguration<Publi
         builder.Property(s => s.Decision).HasMaxLength(1000);
         builder.Property(s => s.RejectedReason).HasMaxLength(1000);
         builder.Property(s => s.RejectedEvidence).HasMaxLength(2000);
+        builder.Property(s => s.RowVersion).IsRowVersion().IsConcurrencyToken();
 
         builder.HasOne(s => s.SubmitterUser)
             .WithMany()

@@ -2,12 +2,14 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.Configurations;
 using ScientificJournal.Common.DTOs.Request.Auth;
 using ScientificJournal.Common.DTOs.Response.Auth;
 using ScientificJournal.Common.DTOs.Response.User;
+using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Helpers;
 using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
@@ -20,13 +22,20 @@ public class AuthService : IAuthService
     private readonly AppDbContext _dbContext;
     private readonly JwtSettings _jwtSettings;
     private readonly IEmailService _emailService;
+    private readonly ILogger<AuthService> _logger;
     private readonly bool _requireEmailVerification;
 
-    public AuthService(AppDbContext dbContext, IOptions<JwtSettings> jwtSettings, IEmailService emailService, IConfiguration configuration)
+    public AuthService(
+        AppDbContext dbContext,
+        IOptions<JwtSettings> jwtSettings,
+        IEmailService emailService,
+        IConfiguration configuration,
+        ILogger<AuthService> logger)
     {
         _dbContext = dbContext;
         _jwtSettings = jwtSettings.Value;
         _emailService = emailService;
+        _logger = logger;
         _requireEmailVerification = !string.Equals(
             configuration["Auth:RequireEmailVerification"],
             "false",
@@ -35,20 +44,24 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request)
     {
-        var exists = await _dbContext.Users.AnyAsync(u => u.Email == request.Email && !u.IsDeleted);
+        var email = request.Email.Trim().ToLowerInvariant();
+        var fullName = request.FullName.Trim();
+        var exists = await _dbContext.Users.AnyAsync(u => u.Email == email && !u.IsDeleted);
         if (exists)
         {
             throw new InvalidOperationException("Email already exists.");
         }
 
-        var verificationToken = new Random().Next(100000, 999999).ToString();
+        var verificationToken = _requireEmailVerification
+            ? new Random().Next(100000, 999999).ToString()
+            : null;
 
         var user = new User
         {
-            Email = request.Email,
-            FullName = request.FullName,
+            Email = email,
+            FullName = fullName,
             PasswordHash = PasswordHasher.HashPassword(request.Password),
-            Role = request.Role,
+            Role = UserRole.Student,
             IsActive = true,
             IsDeleted = false,
             Plan = "Free",
@@ -59,14 +72,31 @@ public class AuthService : IAuthService
         };
 
         _dbContext.Users.Add(user);
-        await _dbContext.SaveChangesAsync();
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            _logger.LogWarning(exception, "Registration failed because email {Email} already exists or violates a database constraint.", email);
+            throw new InvalidOperationException("Email already exists.");
+        }
 
-        // Send email with verification code/token
-        await _emailService.SendEmailAsync(
-            user.Email,
-            "Verify your Scientific Journal publication account",
-            $"Welcome to the Scientific Journal Publication Trend Tracking System!\n\nYour email verification token is: {verificationToken}\n\nPlease submit this code via the verify-email endpoint or UI to activate your account."
-        );
+        if (_requireEmailVerification && !string.IsNullOrWhiteSpace(verificationToken))
+        {
+            try
+            {
+                await _emailService.SendEmailAsync(
+                    user.Email,
+                    "Verify your Scientific Journal publication account",
+                    $"Welcome to the Scientific Journal Publication Trend Tracking System!\n\nYour email verification token is: {verificationToken}\n\nPlease submit this code via the verify-email endpoint or UI to activate your account."
+                );
+            }
+            catch (Exception exception)
+            {
+                _logger.LogError(exception, "Verification email could not be sent to {Email}. Registration will continue.", user.Email);
+            }
+        }
 
         return BuildAuthResponse(user);
     }
@@ -88,6 +118,27 @@ public class AuthService : IAuthService
         if (_requireEmailVerification && !user.IsEmailVerified)
         {
             throw new UnauthorizedAccessException("Please verify your email address before logging in.");
+        }
+
+        // Administrator access is determined by the stored account role. The
+        // academic role picker on the login page must not block admin sign-in.
+        if (user.Role != UserRole.Admin && !string.IsNullOrWhiteSpace(request.RequestedRole))
+        {
+            var normalizedRequestedRole = string.Equals(
+                request.RequestedRole,
+                "Administrator",
+                StringComparison.OrdinalIgnoreCase)
+                ? "Admin"
+                : request.RequestedRole;
+
+            if (!Enum.TryParse<UserRole>(normalizedRequestedRole, true, out var requestedRole) ||
+                requestedRole != user.Role)
+            {
+                throw new UnauthorizedAccessException(
+                    user.Role == UserRole.Student
+                        ? "This account is currently a Student account. Upgrade your plan before signing in as Researcher or Lecturer."
+                        : $"This account is registered as {(user.Role == UserRole.Admin ? "Administrator" : user.Role)}. Please select the matching role.");
+            }
         }
 
         return BuildAuthResponse(user);
@@ -113,13 +164,6 @@ public class AuthService : IAuthService
         {
             throw new UnauthorizedAccessException("User is not allowed to refresh token.");
         }
-
-        // Send security alert email about token refresh
-        await _emailService.SendEmailAsync(
-            user.Email,
-            "Scientific Journal publication account security alert",
-            $"Hello {user.FullName},\n\nA security token refresh action was triggered for your account at {DateTime.UtcNow} UTC. If this was not you, please secure your credentials immediately."
-        );
 
         return BuildAuthResponse(user);
     }
@@ -270,5 +314,12 @@ public class AuthService : IAuthService
             Plan = string.IsNullOrWhiteSpace(user.Plan) ? (user.IsPro ? "Pro" : "Free") : user.Plan,
             SearchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro)
         };
+    }
+
+    public async Task<AuthResponseDto> IssueExternalSessionAsync(int userId)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(item => item.Id == userId && item.IsActive && !item.IsDeleted)
+            ?? throw new UnauthorizedAccessException("External user is not active.");
+        return BuildAuthResponse(user);
     }
 }

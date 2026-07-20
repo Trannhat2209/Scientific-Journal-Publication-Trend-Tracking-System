@@ -21,8 +21,10 @@ public class AppDbContext : DbContext
     public DbSet<SyncLog> SyncLogs => Set<SyncLog>();
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
     public DbSet<PublicationSubmission> PublicationSubmissions => Set<PublicationSubmission>();
+    public DbSet<PublicationVersion> PublicationVersions => Set<PublicationVersion>();
     public DbSet<AdminState> AdminStates => Set<AdminState>();
     public DbSet<AdminSupportTicket> AdminSupportTickets => Set<AdminSupportTicket>();
+    public DbSet<SystemEventLog> SystemEventLogs => Set<SystemEventLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

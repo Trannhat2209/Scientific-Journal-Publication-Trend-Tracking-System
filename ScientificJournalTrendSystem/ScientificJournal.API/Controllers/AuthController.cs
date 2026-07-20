@@ -1,9 +1,12 @@
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.DTOs.Request.Auth;
+using ScientificJournal.Common.Enums;
+using ScientificJournal.DataAccess.Context;
 
 namespace ScientificJournal.API.Controllers;
 
@@ -12,10 +15,49 @@ namespace ScientificJournal.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly AppDbContext _dbContext;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, AppDbContext dbContext, IConfiguration configuration)
     {
         _authService = authService;
+        _dbContext = dbContext;
+        _configuration = configuration;
+    }
+
+    [HttpGet("login-options")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetLoginOptions([FromQuery] string? email)
+    {
+        var normalizedEmail = (email ?? string.Empty).Trim().ToLowerInvariant();
+        var user = string.IsNullOrWhiteSpace(normalizedEmail)
+            ? null
+            : await _dbContext.Users
+                .AsNoTracking()
+                .Where(item => item.Email == normalizedEmail && !item.IsDeleted && item.IsActive)
+                .Select(item => new { item.Role })
+                .FirstOrDefaultAsync();
+
+        if (user?.Role == UserRole.Admin)
+        {
+            return Ok(new { isAdministrator = true, allowedRoles = Array.Empty<string>() });
+        }
+
+        if (user != null)
+        {
+            return Ok(new
+            {
+                isAdministrator = false,
+                assignedRole = user.Role.ToString(),
+                allowedRoles = new[] { "Researcher", "Lecturer", "Student" }
+            });
+        }
+
+        return Ok(new
+        {
+            isAdministrator = false,
+            allowedRoles = new[] { "Researcher", "Lecturer", "Student" }
+        });
     }
 
     [HttpPost("register")]
@@ -39,6 +81,21 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto request)
     {
         await _authService.ForgotPasswordAsync(request);
+        if (_configuration.GetValue<bool>("Auth:ExposeResetToken"))
+        {
+            var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+            var resetToken = await _dbContext.Users
+                .AsNoTracking()
+                .Where(user => user.Email == normalizedEmail && !user.IsDeleted)
+                .Select(user => user.PasswordResetToken)
+                .FirstOrDefaultAsync();
+            return Ok(new
+            {
+                message = "Development mode: use the reset code shown below.",
+                resetToken
+            });
+        }
+
         return Ok(new { message = "Password reset request received. If the account exists, an email has been sent." });
     }
 

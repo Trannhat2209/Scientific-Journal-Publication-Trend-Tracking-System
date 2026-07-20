@@ -50,8 +50,17 @@ public class NotificationsController : ControllerBase
     [HttpPut("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id)
     {
-        await _notificationService.MarkReadAsync(id);
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        if (!await _notificationService.MarkReadAsync(id, userId)) return NotFound();
         return Ok(new { message = "Notification marked as read." });
+    }
+
+    [HttpPost("{id:int}/ack")]
+    public async Task<IActionResult> Acknowledge(int id)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        if (!await _notificationService.AcknowledgeAsync(id, userId)) return NotFound();
+        return Ok(new { message = "Notification delivery acknowledged." });
     }
 
     [HttpPut("read-all")]
@@ -101,6 +110,12 @@ public class NotificationsController : ControllerBase
             notification.PublicationId,
             notification.CreatedAt
         });
+    }
+
+    private bool TryGetUserId(out int userId)
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        return int.TryParse(value, out userId);
     }
 }
 

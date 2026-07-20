@@ -14,6 +14,7 @@ public class Publication
     public Journal? Journal { get; set; }
     public int CitationCount { get; set; }
     public string SourceApi { get; set; } = string.Empty;
+    public string? SourceUrl { get; set; }
     public string? MongoMetadataId { get; set; }
     public bool IsDeleted { get; set; } = false;
     public bool IsOriginal { get; set; } = false;

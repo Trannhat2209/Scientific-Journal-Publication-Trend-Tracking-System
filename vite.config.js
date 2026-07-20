@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5174,
+    allowedHosts: true,
     watch: {
       ignored: [
         "**/ScientificJournalTrendSystem/**",
@@ -24,5 +25,21 @@ export default defineConfig({
   },
   optimizeDeps: {
     entries: ["index.html", "src/main.jsx"],
+  },
+  build: {
+    // Three.js is loaded only when the knowledge-graph page mounts.
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("three")) return "vendor-three";
+          if (id.includes("chart.js") || id.includes("react-chartjs-2")) return "vendor-charts";
+          if (id.includes("i18next")) return "vendor-i18n";
+          if (id.includes("react")) return "vendor-react";
+          return undefined;
+        },
+      },
+    },
   },
 });

@@ -132,6 +132,8 @@ public class RecommendationService : IRecommendationService
             Year = p.Year,
             DOI = p.DOI,
             JournalName = p.Journal?.Name ?? string.Empty,
+            SourceApi = p.SourceApi,
+            SourceUrl = p.SourceUrl,
             CitationCount = p.CitationCount,
             Authors = p.PublicationAuthors?.Select(pa => pa.Author?.Name ?? string.Empty).Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
             Keywords = p.PublicationKeywords?.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(k => !string.IsNullOrEmpty(k)).ToList() ?? new List<string>()

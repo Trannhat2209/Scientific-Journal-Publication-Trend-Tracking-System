@@ -8,6 +8,7 @@ using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.API.Services;
 using ScientificJournal.Common.Constants;
 using ScientificJournal.Business.Validators;
+using ScientificJournal.Business.Jobs;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.External;
 using ScientificJournal.DataAccess.Mongo;
@@ -22,7 +23,7 @@ public static class ServiceCollectionExtensions
     {
         // 1. SQL Database Context & Unit of Work
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection") 
+            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")
                                  ?? configuration[AppSettings.SqlConnectionString]));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
@@ -39,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFollowRepository, FollowRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<ISyncLogRepository, SyncLogRepository>();
+        services.AddSingleton<ExternalApiRateLimiter>();
 
         // 4. Business Services
         services.AddScoped<IEmailService, EmailService>();
@@ -66,18 +68,21 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRecommendationService, RecommendationService>();
         services.AddScoped<IRelationshipNetworkService, RelationshipNetworkService>();
         services.AddScoped<INotificationHubService, ScientificJournal.API.Services.NotificationHubService>();
+        services.AddScoped<NotificationJob>();
+        services.AddHostedService<NotificationDispatchWorker>();
+        services.AddHostedService<PaymentReconciliationWorker>();
+        services.AddHostedService<SystemLogRetentionWorker>();
 
 
         // 5. Hangfire Integration
+        services.AddHangfire(config => config
+            .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+            .UseSimpleAssemblyNameTypeSerializer()
+            .UseRecommendedSerializerSettings()
+            .UseSqlServerStorage(configuration.GetConnectionString("DefaultConnection")
+                                 ?? configuration[AppSettings.SqlConnectionString]));
         if (configuration.GetValue("Hangfire:Enabled", true))
         {
-            services.AddHangfire(config => config
-                .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-                .UseSimpleAssemblyNameTypeSerializer()
-                .UseRecommendedSerializerSettings()
-                .UseSqlServerStorage(configuration.GetConnectionString("DefaultConnection")
-                                     ?? configuration[AppSettings.SqlConnectionString]));
-
             services.AddHangfireServer();
         }
 

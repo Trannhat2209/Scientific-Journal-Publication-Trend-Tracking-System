@@ -29,5 +29,14 @@ public class PublicationSubmissionCandidateDto
     public string Title { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
     public string? Link { get; set; }
+    public string? Snippet { get; set; }
     public double SimilarityPercent { get; set; }
+    public List<PublicationSimilaritySegmentDto> SegmentMatches { get; set; } = new();
+}
+
+public class PublicationSimilaritySegmentDto
+{
+    public string SubmittedText { get; set; } = string.Empty;
+    public string SourceText { get; set; } = string.Empty;
+    public int SimilarityPercent { get; set; }
 }

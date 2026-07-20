@@ -3,6 +3,7 @@ using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -11,8 +12,11 @@ using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Jobs;
 using ScientificJournal.Common.Configurations;
 using ScientificJournal.Common.Policies;
+using ScientificJournal.DataAccess.Context;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
+using ScientificJournal.DataAccess.External;
 
 LoadDotEnvFromWorkspace();
 
@@ -37,7 +41,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo { Title = "Scientific Journal Trend System API", Version = "v1" });
-    
+
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme. Example: \"Bearer {token}\"",
@@ -89,6 +93,7 @@ var hangfireEnabled = builder.Configuration.GetValue("Hangfire:Enabled", true);
 
 var app = builder.Build();
 PlanPolicy.LoadFromFile(Path.Combine(app.Environment.ContentRootPath, "App_Data", "plan-policy.json"));
+await EnsurePublicationSourceUrlColumnAsync(app);
 
 app.UseMiddleware<ScientificJournal.API.Middleware.ExceptionHandlingMiddleware>();
 
@@ -105,6 +110,7 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseMiddleware<ScientificJournal.API.Middleware.SystemAuditMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ScientificJournal.API.Hubs.NotificationHub>("/notificationHub");
@@ -122,21 +128,42 @@ if (hangfireEnabled)
     using (var scope = app.Services.CreateScope())
     {
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var externalRateLimiter = scope.ServiceProvider.GetRequiredService<ExternalApiRateLimiter>();
+        var savedSyncConfig = await context.AdminStates.AsNoTracking()
+            .FirstOrDefaultAsync(state => state.StateKey == "sync-config");
+        var syncCron = Cron.Daily();
+        var semanticEnabled = true;
+        var openAlexEnabled = true;
+        if (savedSyncConfig != null)
+        {
+            using var configDocument = JsonDocument.Parse(savedSyncConfig.JsonValue);
+            var configRoot = configDocument.RootElement;
+            if (configRoot.TryGetProperty("cron", out var cronValue) && !string.IsNullOrWhiteSpace(cronValue.GetString()))
+                syncCron = cronValue.GetString()!;
+            if (configRoot.TryGetProperty("rateLimit", out var rateValue) && rateValue.TryGetInt32(out var savedRateLimit))
+                externalRateLimiter.Configure(savedRateLimit);
+            if (configRoot.TryGetProperty("sources", out var sources))
+            {
+                if (sources.TryGetProperty("semantic", out var semantic)) semanticEnabled = semantic.GetBoolean();
+                if (sources.TryGetProperty("openAlex", out var openAlex)) openAlexEnabled = openAlex.GetBoolean();
+            }
+        }
 
-        recurringJobManager.AddOrUpdate<SemanticScholarSyncJob>(
-            "semantic-scholar-sync",
-            job => job.ExecuteAsync(),
-            Cron.Daily);
+        if (semanticEnabled)
+            recurringJobManager.AddOrUpdate<SemanticScholarSyncJob>("semantic-scholar-sync", job => job.ExecuteAsync(), syncCron);
+        else
+            recurringJobManager.RemoveIfExists("semantic-scholar-sync");
+
+        if (openAlexEnabled)
+            recurringJobManager.AddOrUpdate<OpenAlexSyncJob>("openalex-sync", job => job.ExecuteAsync(), syncCron);
+        else
+            recurringJobManager.RemoveIfExists("openalex-sync");
 
         recurringJobManager.AddOrUpdate<RecommendationJob>(
             "recommendation-processing",
             job => job.ExecuteAsync(),
             Cron.Daily);
-
-        recurringJobManager.AddOrUpdate<NotificationJob>(
-            "notification-processing",
-            job => job.ExecuteAsync(),
-            Cron.Hourly);
 
         recurringJobManager.AddOrUpdate<TrendRecalculateJob>(
             "weekly-trend-recalculate",
@@ -181,6 +208,43 @@ static void LoadDotEnvFromWorkspace()
         }
 
         directory = directory.Parent;
+    }
+}
+
+static async Task EnsurePublicationSourceUrlColumnAsync(WebApplication app)
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH('publications', 'source_url') IS NULL
+            BEGIN
+                ALTER TABLE publications ADD source_url NVARCHAR(1000) NULL
+            END
+            """);
+        await context.Database.ExecuteSqlRawAsync("""
+            UPDATE publications
+            SET source_url = CONCAT(N'https://scholar.google.com/scholar?q=', title)
+            WHERE source_api = N'Google Scholar'
+              AND (source_url IS NULL OR source_url = N'' OR source_url LIKE N'%google-scholar:%' OR doi LIKE N'google-scholar:%')
+            """);
+        await context.Database.ExecuteSqlRawAsync("""
+            UPDATE publications
+            SET source_url = CONCAT(N'https://www.researchgate.net/search/publication?q=', title)
+            WHERE source_api = N'ResearchGate'
+              AND (source_url IS NULL OR source_url = N'' OR source_url LIKE N'%researchgate:%' OR doi LIKE N'researchgate:%')
+            """);
+        await context.Database.ExecuteSqlRawAsync("""
+            UPDATE publications
+            SET source_url = CONCAT(N'https://openalex.org/search?q=', title)
+            WHERE source_api = N'OpenAlex'
+              AND (source_url IS NULL OR source_url = N'' OR source_url LIKE N'%openalex:%')
+            """);
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogWarning(exception, "Could not ensure publications.source_url column exists.");
     }
 }
 

@@ -23,14 +23,16 @@ public class SyncService : ISyncService
     private readonly IMongoMetadataRepository _mongoRepository;
     private readonly SemanticScholarClient _semanticScholarClient;
     private readonly OpenAlexClient _openAlexClient;
+    private readonly SerpApiScholarSearchClient _scholarSearchClient;
 
     public SyncService(
-        ILogger<SyncService> logger, 
-        AppDbContext context, 
+        ILogger<SyncService> logger,
+        AppDbContext context,
         INotificationService notificationService,
         IMongoMetadataRepository mongoRepository,
         SemanticScholarClient semanticScholarClient,
-        OpenAlexClient openAlexClient)
+        OpenAlexClient openAlexClient,
+        SerpApiScholarSearchClient scholarSearchClient)
     {
         _logger = logger;
         _context = context;
@@ -38,40 +40,127 @@ public class SyncService : ISyncService
         _mongoRepository = mongoRepository;
         _semanticScholarClient = semanticScholarClient;
         _openAlexClient = openAlexClient;
+        _scholarSearchClient = scholarSearchClient;
     }
 
-    public async Task SyncFromSemanticScholarAsync()
+    public async Task<int> SyncFromSemanticScholarAsync(string? query = null, int maxResults = 20)
     {
-        _logger.LogInformation("Semantic Scholar sync triggered.");
-        var publications = await _semanticScholarClient.SearchAsync("machine learning OR artificial intelligence", 20);
-        var synced = await ImportExternalPublicationsAsync(publications);
+        var startedAt = DateTime.UtcNow;
+        var searchQuery = NormalizeSyncQuery(query);
+        var limit = Math.Clamp(maxResults, 1, 100);
+        _logger.LogInformation("Semantic Scholar sync triggered for query {Query}.", searchQuery);
 
-        _context.SyncLogs.Add(new SyncLog
+        try
         {
-            SourceApi = "Semantic Scholar",
-            Status = SyncStatus.Completed,
-            StartedAt = DateTime.UtcNow,
-            FinishedAt = DateTime.UtcNow,
-            RecordsSynced = synced
-        });
-        await _context.SaveChangesAsync();
+            var publications = await _semanticScholarClient.SearchAsync(searchQuery, limit);
+            var synced = await ImportExternalPublicationsAsync(publications);
+
+            _context.SyncLogs.Add(new SyncLog
+            {
+                SourceApi = "Semantic Scholar",
+                Status = SyncStatus.Completed,
+                StartedAt = startedAt,
+                FinishedAt = DateTime.UtcNow,
+                RecordsSynced = synced
+            });
+            await _context.SaveChangesAsync();
+            return synced;
+        }
+        catch (Exception exception)
+        {
+            await LogFailedSyncAsync("Semantic Scholar", startedAt, exception);
+            throw;
+        }
     }
 
-    public async Task SyncFromOpenAlexAsync()
+    public async Task<int> SyncFromOpenAlexAsync(string? query = null, int maxResults = 20)
     {
-        _logger.LogInformation("OpenAlex sync triggered.");
-        var publications = await _openAlexClient.SearchWorksAsync("machine learning OR artificial intelligence", 20);
-        var synced = await ImportExternalPublicationsAsync(publications);
+        var startedAt = DateTime.UtcNow;
+        var searchQuery = NormalizeSyncQuery(query);
+        var limit = Math.Clamp(maxResults, 1, 50);
+        _logger.LogInformation("OpenAlex sync triggered for query {Query}.", searchQuery);
 
-        _context.SyncLogs.Add(new SyncLog
+        try
         {
-            SourceApi = "OpenAlex",
-            Status = SyncStatus.Completed,
-            StartedAt = DateTime.UtcNow,
-            FinishedAt = DateTime.UtcNow,
-            RecordsSynced = synced
-        });
-        await _context.SaveChangesAsync();
+            var publications = await _openAlexClient.SearchWorksAsync(searchQuery, limit);
+            var synced = await ImportExternalPublicationsAsync(publications);
+
+            _context.SyncLogs.Add(new SyncLog
+            {
+                SourceApi = "OpenAlex",
+                Status = SyncStatus.Completed,
+                StartedAt = startedAt,
+                FinishedAt = DateTime.UtcNow,
+                RecordsSynced = synced
+            });
+            await _context.SaveChangesAsync();
+            return synced;
+        }
+        catch (Exception exception)
+        {
+            await LogFailedSyncAsync("OpenAlex", startedAt, exception);
+            throw;
+        }
+    }
+
+    public async Task<int> SyncFromGoogleScholarAsync(string? query = null, int maxResults = 10)
+    {
+        var startedAt = DateTime.UtcNow;
+        var searchQuery = NormalizeSyncQuery(query);
+        var limit = Math.Clamp(maxResults, 1, 20);
+        _logger.LogInformation("Google Scholar sync triggered for query {Query}.", searchQuery);
+
+        try
+        {
+            var publications = await _scholarSearchClient.SearchAsync(searchQuery, limit);
+            var synced = await ImportExternalPublicationsAsync(publications);
+
+            _context.SyncLogs.Add(new SyncLog
+            {
+                SourceApi = "Google Scholar",
+                Status = SyncStatus.Completed,
+                StartedAt = startedAt,
+                FinishedAt = DateTime.UtcNow,
+                RecordsSynced = synced
+            });
+            await _context.SaveChangesAsync();
+            return synced;
+        }
+        catch (Exception exception)
+        {
+            await LogFailedSyncAsync("Google Scholar", startedAt, exception);
+            throw;
+        }
+    }
+
+    public async Task<int> SyncFromResearchGateAsync(string? query = null, int maxResults = 10)
+    {
+        var startedAt = DateTime.UtcNow;
+        var searchQuery = NormalizeSyncQuery(query);
+        var limit = Math.Clamp(maxResults, 1, 20);
+        _logger.LogInformation("ResearchGate sync triggered for query {Query}.", searchQuery);
+
+        try
+        {
+            var publications = await _scholarSearchClient.SearchResearchGateAsync(searchQuery, limit);
+            var synced = await ImportExternalPublicationsAsync(publications);
+
+            _context.SyncLogs.Add(new SyncLog
+            {
+                SourceApi = "ResearchGate",
+                Status = SyncStatus.Completed,
+                StartedAt = startedAt,
+                FinishedAt = DateTime.UtcNow,
+                RecordsSynced = synced
+            });
+            await _context.SaveChangesAsync();
+            return synced;
+        }
+        catch (Exception exception)
+        {
+            await LogFailedSyncAsync("ResearchGate", startedAt, exception);
+            throw;
+        }
     }
 
     private async Task<int> ImportExternalPublicationsAsync(IReadOnlyList<ExternalPublication> publications)
@@ -116,6 +205,10 @@ public class SyncService : ISyncService
         {
             existing.CitationCount = Math.Max(existing.CitationCount, external.CitationCount);
             existing.SourceApi = external.SourceApi;
+            if (!string.IsNullOrWhiteSpace(external.SourceUrl))
+            {
+                existing.SourceUrl = external.SourceUrl;
+            }
             existing.SyncedAt = DateTime.UtcNow;
             if (string.IsNullOrWhiteSpace(existing.Abstract) && !string.IsNullOrWhiteSpace(external.Abstract))
             {
@@ -136,6 +229,7 @@ public class SyncService : ISyncService
             JournalId = journal?.Id,
             CitationCount = external.CitationCount,
             SourceApi = external.SourceApi,
+            SourceUrl = external.SourceUrl,
             MongoMetadataId = mongoId,
             IsDeleted = false,
             IsOriginal = true,
@@ -235,6 +329,28 @@ public class SyncService : ISyncService
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value.ToLowerInvariant().Trim()));
         return Convert.ToHexString(bytes)[..16].ToLowerInvariant();
+    }
+
+    private static string NormalizeSyncQuery(string? query)
+    {
+        return string.IsNullOrWhiteSpace(query)
+            ? "machine learning OR artificial intelligence"
+            : query.Trim();
+    }
+
+    private async Task LogFailedSyncAsync(string sourceApi, DateTime startedAt, Exception exception)
+    {
+        _logger.LogError(exception, "{SourceApi} sync failed.", sourceApi);
+        _context.SyncLogs.Add(new SyncLog
+        {
+            SourceApi = sourceApi,
+            Status = SyncStatus.Failed,
+            StartedAt = startedAt,
+            FinishedAt = DateTime.UtcNow,
+            RecordsSynced = 0,
+            ErrorMessage = exception.Message
+        });
+        await _context.SaveChangesAsync();
     }
 
     private async Task ProcessSyncNotificationsAsync(List<Publication> newPublications)

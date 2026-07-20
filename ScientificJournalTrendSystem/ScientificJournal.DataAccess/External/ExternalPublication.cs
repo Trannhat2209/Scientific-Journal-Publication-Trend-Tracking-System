@@ -6,6 +6,7 @@ public class ExternalPublication
     public string? Abstract { get; set; }
     public int Year { get; set; }
     public string DOI { get; set; } = string.Empty;
+    public string? SourceUrl { get; set; }
     public string SourceApi { get; set; } = string.Empty;
     public string JournalName { get; set; } = string.Empty;
     public string? Publisher { get; set; }

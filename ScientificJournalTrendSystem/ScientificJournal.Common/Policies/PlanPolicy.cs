@@ -11,8 +11,8 @@ public static class PlanPolicy
         new()
         {
             [UserRole.Student] = 15,
-            [UserRole.Lecturer] = 20,
-            [UserRole.Researcher] = 25,
+            [UserRole.Lecturer] = 15,
+            [UserRole.Researcher] = 15,
             [UserRole.Admin] = 100
         };
 
@@ -20,8 +20,8 @@ public static class PlanPolicy
         new()
         {
             [UserRole.Student] = 35,
-            [UserRole.Lecturer] = 40,
-            [UserRole.Researcher] = 45,
+            [UserRole.Lecturer] = 35,
+            [UserRole.Researcher] = 35,
             [UserRole.Admin] = 100
         };
 
@@ -64,7 +64,7 @@ public static class PlanPolicy
             var source = isPro ? _proAccuracy : _freeAccuracy;
             return source.TryGetValue(role, out var value)
                 ? value
-                : _freeAccuracy[UserRole.Researcher];
+                : _freeAccuracy[UserRole.Student];
         }
     }
 
@@ -170,6 +170,10 @@ public static class PlanPolicy
                 next[role] = Math.Clamp(value, 0, 100);
             }
         }
+
+        var studentPackageAccuracy = next[UserRole.Student];
+        next[UserRole.Lecturer] = studentPackageAccuracy;
+        next[UserRole.Researcher] = studentPackageAccuracy;
 
         return next;
     }

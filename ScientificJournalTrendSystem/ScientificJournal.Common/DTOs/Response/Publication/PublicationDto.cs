@@ -11,7 +11,10 @@ public class PublicationDto
     public int Year { get; set; }
     public string DOI { get; set; } = string.Empty;
     public string JournalName { get; set; } = string.Empty;
+    public string SourceApi { get; set; } = string.Empty;
+    public string? SourceUrl { get; set; }
     public List<string> Authors { get; set; } = new();
     public List<string> Keywords { get; set; } = new();
+    public List<int> KeywordIds { get; set; } = new();
     public int CitationCount { get; set; }
 }

@@ -26,5 +26,6 @@ public class PublicationSubmissionDto
     public int? PublishedPublicationId { get; set; }
     public DateTime SubmittedAt { get; set; }
     public DateTime? ReviewedAt { get; set; }
+    public string RowVersion { get; set; } = string.Empty;
     public List<PublicationSubmissionCandidateDto> Candidates { get; set; } = new();
 }

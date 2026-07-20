@@ -25,6 +25,6 @@ public class MongoDbContext
         return _database.GetCollection<T>(name);
     }
 
-    public IMongoCollection<PublicationRawMetadata> PublicationRawMetadata => 
+    public IMongoCollection<PublicationRawMetadata> PublicationRawMetadata =>
         GetCollection<PublicationRawMetadata>("publication_raw_metadata");
 }

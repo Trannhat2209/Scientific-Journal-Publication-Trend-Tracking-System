@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Hangfire;
+using ScientificJournal.Business.Jobs;
 using ScientificJournal.API.Filters;
 using ScientificJournal.API.Services;
 using ScientificJournal.Business.Services.Interfaces;
@@ -14,6 +16,7 @@ using ScientificJournal.Common.Helpers;
 using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
+using ScientificJournal.DataAccess.External;
 
 namespace ScientificJournal.API.Controllers;
 
@@ -27,19 +30,37 @@ public class AdminController : ControllerBase
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly PayosMerchantClient _payosClient;
+    private readonly IRecurringJobManager _recurringJobs;
+    private readonly ExternalApiRateLimiter _rateLimiter;
+    private readonly SemanticScholarClient _semanticScholarClient;
+    private readonly OpenAlexClient _openAlexClient;
+    private readonly SerpApiScholarSearchClient _serpApiClient;
+    private readonly IAuthService _authService;
 
     public AdminController(
         ISyncService syncService,
         ITrendingService trendingService,
         AppDbContext context,
         IConfiguration configuration,
-        PayosMerchantClient payosClient)
+        PayosMerchantClient payosClient,
+        IRecurringJobManager recurringJobs,
+        ExternalApiRateLimiter rateLimiter,
+        SemanticScholarClient semanticScholarClient,
+        OpenAlexClient openAlexClient,
+        SerpApiScholarSearchClient serpApiClient,
+        IAuthService authService)
     {
         _syncService = syncService;
         _trendingService = trendingService;
         _context = context;
         _configuration = configuration;
         _payosClient = payosClient;
+        _recurringJobs = recurringJobs;
+        _rateLimiter = rateLimiter;
+        _semanticScholarClient = semanticScholarClient;
+        _openAlexClient = openAlexClient;
+        _serpApiClient = serpApiClient;
+        _authService = authService;
     }
 
     [HttpGet("overview")]
@@ -65,6 +86,56 @@ public class AdminController : ControllerBase
             .Select(g => new { role = g.Key.ToString(), count = g.Count() })
             .ToListAsync();
 
+        var userGrowth = await _context.Users
+            .Where(u => !u.IsDeleted)
+            .GroupBy(u => new { u.CreatedAt.Year, u.CreatedAt.Month })
+            .Select(g => new
+            {
+                year = g.Key.Year,
+                month = g.Key.Month,
+                count = g.Count()
+            })
+            .OrderByDescending(x => x.year)
+            .ThenByDescending(x => x.month)
+            .Take(12)
+            .ToListAsync();
+        userGrowth = userGrowth
+            .OrderBy(x => x.year)
+            .ThenBy(x => x.month)
+            .ToList();
+
+        var failedSyncsLast24Hours = await _context.SyncLogs.CountAsync(s =>
+            s.StartedAt >= DateTime.UtcNow.AddHours(-24) &&
+            s.Status == SyncStatus.Failed &&
+            !s.SourceApi.StartsWith("Admin Audit:") &&
+            !_context.SyncLogs.Any(later =>
+                later.SourceApi == s.SourceApi &&
+                later.Status == SyncStatus.Completed &&
+                later.StartedAt > s.StartedAt));
+        var pendingPublicationCount = await _context.PublicationSubmissions.CountAsync(s =>
+            !s.IsDeleted && s.Status == "pending");
+        var blockedPublicationCount = await _context.PublicationSubmissions.CountAsync(s =>
+            !s.IsDeleted && (s.Status == "cancelled" || s.Status == "rejected" || s.SimilarityPercent > 50));
+        var totalPaymentCount = await _context.PaymentTransactions.CountAsync();
+        var pendingPaymentCount = await _context.PaymentTransactions.CountAsync(p => p.Status == "PENDING");
+        var totalNotificationCount = await _context.Notifications.CountAsync();
+        var unreadNotificationCount = await _context.Notifications.CountAsync(n => !n.IsRead);
+        var payosConfigured =
+            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ClientId"]) &&
+            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ApiKey"]) &&
+            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ChecksumKey"]);
+        var recentActivity = await _context.SyncLogs
+            .OrderByDescending(s => s.StartedAt)
+            .Take(5)
+            .Select(s => new
+            {
+                id = "SYNC-" + s.Id,
+                text = s.ErrorMessage ?? (s.SourceApi + " completed with " + (s.RecordsSynced ?? 0) + " records."),
+                time = s.StartedAt,
+                severity = s.Status == SyncStatus.Failed ? "Error" : "Success"
+            })
+            .ToListAsync();
+
         return Ok(new
         {
             totalUsers,
@@ -72,10 +143,22 @@ public class AdminController : ControllerBase
             totalKeywords = await _context.Keywords.CountAsync(),
             lastSync,
             roleDistribution,
+            userGrowth,
+            pendingPublicationCount,
+            blockedPublicationCount,
+            totalPaymentCount,
+            pendingPaymentCount,
+            totalNotificationCount,
+            unreadNotificationCount,
+            payosConfigured,
+            failedSyncsLast24Hours,
+            recentActivity,
             apiHealth = new[]
             {
-                new { label = "Semantic Scholar", value = "Ready via Graph API" },
-                new { label = "OpenAlex", value = "Ready" }
+                new { label = "OpenAlex", value = "Ready" },
+                new { label = "Google Scholar", value = "Ready via SerpApi" },
+                new { label = "ResearchGate", value = "Ready via Scholar lookup" },
+                new { label = "Semantic Scholar", value = "Ready via Graph API" }
             }
         });
     }
@@ -122,9 +205,9 @@ public class AdminController : ControllerBase
             return BadRequest(new { message = "Full name and email are required." });
         }
 
-        if (!TryParseRole(request.Role, out var role))
+        if (!TryParseManagedRole(request.Role, out var role))
         {
-            return BadRequest(new { message = "Invalid role. Role must be Student, Lecturer, Researcher, or Admin." });
+            return BadRequest(new { message = "Invalid role. Role must be Student, Lecturer, or Researcher." });
         }
 
         var exists = await _context.Users.AnyAsync(u => u.Email == email && !u.IsDeleted);
@@ -134,7 +217,7 @@ public class AdminController : ControllerBase
         }
 
         var password = string.IsNullOrWhiteSpace(request.Password)
-            ? "ScholarTrend@123"
+            ? GenerateSecurePassword()
             : request.Password;
 
         var user = new User
@@ -155,7 +238,7 @@ public class AdminController : ControllerBase
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Created user {user.Email} with role {user.Role}.", "Success", "ADMIN-USER-CREATE");
 
-        return Ok(new { message = "User created.", user = MapAdminUser(user) });
+        return Ok(new { message = "User created.", user = MapAdminUser(user), initialPassword = request.Password?.Length > 0 ? null : password });
     }
 
     [AllowAnonymous]
@@ -167,6 +250,15 @@ public class AdminController : ControllerBase
             return Unauthorized(new { message = "Invalid internal sync secret." });
         }
 
+        if (string.IsNullOrWhiteSpace(request.Provider) ||
+            string.Equals(request.Provider.Trim(), "Local", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new
+            {
+                message = "Local credential accounts must be created through /api/auth/register so their password is preserved."
+            });
+        }
+
         var email = NormalizeEmail(request.Email);
         var fullName = (request.FullName ?? request.Name ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(fullName))
@@ -176,7 +268,7 @@ public class AdminController : ControllerBase
 
         if (!TryParseRole(request.Role, out var role))
         {
-            role = UserRole.Researcher;
+            role = UserRole.Student;
         }
 
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
@@ -199,7 +291,7 @@ public class AdminController : ControllerBase
             await _context.SaveChangesAsync();
             await LogAuditAsync("User Management", $"Synced external {request.Provider ?? "OAuth"} user {user.Email}.", "Success", "ADMIN-USER-SYNC");
 
-            return Ok(new { message = "External user synced.", user = MapAdminUser(user) });
+            return Ok(new { message = "External user synced.", user = MapAdminUser(user), auth = await _authService.IssueExternalSessionAsync(user.Id) });
         }
 
         user.FullName = fullName;
@@ -215,7 +307,7 @@ public class AdminController : ControllerBase
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Refreshed external {request.Provider ?? "OAuth"} user {user.Email}.", "Success", "ADMIN-USER-SYNC");
 
-        return Ok(new { message = "External user refreshed.", user = MapAdminUser(user) });
+        return Ok(new { message = "External user refreshed.", user = MapAdminUser(user), auth = await _authService.IssueExternalSessionAsync(user.Id) });
     }
 
     [HttpPut("users/{id:int}")]
@@ -231,9 +323,9 @@ public class AdminController : ControllerBase
             return BadRequest(new { message = "Full name and email are required." });
         }
 
-        if (!TryParseRole(request.Role, out var role))
+        if (!TryParseManagedRole(request.Role, out var role))
         {
-            return BadRequest(new { message = "Invalid role. Role must be Student, Lecturer, Researcher, or Admin." });
+            return BadRequest(new { message = "Invalid role. Role must be Student, Lecturer, or Researcher." });
         }
 
         var emailExists = await _context.Users.AnyAsync(u => u.Id != id && u.Email == email && !u.IsDeleted);
@@ -259,6 +351,26 @@ public class AdminController : ControllerBase
         return Ok(new { message = "User updated.", user = MapAdminUser(user) });
     }
 
+    [HttpPost("users/{id:int}/reset-password")]
+    public async Task<IActionResult> ResetUserPassword(int id, [FromBody] AdminResetPasswordDto request)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < 8)
+        {
+            return BadRequest(new { message = "New password must be at least 8 characters long." });
+        }
+
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
+        if (user == null) return NotFound(new { message = "User not found." });
+
+        user.PasswordHash = PasswordHasher.HashPassword(request.NewPassword);
+        user.PasswordResetToken = null;
+        user.PasswordResetTokenExpiresAt = null;
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("User Management", $"Administrator reset the password for {user.Email}.", "Warning", "ADMIN-PASSWORD-RESET");
+
+        return Ok(new { message = "Password reset successfully. The user can now sign in with the new password." });
+    }
+
     [HttpDelete("users/{id:int}")]
     public async Task<IActionResult> DeleteUser(int id)
     {
@@ -271,6 +383,39 @@ public class AdminController : ControllerBase
         await LogAuditAsync("User Management", $"Deleted user {user.Email}.", "Success", "ADMIN-USER-DELETE");
 
         return Ok(new { message = "User deleted." });
+    }
+
+    [AllowAnonymous]
+    [HttpGet("users/internal")]
+    public async Task<IActionResult> GetUserInternal([FromQuery] string? email)
+    {
+        if (!IsAuthorizedInternalRequest())
+        {
+            return Unauthorized(new { message = "Invalid internal sync secret." });
+        }
+
+        var normalizedEmail = NormalizeEmail(email);
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            return BadRequest(new { message = "Email is required." });
+        }
+
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+
+        if (user == null)
+        {
+            return Ok(new { exists = false, isDeleted = false, isActive = false });
+        }
+
+        return Ok(new
+        {
+            exists = true,
+            isDeleted = user.IsDeleted,
+            isActive = user.IsActive,
+            user = MapAdminUser(user)
+        });
     }
 
     [AllowAnonymous]
@@ -304,13 +449,18 @@ public class AdminController : ControllerBase
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
         if (user == null) return NotFound(new { message = "User not found." });
 
-        if (!TryParseRole(request.Role, out var newRole))
+        if (!TryParseManagedRole(request.Role, out var newRole))
         {
-            return BadRequest(new { message = "Invalid role. Role must be Student, Lecturer, Researcher, or Admin." });
+            return BadRequest(new { message = "Invalid role. Role must be Student, Lecturer, or Researcher." });
         }
 
         var oldRole = user.Role;
         user.Role = newRole;
+        if (newRole is UserRole.Lecturer or UserRole.Researcher)
+        {
+            user.IsPro = true;
+            user.Plan = "Pro";
+        }
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Changed role for {user.Email} from {oldRole} to {newRole}.", "Success", "ADMIN-ROLE-CHANGE");
 
@@ -330,14 +480,36 @@ public class AdminController : ControllerBase
         return Ok(new { message = $"User status updated. IsActive: {user.IsActive}", user = MapAdminUser(user), isActive = user.IsActive });
     }
 
+    [HttpPost("users/{id:int}/grant-admin")]
+    public async Task<IActionResult> GrantAdministrator(int id, [FromBody] GrantAdminRoleDto request)
+    {
+        if (!string.Equals(request.Confirmation, "GRANT ADMIN", StringComparison.Ordinal))
+            return BadRequest(new { message = "Type GRANT ADMIN to confirm this privileged action." });
+        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
+        if (user == null) return NotFound(new { message = "User not found." });
+        if (!user.IsActive) return Conflict(new { message = "Activate the account before granting Administrator access." });
+        var oldRole = user.Role;
+        user.Role = UserRole.Admin;
+        await _context.SaveChangesAsync();
+        await LogAuditAsync("User Management", $"Granted Administrator role to {user.Email}; previous role {oldRole}.", "Warning", "ADMIN-ROLE-GRANT");
+        return Ok(new { message = "Administrator access granted.", user = MapAdminUser(user) });
+    }
+
     [HttpPut("users/{id:int}/toggle-pro")]
-    public async Task<IActionResult> TogglePro(int id)
+    public async Task<IActionResult> TogglePro(int id, [FromBody] SetProStatusDto? request = null)
     {
         var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
         if (user == null) return NotFound(new { message = "User not found." });
 
-        user.IsPro = !user.IsPro;
+        // Use the requested target state when supplied. A blind toggle is not
+        // idempotent: retries or duplicate clicks can silently put the account
+        // back on Free while the UI still displays Pro.
+        user.IsPro = request?.IsPro ?? !user.IsPro;
         user.Plan = user.IsPro ? "Pro" : "Free";
+        if (!user.IsPro && user.Role is UserRole.Lecturer or UserRole.Researcher)
+        {
+            user.Role = UserRole.Student;
+        }
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Set Pro status for {user.Email} to {user.IsPro}.", "Success", "ADMIN-USER-PRO");
 
@@ -367,17 +539,32 @@ public class AdminController : ControllerBase
             return NotFound(new { message = "Payment not found." });
         }
 
-        var payosPayment = await _payosClient.GetPaymentInformationAsync(orderCode);
+        PayosPaymentInformationData payosPayment;
+        try
+        {
+            payosPayment = await _payosClient.GetPaymentInformationAsync(orderCode);
+        }
+        catch (TimeoutException)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new { message = "PayOS is taking too long to verify this payment. Please try again in a moment." });
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("PayOS", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = exception.Message });
+        }
+
         payment.Status = payosPayment.Status.ToUpperInvariant();
         payment.PayosReference = payosPayment.GetFirstTransactionReference() ?? payment.PayosReference;
         payment.UpdatedAt = DateTime.UtcNow;
 
         if (payment.Status == "PAID" && payosPayment.AmountPaid >= payment.Amount && payment.User != null)
         {
+            var targetRole = GetPaymentTargetRoleEnum(payment);
             payment.PaidAt ??= DateTime.UtcNow;
             payment.User.IsPro = true;
             payment.User.Plan = "Pro";
-            await LogAuditAsync("Payment Management", $"Verified PayOS payment {payment.OrderCode}; activated Pro for {payment.User.Email}.", "Success", "ADMIN-PAYOS-VERIFY");
+            payment.User.Role = targetRole;
+            await LogAuditAsync("Payment Management", $"Verified PayOS payment {payment.OrderCode}; activated {targetRole} Pro for {payment.User.Email}.", "Success", "ADMIN-PAYOS-VERIFY");
         }
 
         await _context.SaveChangesAsync();
@@ -405,7 +592,18 @@ public class AdminController : ControllerBase
             !string.Equals(payment.Status, "FAILED", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(payment.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase))
         {
-            await _payosClient.CancelPaymentLinkAsync(orderCode, "Cancelled by admin");
+            try
+            {
+                await _payosClient.CancelPaymentLinkAsync(orderCode, "Cancelled by admin");
+            }
+            catch (TimeoutException)
+            {
+                return StatusCode(StatusCodes.Status504GatewayTimeout, new { message = "PayOS is taking too long to cancel this payment. Please try again in a moment." });
+            }
+            catch (InvalidOperationException exception) when (exception.Message.Contains("PayOS", StringComparison.OrdinalIgnoreCase))
+            {
+                return StatusCode(StatusCodes.Status502BadGateway, new { message = exception.Message });
+            }
         }
 
         payment.Status = "CANCELLED";
@@ -426,6 +624,11 @@ public class AdminController : ControllerBase
         }
 
         IQueryable<User> query = _context.Users.Where(u => !u.IsDeleted && u.IsActive);
+        var recipientEmail = NormalizeEmail(request.RecipientEmail);
+        if (!string.IsNullOrWhiteSpace(recipientEmail))
+        {
+            query = query.Where(u => u.Email == recipientEmail);
+        }
         if (!string.IsNullOrWhiteSpace(request.RecipientRole) &&
             !string.Equals(request.RecipientRole, "All", StringComparison.OrdinalIgnoreCase))
         {
@@ -436,29 +639,77 @@ public class AdminController : ControllerBase
             query = query.Where(u => u.Role == role);
         }
 
-        var users = await query.ToListAsync();
-        var notificationType = ParseNotificationType(request.NotificationType);
-        var notifications = users.Select(user => new Notification
+        var targetCount = await query.CountAsync();
+        if (!string.IsNullOrWhiteSpace(recipientEmail) && targetCount == 0)
         {
-            UserId = user.Id,
-            User = user,
-            Title = string.IsNullOrWhiteSpace(request.Title) ? "NOTICE:" : request.Title.Trim(),
-            Message = message,
-            Route = string.IsNullOrWhiteSpace(request.Route) ? GetNotificationRouteForRole(user.Role) : request.Route.Trim(),
-            NotificationType = notificationType,
-            IsRead = false,
-            CreatedAt = DateTime.UtcNow
-        }).ToList();
+            return NotFound(new { message = "No active account matches the target email and role." });
+        }
+        var notificationType = ParseNotificationType(request.NotificationType);
+        var batchId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var scheduledAt = request.ScheduledAt?.ToUniversalTime();
+        var isScheduled = scheduledAt.HasValue && scheduledAt.Value > now;
+        var deliveryStatus = "pending";
+        var effectiveSchedule = isScheduled ? scheduledAt : now;
+        DateTime? deliveredAt = null;
+        var title = string.IsNullOrWhiteSpace(request.Title) ? "NOTICE:" : request.Title.Trim();
+        var requestedRoute = string.IsNullOrWhiteSpace(request.Route) ? null : request.Route.Trim();
+        var roleFilter = !string.IsNullOrWhiteSpace(request.RecipientRole) &&
+                         !string.Equals(request.RecipientRole, "All", StringComparison.OrdinalIgnoreCase)
+            ? Enum.Parse<UserRole>(request.RecipientRole, true).ToString()
+            : null;
 
-        _context.Notifications.AddRange(notifications);
-        await _context.SaveChangesAsync();
-        await LogAuditAsync("Notification Management", $"Broadcast notification to {users.Count} users. Target role: {request.RecipientRole ?? "All"}.", "Success", "ADMIN-NOTIFICATION-BROADCAST");
+        var inserted = await _context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO notifications
+                (user_id, publication_id, title, message, route, notification_type, is_read, created_at,
+                 scheduled_at, delivered_at, read_at, failed_at, delivery_status, failure_reason, batch_id)
+            SELECT u.id, NULL, {title}, {message},
+                   COALESCE({requestedRoute}, CASE u.role
+                       WHEN 'Lecturer' THEN '/lecturer-notifications'
+                       WHEN 'Researcher' THEN '/researcher-notifications'
+                       WHEN 'Admin' THEN '/admin-notifications'
+                       ELSE '/student-notifications' END),
+                   {notificationType.ToString()}, 0, {now}, {effectiveSchedule}, {deliveredAt}, NULL, NULL,
+                   {deliveryStatus}, NULL, {batchId}
+            FROM users u
+            WHERE u.is_deleted = 0 AND u.is_active = 1
+              AND ({string.IsNullOrWhiteSpace(recipientEmail)} = 1 OR u.email = {recipientEmail})
+              AND ({string.IsNullOrWhiteSpace(roleFilter)} = 1 OR u.role = {roleFilter})
+            """);
+
+        await LogAuditAsync("Notification Management", $"Created notification batch {batchId} for {inserted} users. Target role: {request.RecipientRole ?? "All"}.", "Success", "ADMIN-NOTIFICATION-BROADCAST");
 
         return Ok(new
         {
-            message = "Notification broadcast saved.",
-            count = notifications.Count,
-            items = notifications.Select(MapAdminNotification)
+            message = isScheduled ? "Notification broadcast scheduled." : "Notification broadcast saved.",
+            count = inserted,
+            batchId,
+            scheduledAt,
+            deliveryStatus
+        });
+    }
+
+    [HttpGet("notifications/analytics")]
+    public async Task<IActionResult> GetNotificationAnalytics([FromQuery] int days = 30)
+    {
+        var since = DateTime.UtcNow.AddDays(-Math.Clamp(days, 1, 365));
+        var rows = await _context.Notifications.AsNoTracking()
+            .Where(n => n.CreatedAt >= since)
+            .GroupBy(n => n.DeliveryStatus)
+            .Select(group => new { status = group.Key, count = group.Count() })
+            .ToListAsync();
+        var total = rows.Sum(row => row.count);
+        var read = await _context.Notifications.CountAsync(n => n.CreatedAt >= since && n.IsRead);
+        return Ok(new
+        {
+            since,
+            total,
+            delivered = rows.Where(row => row.status == "delivered").Sum(row => row.count),
+            dispatched = rows.Where(row => row.status == "dispatched").Sum(row => row.count),
+            failed = rows.Where(row => row.status == "failed").Sum(row => row.count),
+            pending = rows.Where(row => row.status is "pending" or "retrying").Sum(row => row.count),
+            read,
+            readRate = total == 0 ? 0 : Math.Round(read * 100d / total, 2)
         });
     }
 
@@ -515,6 +766,7 @@ public class AdminController : ControllerBase
         if (notification == null) return NotFound(new { message = "Notification not found." });
 
         notification.IsRead = true;
+        notification.ReadAt ??= DateTime.UtcNow;
         await _context.SaveChangesAsync();
         await LogAuditAsync("Notification Management", $"Marked notification {id} as read.", "Success", "ADMIN-NOTIFICATION-READ");
 
@@ -541,6 +793,7 @@ public class AdminController : ControllerBase
         foreach (var notification in notifications)
         {
             notification.IsRead = true;
+            notification.ReadAt ??= DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync();
@@ -626,10 +879,81 @@ public class AdminController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("sync-config")]
+    public async Task<IActionResult> GetAdminSyncConfig()
+    {
+        return Ok(await GetAdminStatePayloadAsync("sync-config", GetDefaultAdminSyncConfig()));
+    }
+
+    [HttpPut("sync-config")]
+    public async Task<IActionResult> SaveAdminSyncConfig([FromBody] AdminStateRequestDto request)
+    {
+        if (request.Value.ValueKind != JsonValueKind.Object ||
+            !request.Value.TryGetProperty("cron", out var cronElement) ||
+            string.IsNullOrWhiteSpace(cronElement.GetString()))
+        {
+            return BadRequest(new { message = "A valid cron schedule is required." });
+        }
+
+        var cron = cronElement.GetString()!.Trim();
+        var rateLimit = request.Value.TryGetProperty("rateLimit", out var rateLimitElement) && rateLimitElement.TryGetInt32(out var requestedLimit)
+            ? requestedLimit
+            : 120;
+        if (rateLimit is < 1 or > 6000)
+            return BadRequest(new { message = "Rate limit must be between 1 and 6000 requests per minute." });
+        var sources = request.Value.TryGetProperty("sources", out var sourceElement) ? sourceElement : default;
+        try
+        {
+            ConfigureRecurringJob<SemanticScholarSyncJob>("semantic-scholar-sync", sources, "semantic", cron, job => job.ExecuteAsync());
+            ConfigureRecurringJob<OpenAlexSyncJob>("openalex-sync", sources, "openAlex", cron, job => job.ExecuteAsync());
+            _rateLimiter.Configure(rateLimit);
+        }
+        catch (Exception exception) when (exception is ArgumentException or FormatException)
+        {
+            return BadRequest(new { message = "Invalid cron schedule.", detail = exception.Message });
+        }
+
+        var result = await UpsertAdminStateAsync("sync-config", request.Value, GetDefaultAdminSyncConfig());
+        await LogAuditAsync("Sync Management", "Saved sync configuration.", "Success", "ADMIN-SYNC-CONFIG-SAVE");
+        return Ok(result);
+    }
+
+    private void ConfigureRecurringJob<TJob>(string id, JsonElement sources, string sourceKey, string cron,
+        System.Linq.Expressions.Expression<Func<TJob, Task>> methodCall)
+    {
+        var enabled = sources.ValueKind != JsonValueKind.Object ||
+                      !sources.TryGetProperty(sourceKey, out var enabledElement) ||
+                      enabledElement.GetBoolean();
+        if (enabled)
+        {
+            _recurringJobs.AddOrUpdate(id, methodCall, cron);
+        }
+        else
+        {
+            _recurringJobs.RemoveIfExists(id);
+        }
+    }
+
     [HttpGet("profile")]
     public async Task<IActionResult> GetAdminProfile()
     {
-        return Ok(await GetAdminStatePayloadAsync("profile", GetDefaultAdminProfile()));
+        var userId = GetCurrentUserId();
+        var admin = userId.HasValue
+            ? await _context.Users.AsNoTracking().FirstOrDefaultAsync(user => user.Id == userId.Value)
+            : null;
+        var fallback = JsonSerializer.SerializeToElement(new
+        {
+            name = admin?.FullName ?? "Administrator",
+            email = admin?.Email ?? User.FindFirstValue(ClaimTypes.Email) ?? string.Empty,
+            role = "Administrator",
+            session = "API managed",
+            phone = string.Empty,
+            department = string.Empty,
+            location = string.Empty,
+            bio = string.Empty,
+            avatarUrl = string.Empty
+        });
+        return Ok(await GetAdminStatePayloadAsync("profile", fallback));
     }
 
     [HttpPut("profile")]
@@ -740,39 +1064,89 @@ public class AdminController : ControllerBase
     }
 
     [HttpGet("system-logs")]
-    public async Task<IActionResult> GetSystemLogs([FromQuery] int limit = 50)
+    public async Task<IActionResult> GetSystemLogs(
+        [FromQuery] int limit = 50,
+        [FromQuery] string? search = null,
+        [FromQuery] string? module = null,
+        [FromQuery] string? severity = null,
+        [FromQuery] string? correlationId = null,
+        [FromQuery] string? ip = null,
+        [FromQuery] int? userId = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null)
     {
-        limit = limit <= 0 ? 50 : limit;
-        var logs = await _context.SyncLogs
+        limit = Math.Clamp(limit <= 0 ? 50 : limit, 1, 500);
+        var eventQuery = _context.SystemEventLogs.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+            eventQuery = eventQuery.Where(log => log.Message.Contains(search) || log.EventCode.Contains(search) || (log.Actor != null && log.Actor.Contains(search)));
+        if (!string.IsNullOrWhiteSpace(module)) eventQuery = eventQuery.Where(log => log.Category == module);
+        if (!string.IsNullOrWhiteSpace(severity)) eventQuery = eventQuery.Where(log => log.Level == severity);
+        if (!string.IsNullOrWhiteSpace(correlationId)) eventQuery = eventQuery.Where(log => log.CorrelationId == correlationId);
+        if (!string.IsNullOrWhiteSpace(ip)) eventQuery = eventQuery.Where(log => log.IpAddress == ip);
+        if (userId.HasValue) eventQuery = eventQuery.Where(log => log.UserId == userId);
+        if (from.HasValue) eventQuery = eventQuery.Where(log => log.CreatedAt >= from.Value.ToUniversalTime());
+        if (to.HasValue) eventQuery = eventQuery.Where(log => log.CreatedAt <= to.Value.ToUniversalTime());
+
+        var eventLogs = await eventQuery
+            .OrderByDescending(log => log.CreatedAt)
+            .Take(limit)
+            .ToListAsync();
+        var includeSyncLogs = string.IsNullOrWhiteSpace(correlationId) && string.IsNullOrWhiteSpace(ip) && !userId.HasValue;
+        var syncQuery = _context.SyncLogs.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search)) syncQuery = syncQuery.Where(log => log.SourceApi.Contains(search) || (log.ErrorMessage != null && log.ErrorMessage.Contains(search)));
+        if (!string.IsNullOrWhiteSpace(module) && !string.Equals(module, "Sync", StringComparison.OrdinalIgnoreCase)) includeSyncLogs = false;
+        if (from.HasValue) syncQuery = syncQuery.Where(log => log.StartedAt >= from.Value.ToUniversalTime());
+        if (to.HasValue) syncQuery = syncQuery.Where(log => log.StartedAt <= to.Value.ToUniversalTime());
+        var syncLogs = includeSyncLogs ? await syncQuery
             .OrderByDescending(s => s.StartedAt)
             .Take(limit)
-            .Select(s => new
+            .ToListAsync() : [];
+
+        var logs = eventLogs.Select(log => new SystemLogResponse
+        {
+            Id = "EVENT-" + log.Id,
+            Time = log.CreatedAt,
+            EventName = log.Category,
+            Detail = log.Message,
+            Module = log.Category,
+            Severity = log.Level,
+            Actor = log.Actor ?? "system",
+            Code = log.EventCode,
+            CorrelationId = log.CorrelationId,
+            IpAddress = log.IpAddress,
+            UserId = log.UserId,
+            Path = log.Path,
+            StatusCode = log.StatusCode
+        })
+            .Concat(syncLogs.Select(s => new SystemLogResponse
             {
-                time = s.StartedAt,
-                eventName = s.SourceApi,
-                detail = s.ErrorMessage ?? ((s.RecordsSynced ?? 0) > 0 ? (s.RecordsSynced + " records synced") : "Action completed"),
-                module = s.SourceApi.StartsWith("Admin Audit:") ? s.SourceApi.Replace("Admin Audit:", "").Trim() : "Sync",
-                severity = s.SourceApi.StartsWith("Admin Audit:")
-                    ? (s.Status == SyncStatus.Failed ? "Error" : "Success")
-                    : (s.ErrorMessage == null ? (s.Status == SyncStatus.Completed ? "Success" : "Info") : "Error"),
-                actor = s.TriggeredByUserId == null ? "scheduler@system" : "user-" + s.TriggeredByUserId,
-                code = s.SourceApi.StartsWith("Admin Audit:") ? "AUDIT-" + s.Id : "SYNC-" + s.Id
-            })
-            .ToListAsync();
+                Id = "SYNC-" + s.Id,
+                Time = s.StartedAt,
+                EventName = s.SourceApi,
+                Detail = s.ErrorMessage ?? ((s.RecordsSynced ?? 0) > 0 ? s.RecordsSynced + " records synced" : "Action completed"),
+                Module = s.SourceApi.StartsWith("Admin Audit:") ? s.SourceApi.Replace("Admin Audit:", "").Trim() : "Sync",
+                Severity = s.Status == SyncStatus.Failed ? "Error" : s.Status == SyncStatus.Completed ? "Success" : "Info",
+                Actor = s.TriggeredByUserId == null ? "scheduler@system" : "user-" + s.TriggeredByUserId,
+                Code = s.SourceApi.StartsWith("Admin Audit:") ? "AUDIT-" + s.Id : "SYNC-" + s.Id
+            }))
+            .OrderByDescending(log => log.Time)
+            .Take(limit)
+            .ToList();
 
         if (logs.Count == 0)
         {
             return Ok(new[]
             {
-                new
+                new SystemLogResponse
                 {
-                    time = DateTime.UtcNow,
-                    eventName = "Admin API online",
-                    detail = "No system logs have been recorded yet.",
-                    module = "System",
-                    severity = "Info",
-                    actor = "api@system",
-                    code = "SYS-READY"
+                    Id = "SYSTEM-READY",
+                    Time = DateTime.UtcNow,
+                    EventName = "Admin API online",
+                    Detail = "No system logs have been recorded yet.",
+                    Module = "System",
+                    Severity = "Info",
+                    Actor = "api@system",
+                    Code = "SYS-READY"
                 }
             });
         }
@@ -783,43 +1157,189 @@ public class AdminController : ControllerBase
     [HttpGet("health")]
     public async Task<IActionResult> GetHealth()
     {
+        var databaseConnected = await _context.Database.CanConnectAsync();
         var latestSync = await _context.SyncLogs.OrderByDescending(s => s.StartedAt).FirstOrDefaultAsync();
+        var authHelperUrl = _configuration["Services:AuthHelperHealthUrl"] ?? "http://localhost:5173/api/health";
+        var authHelperOperational = false;
+        string authHelperValue;
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            using var response = await client.GetAsync(authHelperUrl);
+            authHelperOperational = response.IsSuccessStatusCode;
+            authHelperValue = authHelperOperational ? "Reachable" : $"HTTP {(int)response.StatusCode}";
+        }
+        catch (Exception error)
+        {
+            authHelperValue = error.GetType().Name;
+        }
+
+        var payosConfigured =
+            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ClientId"]) &&
+            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ApiKey"]) &&
+            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ChecksumKey"]);
+        var payos = await ProbeServiceAsync("PayOS", async () =>
+        {
+            var result = await _payosClient.ProbeAsync();
+            if (!result.Operational) throw new InvalidOperationException(result.Detail);
+            return result.Detail;
+        });
+        var semanticScholar = await ProbeServiceAsync("Semantic Scholar", async () =>
+            $"{(await _semanticScholarClient.SearchAsync("health check", 1)).Count} result(s)");
+        var openAlex = await ProbeServiceAsync("OpenAlex", async () =>
+            $"{(await _openAlexClient.SearchWorksAsync("health check", 1)).Count} result(s)");
+        var serpApi = await ProbeServiceAsync("SerpAPI", async () =>
+            $"{(await _serpApiClient.SearchAsync("health check", 1)).Count} result(s)");
+        var researchGate = await ProbeServiceAsync("ResearchGate", async () =>
+            $"{(await _serpApiClient.SearchResearchGateAsync("machine learning", 1)).Count} result(s)");
+        var publicationCount = databaseConnected
+            ? await _context.Publications.CountAsync(p => !p.IsDeleted)
+            : 0;
+        var healthy = databaseConnected && authHelperOperational && payos.Operational && semanticScholar.Operational && openAlex.Operational && serpApi.Operational;
+
         return Ok(new
         {
-            status = "Healthy",
+            status = healthy ? "Healthy" : "Degraded",
             checkedAt = DateTime.UtcNow,
             services = new[]
             {
-                new { name = "API Gateway", state = "Operational", value = "Ready" },
-                new { name = "Auth Service", state = "Operational", value = "JWT enabled" },
-                new { name = "Search Index", state = "Operational", value = await _context.Publications.CountAsync(p => !p.IsDeleted) + " publications" },
-                new { name = "Sync Workers", state = latestSync?.Status.ToString() ?? "Idle", value = latestSync?.StartedAt.ToString("u") ?? "No runs yet" }
+                new HealthServiceStatus("SQL Server", databaseConnected, databaseConnected ? "Connected" : "Unavailable"),
+                new HealthServiceStatus("Auth Service", authHelperOperational, authHelperValue),
+                payos, semanticScholar, openAlex, serpApi, researchGate,
+                new HealthServiceStatus("Search Index", databaseConnected, publicationCount + " publications"),
+                new HealthServiceStatus("Sync Workers", latestSync?.Status != SyncStatus.Failed, latestSync?.StartedAt.ToString("u") ?? "No runs yet")
             }
         });
+    }
+
+    private static async Task<HealthServiceStatus> ProbeServiceAsync(string name, Func<Task<string>> probe)
+    {
+        try { return new HealthServiceStatus(name, true, await probe()); }
+        catch (Exception exception) { return new HealthServiceStatus(name, false, exception.Message); }
     }
 
     [HttpPost("sync/semantic-scholar")]
     public async Task<IActionResult> SyncSemanticScholar()
     {
         await LogAuditAsync("Sync Management", "Admin triggered Semantic Scholar sync.", "Info", "ADMIN-SYNC-SEMANTIC-SCHOLAR");
-        await _syncService.SyncFromSemanticScholarAsync();
+        var synced = await _syncService.SyncFromSemanticScholarAsync();
         var latest = await _context.SyncLogs
             .Where(log => log.SourceApi == "Semantic Scholar")
             .OrderByDescending(log => log.StartedAt)
             .FirstOrDefaultAsync();
-        return Ok(new { message = "Semantic Scholar sync completed.", recordsSynced = latest?.RecordsSynced ?? 0 });
+        return Ok(new { message = "Semantic Scholar sync completed.", recordsSynced = latest?.RecordsSynced ?? synced });
     }
 
     [HttpPost("sync/openalex")]
     public async Task<IActionResult> SyncOpenAlex()
     {
         await LogAuditAsync("Sync Management", "Admin triggered OpenAlex sync.", "Info", "ADMIN-SYNC-OPENALEX");
-        await _syncService.SyncFromOpenAlexAsync();
+        var synced = await _syncService.SyncFromOpenAlexAsync();
         var latest = await _context.SyncLogs
             .Where(log => log.SourceApi == "OpenAlex")
             .OrderByDescending(log => log.StartedAt)
             .FirstOrDefaultAsync();
-        return Ok(new { message = "OpenAlex sync completed.", recordsSynced = latest?.RecordsSynced ?? 0 });
+        return Ok(new { message = "OpenAlex sync completed.", recordsSynced = latest?.RecordsSynced ?? synced });
+    }
+
+    [HttpPost("sync/manual")]
+    public async Task<IActionResult> RunManualSync([FromBody] AdminManualSyncRequestDto request)
+    {
+        var keywords = request.Keywords?
+            .Select(keyword => keyword.Trim())
+            .Where(keyword => !string.IsNullOrWhiteSpace(keyword))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? new List<string>();
+        var query = keywords.Count == 0
+            ? "machine learning OR artificial intelligence"
+            : string.Join(" OR ", keywords);
+        var maxResults = request.MaxResults <= 0 ? 20 : Math.Clamp(request.MaxResults, 1, 50);
+        var sources = request.Sources ?? new AdminManualSyncSourcesDto();
+        var results = new List<object>();
+        var failures = new List<string>();
+        var recordsSynced = 0;
+
+        if (!sources.Semantic && !sources.OpenAlex && !sources.GoogleScholar && !sources.ResearchGate)
+        {
+            return BadRequest(new { message = "Enable at least one sync source before running manual sync." });
+        }
+
+        await LogAuditAsync(
+            "Sync Management",
+            $"Admin triggered manual publication sync for query '{query}'.",
+            "Info",
+            "ADMIN-SYNC-MANUAL");
+
+        if (sources.Semantic)
+        {
+            try
+            {
+                var count = await _syncService.SyncFromSemanticScholarAsync(query, maxResults);
+                recordsSynced += count;
+                results.Add(new { source = "Semantic Scholar", status = "Completed", recordsSynced = count });
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"Semantic Scholar: {exception.Message}");
+                results.Add(new { source = "Semantic Scholar", status = "Failed", recordsSynced = 0, error = exception.Message });
+            }
+        }
+
+        if (sources.OpenAlex)
+        {
+            try
+            {
+                var count = await _syncService.SyncFromOpenAlexAsync(query, maxResults);
+                recordsSynced += count;
+                results.Add(new { source = "OpenAlex", status = "Completed", recordsSynced = count });
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"OpenAlex: {exception.Message}");
+                results.Add(new { source = "OpenAlex", status = "Failed", recordsSynced = 0, error = exception.Message });
+            }
+        }
+
+        if (sources.GoogleScholar)
+        {
+            try
+            {
+                var count = await _syncService.SyncFromGoogleScholarAsync(query, maxResults);
+                recordsSynced += count;
+                results.Add(new { source = "Google Scholar", status = "Completed", recordsSynced = count });
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"Google Scholar: {exception.Message}");
+                results.Add(new { source = "Google Scholar", status = "Failed", recordsSynced = 0, error = exception.Message });
+            }
+        }
+
+        if (sources.ResearchGate)
+        {
+            try
+            {
+                var count = await _syncService.SyncFromResearchGateAsync(query, maxResults);
+                recordsSynced += count;
+                results.Add(new { source = "ResearchGate", status = "Completed", recordsSynced = count });
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"ResearchGate: {exception.Message}");
+                results.Add(new { source = "ResearchGate", status = "Failed", recordsSynced = 0, error = exception.Message });
+            }
+        }
+
+        return Ok(new
+        {
+            message = failures.Count == 0
+                ? $"Manual sync completed. Imported {recordsSynced} publication records."
+                : $"Manual sync completed with {failures.Count} failed source(s).",
+            query,
+            recordsSynced,
+            results,
+            failures
+        });
     }
 
     [HttpPost("recalculate-trends")]
@@ -878,7 +1398,15 @@ public class AdminController : ControllerBase
     [HttpGet("sync-logs")]
     public async Task<IActionResult> GetSyncLogs([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
-        var query = _context.SyncLogs;
+        var query = _context.SyncLogs
+            .Where(log => !log.SourceApi.StartsWith("Admin Audit:"))
+            .Where(log =>
+                !(log.SourceApi == "OpenAlex" &&
+                  log.Status == SyncStatus.Failed &&
+                  (log.RecordsSynced ?? 0) == 0 &&
+                  log.ErrorMessage == null &&
+                  log.StartedAt >= new DateTime(2024, 12, 2) &&
+                  log.StartedAt < new DateTime(2024, 12, 3)));
         var total = await query.CountAsync();
         var items = await query
             .OrderByDescending(l => l.StartedAt)
@@ -890,6 +1418,39 @@ public class AdminController : ControllerBase
     }
 
     private static string NormalizeEmail(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();
+
+    private static string GenerateSecurePassword()
+    {
+        const string uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // Excluding I and O to avoid confusion
+        const string lowercase = "abcdefghijkmnopqrstuvwxyz"; // Excluding l
+        const string digits = "23456789"; // Excluding 0 and 1
+        const string special = "!@#$%&*";
+        const string allChars = uppercase + lowercase + digits + special;
+
+        var random = Random.Shared;
+        var password = new char[16];
+
+        // Ensure at least one character from each required set
+        password[0] = uppercase[random.Next(uppercase.Length)];
+        password[1] = lowercase[random.Next(lowercase.Length)];
+        password[2] = digits[random.Next(digits.Length)];
+        password[3] = special[random.Next(special.Length)];
+
+        // Fill the rest with random characters from all sets
+        for (var i = 4; i < password.Length; i++)
+        {
+            password[i] = allChars[random.Next(allChars.Length)];
+        }
+
+        // Shuffle the password array
+        for (var i = password.Length - 1; i > 0; i--)
+        {
+            var j = random.Next(i + 1);
+            (password[i], password[j]) = (password[j], password[i]);
+        }
+
+        return new string(password);
+    }
 
     private bool IsAuthorizedInternalRequest()
     {
@@ -907,6 +1468,12 @@ public class AdminController : ControllerBase
             ? "Admin"
             : role;
         return Enum.TryParse(normalizedRole, true, out parsedRole);
+    }
+
+    private static bool TryParseManagedRole(string? role, out UserRole parsedRole)
+    {
+        if (!TryParseRole(role, out parsedRole)) return false;
+        return parsedRole is UserRole.Student or UserRole.Lecturer or UserRole.Researcher;
     }
 
     private static NotificationType ParseNotificationType(string? type)
@@ -962,18 +1529,50 @@ public class AdminController : ControllerBase
         checkoutUrl = payment.CheckoutUrl,
         billingCycle = payment.BillingCycle,
         plan = payment.Plan,
-        priceLabel = payment.BillingCycle == "monthly" ? "$5 / month" : "$49 / year",
+        amount = payment.Amount,
+        currency = payment.Currency,
+        priceLabel = payment.Currency == "VND"
+            ? $"{payment.Amount:N0} VND"
+            : $"{payment.Amount} {payment.Currency}",
         status = payment.Status,
         email = payment.UserEmail,
         userName = payment.User?.FullName ?? payment.UserEmail,
-        role = payment.User?.Role.ToString() ?? "Researcher",
+        role = GetPaymentTargetRole(payment),
         createdAt = payment.CreatedAt,
         expiresAt = payment.ExpiresAt,
         expiresInSeconds = payment.ExpiresAt.HasValue
             ? Math.Max(0, (int)Math.Floor((payment.ExpiresAt.Value - DateTime.UtcNow).TotalSeconds))
             : 0,
-        updatedAt = payment.UpdatedAt
+        paidAt = payment.PaidAt,
+        updatedAt = payment.UpdatedAt,
+        payosReference = payment.PayosReference
     };
+
+    private static string GetPaymentTargetRole(PaymentTransaction payment)
+        => GetPaymentTargetRoleEnum(payment).ToString();
+
+    private static UserRole GetPaymentTargetRoleEnum(PaymentTransaction payment)
+    {
+        var description = payment.Description ?? string.Empty;
+        var separatorIndex = description.LastIndexOf(':');
+        if (separatorIndex >= 0 && separatorIndex < description.Length - 1)
+        {
+            var targetRole = description[(separatorIndex + 1)..];
+            if (string.Equals(targetRole, "Lecturer", StringComparison.OrdinalIgnoreCase))
+            {
+                return UserRole.Lecturer;
+            }
+
+            if (string.Equals(targetRole, "Researcher", StringComparison.OrdinalIgnoreCase))
+            {
+                return UserRole.Researcher;
+            }
+        }
+
+        return payment.User?.Role is UserRole.Lecturer or UserRole.Researcher
+            ? payment.User.Role
+            : UserRole.Researcher;
+    }
 
     private object MapAdminNotification(Notification notification) => new
     {
@@ -988,6 +1587,16 @@ public class AdminController : ControllerBase
         publicationId = notification.PublicationId,
         route = notification.Route ?? (notification.User == null ? "" : GetNotificationRouteForRole(notification.User.Role)),
         createdAt = notification.CreatedAt,
+        scheduledAt = notification.ScheduledAt,
+        deliveredAt = notification.DeliveredAt,
+        acknowledgedAt = notification.AcknowledgedAt,
+        attemptCount = notification.AttemptCount,
+        nextAttemptAt = notification.NextAttemptAt,
+        readAt = notification.ReadAt,
+        failedAt = notification.FailedAt,
+        deliveryStatus = notification.DeliveryStatus,
+        failureReason = notification.FailureReason,
+        batchId = notification.BatchId,
         unread = !notification.IsRead,
         isRead = notification.IsRead
     };
@@ -1026,14 +1635,14 @@ public class AdminController : ControllerBase
 
     private static JsonElement GetDefaultAdminProfile() => ParseJsonElement("""
         {
-          "name": "Admin User",
-          "email": "admin@university.edu",
+          "name": "Administrator",
+          "email": "",
           "role": "Administrator",
           "session": "API managed",
-          "phone": "+84 901 234 567",
-          "department": "System Administration",
-          "location": "Ho Chi Minh City",
-          "bio": "Manages ScholarTrend access, sync operations, and platform health.",
+          "phone": "",
+          "department": "",
+          "location": "",
+          "bio": "",
           "avatarUrl": ""
         }
         """);
@@ -1042,6 +1651,20 @@ public class AdminController : ControllerBase
         {
           "healthCheckedAt": "not checked",
           "message": ""
+        }
+        """);
+
+    private static JsonElement GetDefaultAdminSyncConfig() => ParseJsonElement("""
+        {
+          "sources": {
+            "semantic": true,
+            "openAlex": true,
+            "googleScholar": true,
+            "researchGate": true
+          },
+          "keywords": ["Machine Learning", "NLP"],
+          "cron": "0 0 * * *",
+          "rateLimit": 120
         }
         """);
 
@@ -1121,6 +1744,11 @@ public class ChangeRoleDto
     public string Role { get; set; } = string.Empty;
 }
 
+public class SetProStatusDto
+{
+    public bool IsPro { get; set; }
+}
+
 public class AdminUserUpsertDto
 {
     public string FullName { get; set; } = string.Empty;
@@ -1132,6 +1760,16 @@ public class AdminUserUpsertDto
     public bool? IsActive { get; set; }
     public bool? IsPro { get; set; }
     public string? Password { get; set; }
+}
+
+public class GrantAdminRoleDto
+{
+    public string Confirmation { get; set; } = string.Empty;
+}
+
+public class AdminResetPasswordDto
+{
+    public string NewPassword { get; set; } = string.Empty;
 }
 
 public class ExternalUserSyncDto
@@ -1149,10 +1787,12 @@ public class ExternalUserSyncDto
 public class AdminBroadcastNotificationDto
 {
     public string RecipientRole { get; set; } = "All";
+    public string RecipientEmail { get; set; } = string.Empty;
     public string NotificationType { get; set; } = "SYSTEM";
     public string Title { get; set; } = "NOTICE:";
     public string Message { get; set; } = string.Empty;
     public string Route { get; set; } = string.Empty;
+    public DateTime? ScheduledAt { get; set; }
 }
 
 public class AdminNotificationRouteDto
@@ -1191,4 +1831,41 @@ public class AdminAuditLogRequestDto
     public string Detail { get; set; } = string.Empty;
     public string Severity { get; set; } = "Info";
     public string Code { get; set; } = "ADMIN-AUDIT";
+}
+
+public class SystemLogResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public DateTime Time { get; set; }
+    public string EventName { get; set; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
+    public string Module { get; set; } = string.Empty;
+    public string Severity { get; set; } = "Info";
+    public string Actor { get; set; } = "system";
+    public string Code { get; set; } = string.Empty;
+    public string? CorrelationId { get; set; }
+    public string? IpAddress { get; set; }
+    public int? UserId { get; set; }
+    public string? Path { get; set; }
+    public int? StatusCode { get; set; }
+}
+
+public record HealthServiceStatus(string Name, bool Operational, string Value)
+{
+    public string State => Operational ? "Operational" : "Critical";
+}
+
+public class AdminManualSyncRequestDto
+{
+    public AdminManualSyncSourcesDto Sources { get; set; } = new();
+    public List<string> Keywords { get; set; } = new();
+    public int MaxResults { get; set; } = 20;
+}
+
+public class AdminManualSyncSourcesDto
+{
+    public bool Semantic { get; set; } = true;
+    public bool OpenAlex { get; set; } = true;
+    public bool GoogleScholar { get; set; } = false;
+    public bool ResearchGate { get; set; } = false;
 }

@@ -7,12 +7,14 @@ public class OpenAlexClient
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly ExternalApiRateLimiter _rateLimiter;
 
-    public OpenAlexClient(HttpClient httpClient, IConfiguration configuration)
+    public OpenAlexClient(HttpClient httpClient, IConfiguration configuration, ExternalApiRateLimiter rateLimiter)
     {
         _httpClient = httpClient;
         _httpClient.Timeout = TimeSpan.FromSeconds(8);
         _configuration = configuration;
+        _rateLimiter = rateLimiter;
     }
 
     public async Task<IReadOnlyList<ExternalPublication>> SearchWorksAsync(
@@ -42,6 +44,7 @@ public class OpenAlexClient
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd("ScholarTrend/1.0 (mailto:research@scholartrend.local)");
 
+        await _rateLimiter.WaitAsync("OpenAlex", cancellationToken);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -67,6 +70,7 @@ public class OpenAlexClient
         var citationCount = GetInt(work, "cited_by_count");
         var abstractText = BuildAbstract(work);
         var journalName = GetOpenAlexSourceName(work);
+        var sourceUrl = GetBestSourceUrl(work, doi);
         var authors = GetAuthors(work).Take(8).ToList();
         var keywords = GetConcepts(work).Take(8).ToList();
 
@@ -76,6 +80,7 @@ public class OpenAlexClient
             Abstract = abstractText,
             Year = year,
             DOI = doi,
+            SourceUrl = sourceUrl,
             SourceApi = "OpenAlex",
             JournalName = string.IsNullOrWhiteSpace(journalName)
                 ? "OpenAlex"
@@ -143,6 +148,40 @@ public class OpenAlexClient
         }
 
         return string.Empty;
+    }
+
+    private static string? GetBestSourceUrl(JsonElement work, string doi)
+    {
+        var openAlexId = GetString(work, "id");
+        if (!string.IsNullOrWhiteSpace(openAlexId))
+        {
+            return openAlexId;
+        }
+
+        var primaryLandingPage = GetPrimaryLocationUrl(work, "landing_page_url");
+        if (!string.IsNullOrWhiteSpace(primaryLandingPage))
+        {
+            return primaryLandingPage;
+        }
+
+        var primaryPdf = GetPrimaryLocationUrl(work, "pdf_url");
+        if (!string.IsNullOrWhiteSpace(primaryPdf))
+        {
+            return primaryPdf;
+        }
+
+        return string.IsNullOrWhiteSpace(doi) ? null : $"https://doi.org/{doi}";
+    }
+
+    private static string? GetPrimaryLocationUrl(JsonElement work, string propertyName)
+    {
+        if (!work.TryGetProperty("primary_location", out var primaryLocation) ||
+            primaryLocation.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return GetString(primaryLocation, propertyName);
     }
 
     private static IEnumerable<string> GetAuthors(JsonElement work)

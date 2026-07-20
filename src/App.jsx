@@ -1,8 +1,12 @@
 import React from "react";
-import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import Chart from "chart.js/auto";
 import { Line } from "react-chartjs-2";
+import { useTranslation } from "react-i18next";
+import VietnamScheduleField from "./admin/VietnamScheduleField";
+import { formatVietnamDateTime, getNotificationRouteForRole, normalizeAdminNotification as normalizeAdminNotificationBase, utcIsoToVietnamSchedule, vietnamScheduleToUtcIso } from "./admin/notification-utils";
+
+const AdminNotificationPreview = React.lazy(() => import("./admin/AdminNotificationPreview"));
+const PublicationVersionHistory = React.lazy(() => import("./admin/PublicationVersionHistory"));
 
 const getAcademicRole = () =>
   window.location.pathname.startsWith("/lecturer-") ? "lecturer" : "researcher";
@@ -28,11 +32,6 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(
 const GOOGLE_AUTH_BASE_URL = (
   import.meta.env.VITE_GOOGLE_AUTH_BASE_URL || API_BASE_URL
 ).replace(/\/$/, "");
-const ORCID_CLIENT_ID = import.meta.env.VITE_ORCID_CLIENT_ID || "";
-const ORCID_REDIRECT_URI =
-  import.meta.env.VITE_ORCID_REDIRECT_URI ||
-  `${window.location.origin}/login?auth=orcid-success`;
-const INSTITUTION_SSO_URL = import.meta.env.VITE_INSTITUTION_SSO_URL || "";
 
 const getStoredAuth = () => {
   try {
@@ -69,42 +68,67 @@ const getStoredAuthRole = () => {
   );
 };
 
-const hasAdminBackendAccess = () =>
-  Boolean(getStoredAuth().accessToken) &&
-  normalizeRoleForUi(getStoredAuthRole()) === "Administrator";
+const hasAdminBackendAccess = () => {
+  const accessToken = getStoredAuth().accessToken;
+  if (!accessToken) return false;
+  const payload = decodeJwtPayload(accessToken);
+  const expiresAt = Number(payload.exp || 0) * 1000;
+  if (!expiresAt || expiresAt <= Date.now()) return false;
+  return normalizeRoleForUi(getStoredAuthRole()) === "Administrator";
+};
 
 const getStoredSession = () => {
   try {
-    return JSON.parse(
+    const session = JSON.parse(
       window.localStorage.getItem("scholartrend.session") || "{}",
     );
+    const expiresAt = session.subscriptionExpiresAt
+      ? new Date(session.subscriptionExpiresAt).getTime()
+      : Number.NaN;
+    if (
+      session.isPro &&
+      Number.isFinite(expiresAt) &&
+      expiresAt <= Date.now()
+    ) {
+      const now = new Date().toISOString();
+      const expiredSession = {
+        ...session,
+        role: "Student",
+        route: "/student-dashboard",
+        isPro: false,
+        plan: "Free",
+        subscriptionStatus: "expired",
+        subscriptionExpiredAt: session.subscriptionExpiredAt || now,
+        subscriptionUpdatedAt: now,
+      };
+      window.localStorage.setItem(
+        "scholartrend.session",
+        JSON.stringify(expiredSession),
+      );
+      return expiredSession;
+    }
+    return session;
   } catch {
     return {};
   }
 };
 
-const normalizeAuthResponse = (payload) => ({
-  ...payload,
-  accessToken: payload.accessToken || payload.AccessToken,
-  refreshToken: payload.refreshToken || payload.RefreshToken,
-  expiresAt: payload.expiresAt || payload.ExpiresAt,
-  user: payload.user || payload.User,
-});
-
 const normalizeRoleForUi = (role) => {
   const value = Array.isArray(role) ? role[0] : role;
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (normalized === "admin" || normalized === "administrator") {
     return "Administrator";
   }
   if (normalized === "student") return "Student";
   if (normalized === "lecturer") return "Lecturer";
   if (normalized === "researcher") return "Researcher";
-  return value || "Researcher";
+  return value || "Student";
 };
 
 const normalizeRoleForApi = (role) =>
-  role === "Administrator" ? "Admin" : role || "Researcher";
+  role === "Administrator" ? "Admin" : role || "Student";
 
 const roleDashboardRoutes = {
   Admin: "/admin-dashboard",
@@ -114,7 +138,29 @@ const roleDashboardRoutes = {
   Administrator: "/admin-dashboard",
 };
 
+const STUDENT_REGISTRATION_ROLE = "Student";
+const REGISTERED_LOGIN_HINT_KEY = "scholartrend.registeredLoginHint";
+const upgradeRoleOptions = ["Researcher", "Lecturer"];
+
+const getRegisteredLoginHint = () => {
+  try {
+    const hint = JSON.parse(
+      window.sessionStorage.getItem(REGISTERED_LOGIN_HINT_KEY) || "{}",
+    );
+    if (!hint.email || !hint.password) return null;
+    return {
+      email: String(hint.email).trim().toLowerCase(),
+      password: String(hint.password),
+      role: normalizeRoleForUi(hint.role || STUDENT_REGISTRATION_ROLE),
+      fullName: String(hint.fullName || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+};
+
 const ADMIN_PLAN_SETTINGS_KEY = "scholartrend.adminPlanSettings";
+const PENDING_PAYOS_UPGRADE_KEY = "scholartrend.pendingPayosUpgrades";
 const defaultProPlanSettings = {
   monthlyPrice: 5,
   yearlyPrice: 49,
@@ -122,14 +168,28 @@ const defaultProPlanSettings = {
   checkoutHoldMinutes: 15,
   freeAccuracy: {
     Student: 15,
-    Lecturer: 20,
-    Researcher: 25,
+    Lecturer: 15,
+    Researcher: 15,
   },
   proAccuracy: {
     Student: 35,
-    Lecturer: 40,
-    Researcher: 45,
+    Lecturer: 35,
+    Researcher: 35,
   },
+};
+
+const mirrorStudentPackageAccuracy = (
+  policy = {},
+  fallback = defaultProPlanSettings.freeAccuracy,
+) => {
+  const studentAccuracy = Number(
+    policy.Student ?? policy.student ?? fallback.Student,
+  );
+  return {
+    Student: studentAccuracy,
+    Lecturer: studentAccuracy,
+    Researcher: studentAccuracy,
+  };
 };
 
 const getProPlanSettings = () => {
@@ -146,14 +206,20 @@ const getProPlanSettings = () => {
       ...defaultProPlanSettings,
       ...(saved || {}),
       yearlyPrice: savedYearlyPrice || defaultProPlanSettings.yearlyPrice,
-      freeAccuracy: {
-        ...defaultProPlanSettings.freeAccuracy,
-        ...(saved?.freeAccuracy || {}),
-      },
-      proAccuracy: {
-        ...defaultProPlanSettings.proAccuracy,
-        ...(saved?.proAccuracy || {}),
-      },
+      freeAccuracy: mirrorStudentPackageAccuracy(
+        {
+          ...defaultProPlanSettings.freeAccuracy,
+          ...(saved?.freeAccuracy || {}),
+        },
+        defaultProPlanSettings.freeAccuracy,
+      ),
+      proAccuracy: mirrorStudentPackageAccuracy(
+        {
+          ...defaultProPlanSettings.proAccuracy,
+          ...(saved?.proAccuracy || {}),
+        },
+        defaultProPlanSettings.proAccuracy,
+      ),
     };
   } catch {
     return defaultProPlanSettings;
@@ -167,15 +233,22 @@ const setProPlanSettings = (settings) => {
   );
 };
 
-const normalizeAccuracyPolicy = (policy = {}, fallback = defaultProPlanSettings.freeAccuracy) => ({
+const normalizeAccuracyPolicy = (
+  policy = {},
+  fallback = defaultProPlanSettings.freeAccuracy,
+) => ({
   Student: Number(policy.Student ?? policy.student ?? fallback.Student),
   Lecturer: Number(policy.Lecturer ?? policy.lecturer ?? fallback.Lecturer),
-  Researcher: Number(policy.Researcher ?? policy.researcher ?? fallback.Researcher),
+  Researcher: Number(
+    policy.Researcher ?? policy.researcher ?? fallback.Researcher,
+  ),
 });
 
 const normalizePlanPolicySettings = (policy = {}) => ({
   ...defaultProPlanSettings,
-  monthlyPrice: Number(policy.monthlyPrice || defaultProPlanSettings.monthlyPrice),
+  monthlyPrice: Number(
+    policy.monthlyPrice || defaultProPlanSettings.monthlyPrice,
+  ),
   yearlyPrice: Number(policy.yearlyPrice || defaultProPlanSettings.yearlyPrice),
   monthlyAmountVnd: Number(
     policy.monthlyAmountVnd ||
@@ -188,23 +261,32 @@ const normalizePlanPolicySettings = (policy = {}) => ({
       defaultProPlanSettings.yearlyPrice * 25000,
   ),
   yearlySavingsPercent: Number(
-    policy.yearlySavingsPercent ??
-      defaultProPlanSettings.yearlySavingsPercent,
+    policy.yearlySavingsPercent ?? defaultProPlanSettings.yearlySavingsPercent,
   ),
   checkoutHoldMinutes: Number(
     policy.checkoutHoldMinutes ?? defaultProPlanSettings.checkoutHoldMinutes,
   ),
-  freeAccuracy: normalizeAccuracyPolicy(
-    policy.freeAccuracy,
+  freeAccuracy: mirrorStudentPackageAccuracy(
+    normalizeAccuracyPolicy(
+      policy.freeAccuracy,
+      defaultProPlanSettings.freeAccuracy,
+    ),
     defaultProPlanSettings.freeAccuracy,
   ),
-  proAccuracy: normalizeAccuracyPolicy(
-    policy.proAccuracy,
+  proAccuracy: mirrorStudentPackageAccuracy(
+    normalizeAccuracyPolicy(
+      policy.proAccuracy,
+      defaultProPlanSettings.proAccuracy,
+    ),
     defaultProPlanSettings.proAccuracy,
   ),
 });
 
 const syncPlanPolicyFromBackend = async () => {
+  if (!getStoredAuth().accessToken) {
+    return getProPlanSettings();
+  }
+
   const policy = await apiFetch("/api/plans/policy");
   const nextSettings = normalizePlanPolicySettings(policy);
   setProPlanSettings(nextSettings);
@@ -245,6 +327,20 @@ const getSearchAccuracyForAccount = (role, isPro = false) => {
   return accuracyMap[normalizedRole] ?? settings.freeAccuracy.Researcher;
 };
 
+const normalizePercentValue = (value) => {
+  const percent = Number(value);
+  return Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null;
+};
+
+const clampPercentToAccuracy = (value, accuracyLimit = 100) => {
+  const percent = normalizePercentValue(value);
+  const limit = normalizePercentValue(accuracyLimit) ?? 100;
+  if (limit <= 1) return Math.max(0, limit);
+  const normalizedScore = percent ?? 0;
+  if (limit >= 100) return Math.max(1, normalizedScore);
+  return 1 + (normalizedScore / 100) * (limit - 1);
+};
+
 const inferRoleFromPath = () => {
   const path = window.location.pathname;
   if (path.startsWith("/student-")) return "Student";
@@ -253,18 +349,84 @@ const inferRoleFromPath = () => {
   return "Researcher";
 };
 
+const getExplicitRoleFromPath = () => {
+  const path = window.location.pathname;
+  if (path.startsWith("/student-")) return "Student";
+  if (path.startsWith("/lecturer-")) return "Lecturer";
+  if (path.startsWith("/researcher-")) return "Researcher";
+  if (path.startsWith("/admin-")) return "Administrator";
+  return null;
+};
+
 const getCurrentAccountPlan = () => {
   const session = getStoredSession();
-  const role = normalizeRoleForUi(session.role || inferRoleFromPath());
+  const role = normalizeRoleForUi(
+    getExplicitRoleFromPath() || session.role || inferRoleFromPath(),
+  );
   const isPro = Boolean(session.isPro || session.plan === "Pro");
   return {
     ...session,
     role,
     isPro,
     plan: isPro ? "Pro" : "Free",
-    searchAccuracy:
-      session.searchAccuracy || getSearchAccuracyForAccount(role, isPro),
+    searchAccuracy: getSearchAccuracyForAccount(role, isPro),
   };
+};
+
+const getSessionDisplayName = (
+  session = {},
+  fallback = "ScholarTrend User",
+) => {
+  const rawName =
+    session.fullName ||
+    session.name ||
+    session.displayName ||
+    session.email ||
+    fallback;
+  const name = String(rawName || fallback).trim();
+  if (!name) return fallback;
+  return name.includes("@") ? name.split("@")[0] : name;
+};
+
+const getPendingPayosUpgrades = () => {
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(PENDING_PAYOS_UPGRADE_KEY) || "{}",
+    );
+    return saved && typeof saved === "object" && !Array.isArray(saved)
+      ? saved
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const rememberPendingPayosUpgrade = (orderCode, targetRole) => {
+  if (!orderCode || !upgradeRoleOptions.includes(targetRole)) return;
+  const saved = getPendingPayosUpgrades();
+  window.localStorage.setItem(
+    PENDING_PAYOS_UPGRADE_KEY,
+    JSON.stringify({
+      ...saved,
+      [String(orderCode)]: {
+        targetRole,
+        createdAt: new Date().toISOString(),
+      },
+    }),
+  );
+};
+
+const getPendingPayosUpgradeRole = (orderCode) => {
+  const saved = getPendingPayosUpgrades();
+  const targetRole = saved[String(orderCode)]?.targetRole;
+  return upgradeRoleOptions.includes(targetRole) ? targetRole : "";
+};
+
+const clearPendingPayosUpgrade = (orderCode) => {
+  if (!orderCode) return;
+  const saved = getPendingPayosUpgrades();
+  delete saved[String(orderCode)];
+  window.localStorage.setItem(PENDING_PAYOS_UPGRADE_KEY, JSON.stringify(saved));
 };
 
 const CLIENT_SYSTEM_LOGS_KEY = "scholartrend.adminSystemLogs";
@@ -333,7 +495,10 @@ const appendClientSystemLog = ({
       code: code || getClientLogCode(module),
     };
     const nextLogs = [nextLog, ...current].slice(0, 120);
-    window.localStorage.setItem(CLIENT_SYSTEM_LOGS_KEY, JSON.stringify(nextLogs));
+    window.localStorage.setItem(
+      CLIENT_SYSTEM_LOGS_KEY,
+      JSON.stringify(nextLogs),
+    );
     window.dispatchEvent(new Event("scholartrend:system-log"));
     return nextLog;
   } catch {
@@ -345,11 +510,6 @@ const apiFetch = async (path, options = {}) => {
   const { body, auth = false, headers = {}, ...rest } = options;
   const token = getStoredAuth().accessToken;
   const module = getClientLogModule(path);
-
-  if (auth && !token) {
-    throw new Error("Authentication is required to access this backend resource.");
-  }
-
   let response;
 
   try {
@@ -364,6 +524,9 @@ const apiFetch = async (path, options = {}) => {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (error) {
+    if (error?.name === "AbortError") {
+      throw error;
+    }
     appendClientSystemLog({
       event: "API connection failed",
       detail: `${path}: ${error.message}`,
@@ -404,10 +567,38 @@ const apiFetch = async (path, options = {}) => {
   return payload;
 };
 
-const ACADEMIC_PROVIDER_TEST_PASSWORD = "Scholar2024";
+const authServerFetch = async (path, options = {}) => {
+  const { body, headers = {}, ...rest } = options;
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...rest,
+    credentials: "include",
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        payload?.title ||
+        (typeof payload === "string" && payload) ||
+        "Auth helper request failed.",
+    );
+  }
+
+  return payload;
+};
 
 const getFriendlyRegisterError = (error) => {
-  let message = error?.message || "Registration failed. Please check your details.";
+  let message =
+    error?.message || "Registration failed. Please check your details.";
 
   try {
     const parsed = JSON.parse(message);
@@ -416,7 +607,11 @@ const getFriendlyRegisterError = (error) => {
         ? Object.values(parsed.errors).flat().join(" ")
         : "";
     message =
-      validationMessages || parsed?.message || parsed?.error || parsed?.title || message;
+      validationMessages ||
+      parsed?.message ||
+      parsed?.error ||
+      parsed?.title ||
+      message;
   } catch {
     // The backend usually returns plain English; JSON strings are normalized above.
   }
@@ -454,90 +649,6 @@ const getFriendlyRegisterError = (error) => {
   };
 };
 
-const getAcademicProviderEmail = ({ provider, role, email }) => {
-  const normalizedEmail = String(email || "").trim().toLowerCase();
-  if (normalizedEmail) return normalizedEmail;
-
-  const providerSlug = String(provider || "academic")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  const roleSlug = String(role || "researcher").toLowerCase();
-  return `${providerSlug}.${roleSlug}@scholartrend.test`;
-};
-
-const authenticateAcademicProvider = async ({
-  provider,
-  role,
-  email,
-  fullName,
-}) => {
-  const normalizedRole = normalizeRoleForUi(role || "Researcher");
-  const normalizedEmail = getAcademicProviderEmail({
-    provider,
-    role: normalizedRole,
-    email,
-  });
-  const accountName =
-    String(fullName || "").trim() || `${provider} ${normalizedRole}`;
-  const fallbackUser = {
-    id: `${String(provider).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${normalizedEmail}`,
-    email: normalizedEmail,
-    fullName: accountName,
-    name: accountName,
-    role: normalizedRole,
-    provider,
-    route: roleDashboardRoutes[normalizedRole] || "/researcher-dashboard",
-    lastLoginAt: new Date().toISOString(),
-  };
-
-  try {
-    const rawPayload = await apiFetch("/api/auth/register", {
-      method: "POST",
-      body: {
-        fullName: accountName,
-        email: normalizedEmail,
-        password: ACADEMIC_PROVIDER_TEST_PASSWORD,
-        role: normalizeRoleForApi(normalizedRole),
-      },
-    });
-    const payload = normalizeAuthResponse(rawPayload);
-    persistAuth(payload);
-    return {
-      user: {
-        ...fallbackUser,
-        ...(payload.user || {}),
-        provider,
-      },
-      mode: "registered",
-    };
-  } catch {
-    try {
-      const rawPayload = await apiFetch("/api/auth/login", {
-        method: "POST",
-        body: {
-          email: normalizedEmail,
-          password: ACADEMIC_PROVIDER_TEST_PASSWORD,
-        },
-      });
-      const payload = normalizeAuthResponse(rawPayload);
-      persistAuth(payload);
-      return {
-        user: {
-          ...fallbackUser,
-          ...(payload.user || {}),
-          provider,
-        },
-        mode: "signed-in",
-      };
-    } catch {
-      window.localStorage.removeItem("scholartrend.auth");
-      persistSession(fallbackUser);
-      return { user: fallbackUser, mode: "local" };
-    }
-  }
-};
-
 const goToRoute = (route) => {
   window.history.pushState({}, "", route);
   window.dispatchEvent(new Event("scholartrend:navigate"));
@@ -545,24 +656,65 @@ const goToRoute = (route) => {
 
 const persistSession = (user) => {
   if (!user) return;
-  const role = normalizeRoleForUi(user.role);
+  const currentSession = getStoredSession();
+  const role = normalizeRoleForUi(
+    user.role || currentSession.role || inferRoleFromPath(),
+  );
   const isPro = Boolean(user.isPro || user.plan === "Pro");
+  const email = user.email || currentSession.email || "";
+  const displayName = String(
+    user.fullName ||
+      user.name ||
+      currentSession.fullName ||
+      currentSession.name ||
+      email,
+  ).trim();
   window.localStorage.setItem(
     "scholartrend.session",
     JSON.stringify({
-      id: user.id,
-      email: user.email,
-      name: user.name || user.fullName,
-      picture: user.picture,
+      id: user.id || currentSession.id,
+      email,
+      fullName: displayName,
+      name: displayName,
+      picture: user.picture || currentSession.picture,
+      avatarUrl:
+        user.avatarUrl || user.picture || currentSession.avatarUrl || "",
+      institution: user.institution ?? currentSession.institution ?? "",
+      department: user.department ?? currentSession.department ?? "",
       role,
       isPro,
       plan: isPro ? "Pro" : "Free",
       subscriptionStatus:
-        user.subscriptionStatus || (isPro ? "active" : "free"),
+        user.subscriptionStatus ||
+        currentSession.subscriptionStatus ||
+        (isPro ? "active" : "free"),
+      subscriptionBillingCycle:
+        user.subscriptionBillingCycle ||
+        currentSession.subscriptionBillingCycle ||
+        "",
+      subscriptionStartedAt:
+        user.subscriptionStartedAt ||
+        currentSession.subscriptionStartedAt ||
+        "",
+      subscriptionExpiresAt:
+        user.subscriptionExpiresAt ||
+        currentSession.subscriptionExpiresAt ||
+        "",
+      subscriptionExpiredAt:
+        user.subscriptionExpiredAt ||
+        currentSession.subscriptionExpiredAt ||
+        "",
+      subscriptionUpdatedAt:
+        user.subscriptionUpdatedAt ||
+        currentSession.subscriptionUpdatedAt ||
+        "",
       searchAccuracy:
         user.searchAccuracy || getSearchAccuracyForAccount(role, isPro),
-      provider: user.provider || "Backend",
-      signedInAt: user.lastLoginAt || new Date().toISOString(),
+      provider: user.provider || currentSession.provider || "Backend",
+      signedInAt:
+        user.lastLoginAt ||
+        currentSession.signedInAt ||
+        new Date().toISOString(),
     }),
   );
 
@@ -580,16 +732,28 @@ const persistSession = (user) => {
 };
 
 const persistAuth = (authPayload) => {
-  const normalized = normalizeAuthResponse(authPayload);
+  if (!authPayload || authPayload.requiresLogin) return;
+
   window.localStorage.setItem(
     "scholartrend.auth",
     JSON.stringify({
-      accessToken: normalized.accessToken,
-      refreshToken: normalized.refreshToken,
-      expiresAt: normalized.expiresAt,
+      accessToken: authPayload.accessToken,
+      refreshToken: authPayload.refreshToken,
+      expiresAt: authPayload.expiresAt,
     }),
   );
-  persistSession(normalized.user);
+  persistSession(authPayload.user);
+};
+
+const refreshStoredAuth = async () => {
+  const current = getStoredAuth();
+  if (!current.refreshToken) return null;
+  const refreshed = await authServerFetch("/api/auth/refresh-token", {
+    method: "POST",
+    body: { refreshToken: current.refreshToken },
+  });
+  persistAuth(refreshed);
+  return refreshed;
 };
 
 const clearAuth = () => {
@@ -597,7 +761,7 @@ const clearAuth = () => {
   window.localStorage.removeItem("scholartrend.session");
 };
 
-const handleLogout = async () => {
+const clearAuthCookie = async () => {
   try {
     await fetch(`${GOOGLE_AUTH_BASE_URL}/api/auth/logout`, {
       method: "POST",
@@ -606,12 +770,19 @@ const handleLogout = async () => {
   } catch {
     // Local sign-out should still succeed if the auth helper is unavailable.
   }
+};
 
+const handleLogout = async () => {
+  await Promise.allSettled([
+    clearAuthCookie(),
+    apiFetch("/api/auth/logout", { method: "POST", auth: true }),
+  ]);
   clearAuth();
   goToRoute("/login");
 };
 
-const getSearchParam = (key) => new URLSearchParams(window.location.search).get(key);
+const getSearchParam = (key) =>
+  new URLSearchParams(window.location.search).get(key);
 
 const LOCAL_BOOKMARKS_KEY = "scholartrend.localBookmarks";
 const REMOVED_BOOKMARKS_KEY = "scholartrend.removedBookmarks";
@@ -619,22 +790,10 @@ const REMOVED_BOOKMARKS_KEY = "scholartrend.removedBookmarks";
 const formatCount = (value) =>
   new Intl.NumberFormat("en-US").format(Number(value || 0));
 
-const UTF8_BOM = "\ufeff";
-
-const createCsvText = (rows) => {
-  const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  return `${UTF8_BOM}${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
-};
-
 const downloadCsvFile = (filename, rows) => {
-  downloadBlobFile(
-    filename,
-    new Blob([createCsvText(rows)], { type: "text/csv;charset=utf-8" }),
-  );
-};
-
-const downloadBlobFile = (filename, blob) => {
-  const url = URL.createObjectURL(blob);
+  const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
@@ -700,14 +859,15 @@ const createZipBlob = (files, type) => {
   files.forEach((file) => {
     const nameBytes = encoder.encode(file.name);
     const contentBytes =
-      typeof file.content === "string" ? encoder.encode(file.content) : file.content;
+      typeof file.content === "string"
+        ? encoder.encode(file.content)
+        : file.content;
     const crc = getCrc32(contentBytes);
 
     const localHeader = new Uint8Array(30);
     const localView = new DataView(localHeader.buffer);
     localView.setUint32(0, 0x04034b50, true);
     localView.setUint16(4, 20, true);
-    localView.setUint16(6, 0x0800, true);
     localView.setUint16(10, time, true);
     localView.setUint16(12, day, true);
     localView.setUint32(14, crc, true);
@@ -722,7 +882,6 @@ const createZipBlob = (files, type) => {
     centralView.setUint32(0, 0x02014b50, true);
     centralView.setUint16(4, 20, true);
     centralView.setUint16(6, 20, true);
-    centralView.setUint16(8, 0x0800, true);
     centralView.setUint16(12, time, true);
     centralView.setUint16(14, day, true);
     centralView.setUint32(16, crc, true);
@@ -744,12 +903,41 @@ const createZipBlob = (files, type) => {
   endView.setUint32(12, centralDirectory.length, true);
   endView.setUint32(16, localOffset, true);
 
-  return new Blob([concatUint8Arrays(localParts), centralDirectory, endRecord], {
-    type,
-  });
+  return new Blob(
+    [concatUint8Arrays(localParts), centralDirectory, endRecord],
+    {
+      type,
+    },
+  );
 };
 
-const createDocxBlob = ({ title, rows }) => {
+const createDocxParagraph = (
+  text,
+  { bold = false, size = 22, spacingAfter = 160 } = {},
+) => `
+    <w:p>
+      <w:pPr><w:spacing w:after="${spacingAfter}"/></w:pPr>
+      <w:r>
+        <w:rPr>${bold ? "<w:b/>" : ""}<w:sz w:val="${size}"/></w:rPr>
+        <w:t xml:space="preserve">${xmlEscape(text)}</w:t>
+      </w:r>
+    </w:p>`;
+
+const createDocxSection = ({ heading, paragraphs = [] }) => `
+    ${heading ? createDocxParagraph(heading, { bold: true, size: 28, spacingAfter: 120 }) : ""}
+    ${paragraphs
+      .flatMap((paragraph) =>
+        String(paragraph || "")
+          .split(/\n{2,}/)
+          .map((line) => line.trim())
+          .filter(Boolean),
+      )
+      .map((paragraph) => createDocxParagraph(paragraph))
+      .join("")}`;
+
+const createDocxTable = (rows = []) => {
+  if (!rows.length) return "";
+
   const tableRows = rows
     .map(
       (row, rowIndex) => `
@@ -768,15 +956,7 @@ const createDocxBlob = ({ title, rows }) => {
     )
     .join("");
 
-  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>
-    <w:p>
-      <w:r>
-        <w:rPr><w:b/><w:sz w:val="32"/></w:rPr>
-        <w:t>${xmlEscape(title)}</w:t>
-      </w:r>
-    </w:p>
+  return `
     <w:tbl>
       <w:tblPr>
         <w:tblW w:w="0" w:type="auto"/>
@@ -790,7 +970,24 @@ const createDocxBlob = ({ title, rows }) => {
         </w:tblBorders>
       </w:tblPr>
       ${tableRows}
-    </w:tbl>
+    </w:tbl>`;
+};
+
+const createDocxBlob = ({ title, rows = [], sections = [] }) => {
+  const tableXml = createDocxTable(rows);
+  const sectionXml = sections.map(createDocxSection).join("");
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:rPr><w:b/><w:sz w:val="32"/></w:rPr>
+        <w:t>${xmlEscape(title)}</w:t>
+      </w:r>
+    </w:p>
+    ${sectionXml}
+    ${tableXml}
     <w:sectPr>
       <w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>
       <w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/>
@@ -823,414 +1020,223 @@ const createDocxBlob = ({ title, rows }) => {
 };
 
 const downloadDocxFile = (filename, documentData) => {
-  downloadBlobFile(filename, createDocxBlob(documentData));
+  const url = URL.createObjectURL(createDocxBlob(documentData));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 };
 
-const createXlsxBlob = ({ sheets }) => {
-  const sheetEntries = Object.entries(sheets || {}).filter(
-    ([, rows]) => Array.isArray(rows) && rows.length,
-  );
-  const safeSheetEntries = sheetEntries.length
-    ? sheetEntries
-    : [["Sheet1", [["No data"]]]];
-  const workbookSheets = safeSheetEntries
-    .map(
-      ([name], index) =>
-        `<sheet name="${xmlEscape(String(name).slice(0, 31) || `Sheet${index + 1}`)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`,
-    )
-    .join("");
-  const workbookRels = safeSheetEntries
-    .map(
-      ([,], index) =>
-        `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`,
-    )
-    .join("");
-  const sheetFiles = safeSheetEntries.map(([name, rows], sheetIndex) => {
-    const sheetRows = rows
-      .map(
-        (row, rowIndex) =>
-          `<row r="${rowIndex + 1}">${row
-            .map((cell, cellIndex) => {
-              const columnName = String.fromCharCode(65 + (cellIndex % 26));
-              const cellRef = `${columnName}${rowIndex + 1}`;
-              const isNumber =
-                typeof cell === "number" ||
-                (String(cell).trim() !== "" && !Number.isNaN(Number(cell)));
-              return isNumber
-                ? `<c r="${cellRef}"><v>${Number(cell)}</v></c>`
-                : `<c r="${cellRef}" t="inlineStr"><is><t>${xmlEscape(cell)}</t></is></c>`;
-            })
-            .join("")}</row>`,
-      )
-      .join("");
-    return {
-      name: `xl/worksheets/sheet${sheetIndex + 1}.xml`,
-      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetData>${sheetRows}</sheetData>
-</worksheet>`,
-    };
-  });
-
-  return createZipBlob(
-    [
-      {
-        name: "[Content_Types].xml",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  ${safeSheetEntries
-    .map(([,], index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
-    .join("")}
-</Types>`,
-      },
-      {
-        name: "_rels/.rels",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>`,
-      },
-      {
-        name: "xl/workbook.xml",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>${workbookSheets}</sheets>
-</workbook>`,
-      },
-      {
-        name: "xl/_rels/workbook.xml.rels",
-        content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  ${workbookRels}
-</Relationships>`,
-      },
-      ...sheetFiles,
-    ],
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  );
+const slugifyFilename = (value, fallback = "scholartrend-paper") => {
+  const slug = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || fallback;
 };
 
-const downloadXlsxFile = (filename, sheets) => {
-  downloadBlobFile(filename, createXlsxBlob({ sheets }));
-};
-
-const copyTextToClipboard = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const sharePublicationLink = async ({ title, url, text = "" }) => {
-  if (navigator.share) {
-    await navigator.share({ title, text, url });
-    return "Shared with your system share sheet.";
-  }
-  const copied = await copyTextToClipboard(url);
-  return copied ? "Link copied to clipboard." : url;
-};
-
-const getPublicationCitation = (publication) => {
-  const authors = Array.isArray(publication.authors)
-    ? publication.authors.join(", ")
-    : publication.authorText || "Unknown author";
-  return `${authors} (${publication.year || "n.d."}). ${publication.title}. ${publication.journalName || "Scientific Journal"}.${publication.doi ? ` https://doi.org/${publication.doi}` : ""}`;
-};
-
-const downloadJsonFile = (filename, payload) => {
-  downloadBlobFile(
-    filename,
-    new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    }),
-  );
-};
-
-const sanitizeDownloadFilename = (value, fallback = "paper") =>
-  String(value || fallback)
-    .trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .slice(0, 90)
-    .replace(/^-|-$/g, "") || fallback;
-
-const normalizePaperForDownload = (paper = {}) => {
-  const authors = Array.isArray(paper.authors)
-    ? paper.authors.join(", ")
-    : paper.authorText || paper.authors || "Unknown authors";
-  const citations = String(
-    paper.citations ?? paper.citationCount ?? paper.citation_count ?? "0",
-  );
+const buildExternalSourceLinks = (paper = {}) => {
+  const title = paper.title || "";
   const doi = paper.doi || paper.DOI || "";
-  const sourceUrl =
-    paper.pdfUrl ||
-    paper.fullTextUrl ||
-    paper.url ||
-    (doi ? `https://doi.org/${doi}` : "");
+  const sourceApi = paper.sourceApi || paper.SourceApi || paper.source || "";
+  const rawSourceUrl =
+    paper.sourceUrl || paper.SourceUrl || paper.originalUrl || "";
+  const generatedIdPattern =
+    /(?:^|[?&=:/])(google-scholar|semantic-scholar|semantic scholar|openalex|researchgate)%?3?a/i;
+  const sourceUrl = generatedIdPattern.test(String(rawSourceUrl))
+    ? ""
+    : rawSourceUrl;
+  const isGeneratedDoi =
+    /^(google-scholar|semantic-scholar|semantic scholar|openalex|researchgate):/i.test(
+      String(doi).trim(),
+    );
+  const realDoi = doi && !isGeneratedDoi ? doi : "";
+  const query = realDoi || title;
+  if (!query && !sourceUrl) return [];
 
+  const encodedQuery = encodeURIComponent(query);
+  const encodedTitle = encodeURIComponent(title || query);
+  const sourceSpecificUrl =
+    sourceUrl ||
+    (() => {
+      if (String(sourceApi).includes("Google Scholar")) {
+        return `https://scholar.google.com/scholar?q=${encodedQuery}`;
+      }
+      if (String(sourceApi).includes("OpenAlex")) {
+        return `https://openalex.org/search?q=${encodedQuery}`;
+      }
+      if (String(sourceApi).includes("ResearchGate")) {
+        return `https://www.researchgate.net/search/publication?q=${encodedTitle}`;
+      }
+      return "";
+    })();
+  const links = [
+    sourceSpecificUrl
+      ? {
+          label: "Open Paper",
+          href: sourceSpecificUrl,
+        }
+      : null,
+    realDoi && !String(sourceSpecificUrl).includes(realDoi)
+      ? {
+          label: "DOI.org",
+          href: `https://doi.org/${encodeURIComponent(realDoi)}`,
+        }
+      : null,
+    {
+      label: "OpenAlex",
+      href: `https://openalex.org/search?q=${encodedQuery}`,
+    },
+    {
+      label: "Google Scholar",
+      href: `https://scholar.google.com/scholar?q=${encodedQuery}`,
+    },
+    {
+      label: "ResearchGate",
+      href: `https://www.researchgate.net/search/publication?q=${encodedTitle}`,
+    },
+    {
+      label: "Connected Papers",
+      href: `https://www.connectedpapers.com/search?q=${encodedTitle}`,
+    },
+  ].filter(Boolean);
+
+  return links.filter(
+    (link, index) =>
+      links.findIndex((item) => item.href === link.href) === index,
+  );
+};
+
+const getPaperFullText = (paper = {}) =>
+  paper.fullText ||
+  paper.FullText ||
+  paper.fileText ||
+  paper.content ||
+  paper.body ||
+  paper.text ||
+  paper.raw?.fullText ||
+  paper.raw?.fileText ||
+  "";
+
+const buildPaperDocxSections = (paper = {}, query = "") => {
+  const abstract =
+    paper.abstract ||
+    paper.summary ||
+    paper.excerpt ||
+    "No abstract is available for this publication yet.";
+  const fullText = getPaperFullText(paper);
+  const tags = Array.isArray(paper.tags)
+    ? paper.tags
+    : Array.isArray(paper.keywords)
+      ? paper.keywords
+      : [];
+  const sourceLinks = buildExternalSourceLinks(paper)
+    .map((link) => `${link.label}: ${link.href}`)
+    .join("\n");
+  const doi = paper.doi || paper.DOI || "";
+  const venue =
+    paper.journalName || paper.source || paper.sourceApi || "Indexed source";
+
+  return [
+    {
+      heading: "Article metadata",
+      paragraphs: [
+        `Title: ${paper.title || "Untitled publication"}`,
+        `Authors: ${paper.authors || paper.authorText || "Unknown authors"}`,
+        `Year: ${paper.year || "N/A"}`,
+        `Venue/source: ${venue}`,
+        `Citations: ${paper.citations ?? paper.citationCount ?? 0}`,
+        `References: ${paper.references ?? "N/A"}`,
+        `Search accuracy shown: ${Number(paper.similarity || 0).toFixed(1)}%`,
+        doi ? `DOI: ${doi}` : "DOI: Not available",
+        query ? `Search query: ${query}` : "",
+      ].filter(Boolean),
+    },
+    {
+      heading: fullText ? "Full paper content" : "Abstract / available content",
+      paragraphs: [
+        fullText ||
+          abstract ||
+          "The full publisher text is not stored in ScholarTrend for this record.",
+      ],
+    },
+    {
+      heading: "Keywords and trends",
+      paragraphs: [
+        tags.length
+          ? tags.join(", ")
+          : "No keyword list is available for this publication yet.",
+      ],
+    },
+    {
+      heading: "Original source links",
+      paragraphs: [
+        sourceLinks ||
+          "No external source link is available. Search the title in Google Scholar or DOI.org.",
+      ],
+    },
+    {
+      heading: "Reading note",
+      paragraphs: [
+        fullText
+          ? "This DOCX includes the full text stored in ScholarTrend for this publication."
+          : "ScholarTrend currently has metadata and abstract-level content for this indexed record. Use the source links above to open the publisher or DOI page for the official full text.",
+      ],
+    },
+  ];
+};
+
+const buildPaperDocxData = (paper, query = "") => ({
+  title: paper.title || "ScholarTrend Publication",
+  sections: buildPaperDocxSections(paper, query),
+});
+
+const buildSearchResultsDocxData = (papers = [], query = "") => ({
+  title: query.trim()
+    ? `Search results for "${query.trim()}"`
+    : "ScholarTrend Search Results",
+  sections: papers.flatMap((paper, index) => [
+    {
+      heading: `${index + 1}. ${paper.title}`,
+      paragraphs: [
+        `Authors: ${paper.authors || "Unknown authors"}`,
+        `Year: ${paper.year || "N/A"} | Citations: ${paper.citations ?? 0} | References: ${paper.references ?? "N/A"} | Search accuracy: ${Number(paper.similarity || 0).toFixed(1)}%`,
+      ],
+    },
+    ...buildPaperDocxSections(paper, query).filter(
+      (section) => section.heading !== "Reading note",
+    ),
+  ]),
+});
+
+const mapPublicationForCard = (paper) => {
+  const sourceApi = paper.sourceApi || paper.SourceApi || "";
+  const journalName = paper.journalName || paper.JournalName || "";
+  const doi = paper.doi || paper.DOI || "";
+  const sourceUrl = paper.sourceUrl || paper.SourceUrl || "";
   return {
-    id: paper.id || paper.title || Date.now(),
-    title: paper.title || "Untitled publication",
-    authors,
-    year: paper.year || paper.date || "N/A",
-    journal: paper.journalName || paper.source || paper.venue || "Scientific Journal",
-    doi,
-    citations,
-    abstract: paper.abstract || paper.excerpt || paper.summary || "No abstract available.",
-    keywords: Array.isArray(paper.keywords)
-      ? paper.keywords.join(", ")
-      : paper.keywords || paper.impact || "",
-    pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
+    id: paper.id,
+    tags: paper.keywords?.length ? paper.keywords.slice(0, 2) : ["Publication"],
+    title: paper.title,
+    excerpt: paper.abstract || "No abstract available from backend.",
+    abstract: paper.abstract || "No abstract available from backend.",
+    meta: `${paper.year || "N/A"}  -  ${formatCount(
+      paper.citationCount,
+    )} Citations  -  ${journalName || "Unknown journal"}`,
+    authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : "",
+    source: sourceApi || journalName || "Scientific Journal",
+    sourceApi,
     sourceUrl,
+    journalName,
+    doi,
+    externalLinks: buildExternalSourceLinks({ ...paper, doi, sourceUrl }),
+    citations: formatCount(paper.citationCount),
+    year: paper.year,
+    saved: false,
   };
 };
-
-const getPaperTextContent = (paper) => {
-  const item = normalizePaperForDownload(paper);
-  return [
-    item.title,
-    "",
-    `Authors: ${item.authors}`,
-    `Year: ${item.year}`,
-    `Journal: ${item.journal}`,
-    `Citations: ${item.citations}`,
-    item.doi ? `DOI: ${item.doi}` : "",
-    item.sourceUrl ? `Link: ${item.sourceUrl}` : "",
-    item.keywords ? `Keywords: ${item.keywords}` : "",
-    "",
-    "Abstract",
-    item.abstract,
-  ]
-    .filter((line) => line !== "")
-    .join("\n");
-};
-
-const splitPdfTextLines = (text, maxLength = 86) =>
-  String(text || "")
-    .split(/\r?\n/)
-    .flatMap((line) => {
-      if (!line.trim()) return [""];
-      const chunks = [];
-      let current = line.trim();
-      while (current.length > maxLength) {
-        const breakIndex = current.lastIndexOf(" ", maxLength);
-        const index = breakIndex > 24 ? breakIndex : maxLength;
-        chunks.push(current.slice(0, index));
-        current = current.slice(index).trim();
-      }
-      chunks.push(current);
-      return chunks;
-    });
-
-const createReadablePdfBlob = (title, text) => {
-  const escapePdf = (value) =>
-    String(value || "")
-      .replace(/[^\x20-\x7e]/g, "?")
-      .replace(/\\/g, "\\\\")
-      .replace(/\(/g, "\\(")
-      .replace(/\)/g, "\\)");
-  const lines = splitPdfTextLines(text).slice(0, 46);
-  const stream = [
-    "BT",
-    "/F1 16 Tf",
-    "50 790 Td",
-    `(${escapePdf(title)}) Tj`,
-    "/F1 10 Tf",
-    "0 -24 Td",
-    ...lines.map((line) => `(${escapePdf(line)}) Tj 0 -14 Td`),
-    "ET",
-  ].join("\n");
-  const objects = [
-    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
-    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj",
-    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
-    `5 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj`,
-  ];
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((object) => {
-    offsets.push(pdf.length);
-    pdf += `${object}\n`;
-  });
-  const xrefOffset = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
-  });
-  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return new Blob([pdf], { type: "application/pdf" });
-};
-
-const downloadPaperTxt = (paper) => {
-  const item = normalizePaperForDownload(paper);
-  downloadBlobFile(
-    `${sanitizeDownloadFilename(item.title)}.txt`,
-    new Blob([`${UTF8_BOM}${getPaperTextContent(item)}`], {
-      type: "text/plain;charset=utf-8",
-    }),
-  );
-};
-
-const downloadPaperPdf = (paper) => {
-  const item = normalizePaperForDownload(paper);
-  if (item.pdfUrl) {
-    const anchor = document.createElement("a");
-    anchor.href = item.pdfUrl;
-    anchor.download = `${sanitizeDownloadFilename(item.title)}.pdf`;
-    anchor.target = "_blank";
-    anchor.rel = "noreferrer";
-    anchor.click();
-    return "Downloading original PDF.";
-  }
-
-  downloadBlobFile(
-    `${sanitizeDownloadFilename(item.title)}.pdf`,
-    createReadablePdfBlob(item.title, getPaperTextContent(item)),
-  );
-  return "No original PDF URL found. A readable PDF was generated from available metadata.";
-};
-
-const getPapersMetadataRows = (papers) => [
-  ["Title", "Authors", "Year", "Journal", "DOI", "Citations", "Link"],
-  ...papers.map((paper) => {
-    const item = normalizePaperForDownload(paper);
-    return [
-      item.title,
-      item.authors,
-      item.year,
-      item.journal,
-      item.doi,
-      item.citations,
-      item.sourceUrl,
-    ];
-  }),
-];
-
-const getPapersTextBundle = (papers) => {
-  const normalizedPapers = papers.map(normalizePaperForDownload);
-  return [
-    "ScholarTrend Papers",
-    `Generated: ${new Date().toLocaleString()}`,
-    `Total papers: ${normalizedPapers.length}`,
-    "",
-    ...normalizedPapers.flatMap((paper, index) => [
-      "============================================================",
-      `Paper ${index + 1}`,
-      "============================================================",
-      getPaperTextContent(paper),
-      "",
-    ]),
-  ].join("\r\n");
-};
-
-const downloadPapersTextBundle = (filename, papers) => {
-  const safeFilename = filename.endsWith(".txt")
-    ? filename
-    : `${filename.replace(/\.[^.]+$/, "")}.txt`;
-  downloadBlobFile(
-    safeFilename,
-    new Blob([`${UTF8_BOM}${getPapersTextBundle(papers)}`], {
-      type: "text/plain;charset=utf-8",
-    }),
-  );
-};
-
-const downloadPapersZip = async (filename, papers) => {
-  const normalizedPapers = papers.map(normalizePaperForDownload);
-  const metadataRows = getPapersMetadataRows(normalizedPapers);
-  const metadataWorkbook = createXlsxBlob({
-    sheets: { Papers: metadataRows },
-  });
-  const metadataBytes = new Uint8Array(await metadataWorkbook.arrayBuffer());
-  const readme = [
-    "ScholarTrend Papers Download",
-    "",
-    "Open these files:",
-    "1. papers.csv - easiest option for Excel, Google Sheets, or Notepad.",
-    "2. papers-metadata.xlsx - Excel workbook with the same metadata. Open this with Excel/LibreOffice, not Notepad.",
-    "3. papers/*.txt - one readable text file for each paper.",
-    "",
-    "Note: .xlsx is a binary Excel format. If you open it in Notepad, it will look like broken characters.",
-  ].join("\r\n");
-  const textFiles = normalizedPapers.map((paper, index) => ({
-    name: `papers/${String(index + 1).padStart(2, "0")}-${sanitizeDownloadFilename(paper.title)}.txt`,
-    content: `${UTF8_BOM}${getPaperTextContent(paper).replace(/\n/g, "\r\n")}`,
-  }));
-  downloadBlobFile(
-    filename,
-    createZipBlob(
-      [
-        {
-          name: "README.txt",
-          content: `${UTF8_BOM}${readme}`,
-        },
-        {
-          name: "papers.csv",
-          content: createCsvText(metadataRows),
-        },
-        {
-          name: "papers-metadata.xlsx",
-          content: metadataBytes,
-        },
-        ...textFiles,
-      ],
-      "application/zip",
-    ),
-  );
-};
-
-const buildAcademicProviderUrl = ({ provider, role, email, fullName }) => {
-  const returnTo = roleDashboardRoutes[normalizeRoleForUi(role)] || "/researcher-dashboard";
-  if (provider === "ORCID" && ORCID_CLIENT_ID) {
-    const url = new URL("https://orcid.org/oauth/authorize");
-    url.searchParams.set("client_id", ORCID_CLIENT_ID);
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", "/authenticate");
-    url.searchParams.set("redirect_uri", ORCID_REDIRECT_URI);
-    url.searchParams.set(
-      "state",
-      btoa(JSON.stringify({ provider, role, email, fullName, returnTo })),
-    );
-    return url.toString();
-  }
-
-  if (provider === "Institution SSO" && INSTITUTION_SSO_URL) {
-    const url = new URL(INSTITUTION_SSO_URL);
-    url.searchParams.set("role", normalizeRoleForUi(role));
-    url.searchParams.set("email", email || "");
-    url.searchParams.set("name", fullName || "");
-    url.searchParams.set("returnTo", `${window.location.origin}${returnTo}`);
-    return url.toString();
-  }
-
-  return "";
-};
-
-const mapPublicationForCard = (paper) => ({
-  id: paper.id,
-  tags: paper.keywords?.length ? paper.keywords.slice(0, 2) : ["Publication"],
-  title: paper.title,
-  excerpt: paper.abstract || "No abstract available from backend.",
-  abstract: paper.abstract || "No abstract available from backend.",
-  meta: `${paper.year || "N/A"}  -  ${formatCount(
-    paper.citationCount,
-  )} Citations  -  ${paper.journalName || "Unknown journal"}`,
-  authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : "",
-  source: paper.journalName || "Scientific Journal",
-  citations: formatCount(paper.citationCount),
-  year: paper.year,
-  doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || "",
-  saved: false,
-});
 
 const mapPublicationDetailForUi = (payload) => {
   const publication = payload?.publication || payload || {};
@@ -1253,25 +1259,44 @@ const mapPublicationDetailForUi = (payload) => {
       : "Unknown author",
     year: publication.year || "N/A",
     doi: publication.doi || publication.DOI || "",
-    pdfUrl: publication.pdfUrl || publication.fullTextUrl || publication.PdfUrl || "",
-    url: publication.url || publication.sourceUrl || "",
     journalName: publication.journalName || "Scientific Journal",
+    sourceApi: publication.sourceApi || publication.SourceApi || "",
+    sourceUrl: publication.sourceUrl || publication.SourceUrl || "",
     citationCount: publication.citationCount || 0,
     keywords: Array.isArray(publication.keywords) ? publication.keywords : [],
+    keywordIds: Array.isArray(publication.keywordIds)
+      ? publication.keywordIds
+      : [],
     relatedPublications,
   };
 };
 
 const mapPublicationForBookmark = (paper) => ({
   id: paper.id || paper.title,
+  detailId: paper.id || paper.detailId || paper.title,
   title: paper.title,
   excerpt: paper.excerpt || paper.abstract || "No abstract available.",
+  abstract: paper.abstract || paper.excerpt || "No abstract available.",
+  authors: paper.authors || [],
   date: String(paper.year || paper.date || "N/A"),
+  year: paper.year || paper.date || "N/A",
   citations: String(paper.citations || paper.citationCount || "0"),
+  citationCount: paper.citationCount || paper.citations || 0,
   impact: paper.impact || paper.tags?.[0] || "Indexed",
-  doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || paper.sourceUrl || "",
+  source:
+    paper.source ||
+    paper.sourceApi ||
+    paper.journalName ||
+    "Scientific Journal",
+  sourceApi: paper.sourceApi || "",
+  sourceUrl: paper.sourceUrl || "",
+  journalName: paper.journalName || paper.source || "Scientific Journal",
+  doi: paper.doi || "",
+  keywords: Array.isArray(paper.keywords) ? paper.keywords : [],
+  saveMode: paper.saveMode || "full-text",
+  fullTextSaved:
+    paper.fullTextSaved !== false && paper.saveMode !== "link-only",
+  linkOnly: paper.linkOnly === true || paper.saveMode === "link-only",
 });
 
 const getBookmarkKey = (paper) =>
@@ -1279,55 +1304,53 @@ const getBookmarkKey = (paper) =>
     .trim()
     .toLowerCase();
 
-const getBookmarkOwnerKey = () => {
-  const session = getStoredSession();
-  return String(session.email || session.id || "guest")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-");
+const getBookmarkDetailPath = (basePath, paper) => {
+  const detailId = paper?.detailId || paper?.id || paper?.title;
+  if (!detailId) return basePath;
+  const separator = basePath.includes("?") ? "&" : "?";
+  return `${basePath}${separator}id=${encodeURIComponent(detailId)}`;
 };
 
-const getUserScopedStorageKey = (baseKey) =>
-  `${baseKey}.${getBookmarkOwnerKey()}`;
-
-const parseStoredArray = (key) => {
+const getLocalBookmarks = () => {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]");
+    const parsed = JSON.parse(
+      window.localStorage.getItem(LOCAL_BOOKMARKS_KEY) || "[]",
+    );
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 };
 
-const getLocalBookmarks = () => {
-  const scopedKey = getUserScopedStorageKey(LOCAL_BOOKMARKS_KEY);
-  if (window.localStorage.getItem(scopedKey) !== null) {
-    return parseStoredArray(scopedKey);
-  }
-  return parseStoredArray(LOCAL_BOOKMARKS_KEY);
-};
-
 const setLocalBookmarks = (bookmarks) => {
   window.localStorage.setItem(
-    getUserScopedStorageKey(LOCAL_BOOKMARKS_KEY),
-    JSON.stringify(bookmarks),
+    LOCAL_BOOKMARKS_KEY,
+    JSON.stringify(bookmarks.slice(0, 100)),
   );
-  window.dispatchEvent(new Event("scholartrend:bookmarks-changed"));
 };
 
 const getRemovedBookmarkKeys = () => {
-  return parseStoredArray(getUserScopedStorageKey(REMOVED_BOOKMARKS_KEY));
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(REMOVED_BOOKMARKS_KEY) || "[]",
+    );
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 };
 
 const setRemovedBookmarkKeys = (keys) => {
   window.localStorage.setItem(
-    getUserScopedStorageKey(REMOVED_BOOKMARKS_KEY),
-    JSON.stringify(keys),
+    REMOVED_BOOKMARKS_KEY,
+    JSON.stringify(keys.slice(0, 500)),
   );
 };
 
 const hasLocalBookmark = (paper, bookmarks) =>
-  bookmarks.some((bookmark) => getBookmarkKey(bookmark) === getBookmarkKey(paper));
+  bookmarks.some(
+    (bookmark) => getBookmarkKey(bookmark) === getBookmarkKey(paper),
+  );
 
 const upsertLocalBookmark = (paper) => {
   const nextBookmark = mapPublicationForBookmark(paper);
@@ -1335,7 +1358,9 @@ const upsertLocalBookmark = (paper) => {
   const current = getLocalBookmarks();
   const next = [
     nextBookmark,
-    ...current.filter((bookmark) => getBookmarkKey(bookmark) !== nextBookmarkKey),
+    ...current.filter(
+      (bookmark) => getBookmarkKey(bookmark) !== nextBookmarkKey,
+    ),
   ];
   setLocalBookmarks(next);
   setRemovedBookmarkKeys(
@@ -1355,7 +1380,9 @@ const removeLocalBookmark = (paper) => {
 
 const markBookmarkRemoved = (paper) => {
   const bookmarkKey = getBookmarkKey(paper);
-  const next = [...new Set([...getRemovedBookmarkKeys(), bookmarkKey])].filter(Boolean);
+  const next = [...new Set([...getRemovedBookmarkKeys(), bookmarkKey])].filter(
+    Boolean,
+  );
   setRemovedBookmarkKeys(next);
   return next;
 };
@@ -1378,6 +1405,22 @@ const unwrapList = (payload) => {
   if (Array.isArray(payload?.data)) return payload.data;
   return [];
 };
+
+const getSearchTerms = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length > 2)
+    .slice(0, 8);
+
+const matchesSearchTerms = (value, terms) =>
+  !terms.length ||
+  terms.every((term) =>
+    String(value || "")
+      .toLowerCase()
+      .includes(term),
+  );
 
 const SIMILARITY_LIMIT_PERCENT = 50;
 const PUBLICATION_SUBMISSIONS_KEY = "scholartrend.publicationSubmissions";
@@ -1418,112 +1461,6 @@ const scholarlyReferencePapers = [
   },
 ];
 
-const defaultPublicationSubmissions = [
-  {
-    id: "sub-001",
-    title:
-      "Deep Learning for Advanced Pattern Recognition in Complex Biological Systems",
-    authors: "Student Demo",
-    submitter: "student@university.edu",
-    role: "Student",
-    keywords: "deep learning, pattern recognition, biological systems",
-    abstract:
-      "The integration of deep neural networks into the analysis of multi-omic biological data presents significant challenges due to high dimensionality and noise. This paper introduces a manifold learning architecture for stable structural features from single-cell RNA sequencing data.",
-    submittedAt: "2026-06-29T09:05:00.000Z",
-    similarityPercent: 91,
-    matchedTitle:
-      "Deep Learning for Advanced Pattern Recognition in Complex Biological Systems",
-    matchedSource: "Google Scholar indexed record",
-    status: "cancelled",
-    decision: "Auto cancelled: over 50% similarity rule.",
-  },
-  {
-    id: "sub-002",
-    title: "Predictive Data Synthesis for Noisy Scientific Signals",
-    authors: "Lecturer Demo",
-    submitter: "lecturer@university.edu",
-    role: "Lecturer",
-    keywords: "neural networks, noise, predictive synthesis",
-    abstract:
-      "This paper explores structural adjustments within deep learning models when exposed to datasets characterized by extreme signal noise and compares predictive synthesis techniques across benchmarks.",
-    submittedAt: "2026-06-29T09:20:00.000Z",
-    similarityPercent: 74,
-    matchedTitle:
-      "Neural Network Architectures for Predictive Data Synthesis in High-Noise Environments",
-    matchedSource: "Google Scholar indexed record",
-    status: "cancelled",
-    decision: "Auto cancelled: over 50% similarity rule.",
-  },
-  {
-    id: "sub-003",
-    title: "Green Roof Cooling Effects in Coastal Cities",
-    authors: "Researcher Demo",
-    submitter: "demo.researcher@local.test",
-    role: "Researcher",
-    keywords: "urban heat island, green roofs, coastal cities",
-    abstract:
-      "A longitudinal evaluation of green roof implementations and reflective surface treatments across coastal cities measures cooling effects and climate policy readiness.",
-    submittedAt: "2026-06-29T09:42:00.000Z",
-    similarityPercent: 68,
-    matchedTitle:
-      "Longitudinal Analysis of Urban Heat Island Mitigation Strategies in Coastal Metropolises",
-    matchedSource: "Google Scholar indexed record",
-    status: "cancelled",
-    decision: "Auto cancelled: over 50% similarity rule.",
-  },
-  {
-    id: "sub-004",
-    title: "Manifold Learning for Biological Pattern Recognition",
-    authors: "Student Demo",
-    submitter: "student@university.edu",
-    role: "Student",
-    keywords: "manifold learning, biological systems, pattern recognition",
-    abstract:
-      "This manuscript studies manifold learning and pattern recognition in biological systems with a structure very close to an indexed article.",
-    submittedAt: "2026-06-29T10:02:00.000Z",
-    similarityPercent: 61,
-    matchedTitle:
-      "Deep Learning for Advanced Pattern Recognition in Complex Biological Systems",
-    matchedSource: "Google Scholar indexed record",
-    status: "cancelled",
-    decision: "Auto cancelled: over 50% similarity rule.",
-  },
-  {
-    id: "sub-005",
-    title: "High-Noise Environments and Neural Architecture Tuning",
-    authors: "Lecturer Demo",
-    submitter: "lecturer@university.edu",
-    role: "Lecturer",
-    keywords: "neural networks, high-noise environments, architecture",
-    abstract:
-      "This article discusses neural network architecture tuning for high-noise environments and overlaps strongly with indexed predictive synthesis work.",
-    submittedAt: "2026-06-29T10:18:00.000Z",
-    similarityPercent: 57,
-    matchedTitle:
-      "Neural Network Architectures for Predictive Data Synthesis in High-Noise Environments",
-    matchedSource: "Google Scholar indexed record",
-    status: "cancelled",
-    decision: "Auto cancelled: over 50% similarity rule.",
-  },
-  {
-    id: "sub-006",
-    title: "Citation-Aware Learning Paths for Undergraduate Research Skills",
-    authors: "Researcher Demo",
-    submitter: "demo.researcher@local.test",
-    role: "Researcher",
-    keywords: "research skills, citation learning, education analytics",
-    abstract:
-      "This paper proposes a dashboard that helps undergraduate students learn literature review skills by connecting citation intent, reading history, and advisor feedback.",
-    submittedAt: "2026-06-29T10:35:00.000Z",
-    similarityPercent: 22,
-    matchedTitle:
-      "Deep Learning for Advanced Pattern Recognition in Complex Biological Systems",
-    matchedSource: "Google Scholar indexed record",
-    status: "pending",
-    decision: "Waiting for admin approval.",
-  },
-];
-
 const tokenizeSimilarityText = (value) =>
   String(value || "")
     .toLowerCase()
@@ -1547,12 +1484,16 @@ const analyzePublicationSimilarity = (submission) => {
   const result = scholarlyReferencePapers
     .map((paper) => {
       const titleScore = jaccardSimilarity(submission.title, paper.title);
-      const abstractScore = jaccardSimilarity(submission.abstract, paper.abstract);
+      const abstractScore = jaccardSimilarity(
+        submission.abstract,
+        paper.abstract,
+      );
       const keywordScore = jaccardSimilarity(
         submission.keywords,
         paper.keywords.join(" "),
       );
-      const score = titleScore * 0.35 + abstractScore * 0.45 + keywordScore * 0.2;
+      const score =
+        titleScore * 0.35 + abstractScore * 0.45 + keywordScore * 0.2;
       return {
         paper,
         percent: Math.round(score * 100),
@@ -1568,57 +1509,30 @@ const analyzePublicationSimilarity = (submission) => {
 };
 
 const checkPublicationSimilarityWithScholar = async (submission) => {
-  try {
-    return await apiFetch("/api/publications/similarity-check", {
-      method: "POST",
-      body: {
-        title: submission.title,
-        abstract: submission.abstract,
-        keywords: submission.keywords,
-        maxResults: 10,
-      },
-    });
-  } catch (error) {
-    const fallback = analyzePublicationSimilarity(submission);
-    return {
-      ...fallback,
-      limitPercent: SIMILARITY_LIMIT_PERCENT,
-      overLimit: fallback.similarityPercent > SIMILARITY_LIMIT_PERCENT,
-      decision:
-        fallback.similarityPercent > SIMILARITY_LIMIT_PERCENT
-          ? "Auto cancelled: over 50% similarity rule."
-          : "Within rule: waiting for admin approval.",
-      matchedSource: `${fallback.matchedSource} (local fallback: ${error.message})`,
-      candidates: [],
-    };
-  }
+  return apiFetch("/api/publications/similarity-check", {
+    method: "POST",
+    body: {
+      title: submission.title,
+      abstract: submission.abstract,
+      keywords: submission.keywords,
+      maxResults: 10,
+    },
+  });
 };
 
-const getPublicationSubmissions = () => {
-  try {
-    const saved = JSON.parse(
-      window.localStorage.getItem(PUBLICATION_SUBMISSIONS_KEY) || "null",
-    );
-    return Array.isArray(saved) ? saved : defaultPublicationSubmissions;
-  } catch {
-    return defaultPublicationSubmissions;
-  }
-};
-
-const setPublicationSubmissions = (submissions) => {
-  window.localStorage.setItem(
-    PUBLICATION_SUBMISSIONS_KEY,
-    JSON.stringify(submissions),
-  );
-};
+const getPublicationSubmissions = () => [];
+const setPublicationSubmissions = () => {};
 
 const normalizePublicationSubmission = (submission) => ({
   id: String(submission.id),
+  backendId: submission.backendId || "",
   title: submission.title || "",
   authors: submission.authors || submission.authorsText || "",
   submitter: submission.submitter || submission.submitterEmail || "",
   submitterName: submission.submitterName || "",
-  role: normalizeRoleForUi(submission.role || submission.submitterRole || "Researcher"),
+  role: normalizeRoleForUi(
+    submission.role || submission.submitterRole || "Researcher",
+  ),
   keywords: submission.keywords || submission.keywordsText || "",
   abstract: submission.abstract || "",
   fileName: submission.fileName || "",
@@ -1637,6 +1551,76 @@ const normalizePublicationSubmission = (submission) => ({
 });
 
 const isBackendSubmissionId = (id) => /^\d+$/.test(String(id || ""));
+
+const createLocalReviewSubmission = (submission) =>
+  normalizePublicationSubmission({
+    ...submission,
+    backendId: isBackendSubmissionId(submission.id) ? submission.id : undefined,
+    id: isBackendSubmissionId(submission.id)
+      ? `local-submission-${submission.id}`
+      : submission.id || `local-submission-${Date.now()}`,
+  });
+
+const upsertPublicationSubmissionForAdminReview = (submission) => {
+  const nextSubmission = createLocalReviewSubmission(submission);
+  const currentSubmissions = getPublicationSubmissions();
+  const nextSubmissions = [
+    nextSubmission,
+    ...currentSubmissions.filter((item) => {
+      const sameId = String(item.id) === String(nextSubmission.id);
+      const sameBackendId =
+        nextSubmission.backendId &&
+        String(item.backendId || "") === String(nextSubmission.backendId);
+      return !sameId && !sameBackendId;
+    }),
+  ];
+  setPublicationSubmissions(nextSubmissions);
+  window.dispatchEvent(new Event("scholartrend:publication-submissions"));
+  return nextSubmission;
+};
+
+const mirrorPublicationSubmissionToAuthHelper = async (submission) => {
+  if (!GOOGLE_AUTH_BASE_URL) return null;
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/publications/submissions/local`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submission),
+    },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not save submission to the local Admin queue.",
+    );
+  }
+  return normalizePublicationSubmission(payload.submission || payload);
+};
+
+const deletePublicationSubmissionFromAuthHelper = async (submission) => {
+  if (!GOOGLE_AUTH_BASE_URL || !submission?.id) return;
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/admin/publication-submissions/${encodeURIComponent(
+      submission.id,
+    )}`,
+    {
+      method: "DELETE",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not delete submission from the local Admin queue.",
+    );
+  }
+};
 
 const submitPublicationToBackend = async (submission) => {
   const payload = await apiFetch("/api/publications/submissions", {
@@ -1676,11 +1660,33 @@ const fetchPublicationSubmissionsFromBackend = async () => {
     : [];
 };
 
+const fetchPublicationSubmissionsFromAuthHelper = async () => {
+  if (!GOOGLE_AUTH_BASE_URL) return [];
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/admin/publication-submissions`,
+    { credentials: "include" },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not load local publication review queue.",
+    );
+  }
+  return Array.isArray(payload.items)
+    ? payload.items.map(normalizePublicationSubmission)
+    : [];
+};
+
 const approvePublicationSubmissionOnBackend = async (id) => {
-  const payload = await apiFetch(`/api/publications/submissions/${id}/approve`, {
-    method: "POST",
-    auth: true,
-  });
+  const payload = await apiFetch(
+    `/api/publications/submissions/${id}/approve`,
+    {
+      method: "POST",
+      auth: true,
+    },
+  );
   return normalizePublicationSubmission(payload.submission || payload);
 };
 
@@ -1706,7 +1712,9 @@ const submissionToPublishedPublication = (submission) => ({
   submissionId: submission.id,
   title: submission.title,
   abstract: submission.abstract || "No abstract provided.",
-  authors: String(submission.authors || submission.submitter || "Unknown author")
+  authors: String(
+    submission.authors || submission.submitter || "Unknown author",
+  )
     .split(",")
     .map((author) => author.trim())
     .filter(Boolean),
@@ -1745,10 +1753,7 @@ const setStoredPublishedPublications = (publicationsToStore) => {
 
 const getPublicationMergeKey = (paper) => {
   const title =
-    paper?.title ||
-    paper?.paper?.title ||
-    paper?.matchedTitle ||
-    "";
+    paper?.title || paper?.paper?.title || paper?.matchedTitle || "";
   const normalizedTitle = String(title || "")
     .trim()
     .toLowerCase()
@@ -1786,8 +1791,7 @@ const publishApprovedSubmission = (submission) => {
     published,
     ...current.filter(
       (paper) =>
-        String(paper.submissionId || paper.id) !==
-        String(submission.id),
+        String(paper.submissionId || paper.id) !== String(submission.id),
     ),
   ];
   setStoredPublishedPublications(next);
@@ -1830,50 +1834,125 @@ const mapPublishedPublicationForCard = (paper) => ({
   meta: `${paper.year || "N/A"}  -  ${formatCount(
     paper.citationCount,
   )} Citations  -  ${paper.journalName || "ScholarTrend Published"}`,
-  authors: Array.isArray(paper.authors) ? paper.authors.join(", ") : paper.authors,
+  authors: Array.isArray(paper.authors)
+    ? paper.authors.join(", ")
+    : paper.authors,
   source: paper.journalName || "ScholarTrend Published",
+  journalName: paper.journalName || "ScholarTrend Published",
+  doi: paper.doi || paper.DOI || "",
+  sourceUrl: paper.sourceUrl || paper.SourceUrl || "",
+  externalLinks: buildExternalSourceLinks(paper),
   citations: formatCount(paper.citationCount),
   year: paper.year,
-  doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || "",
   saved: false,
 });
 
-const MAX_KNOWLEDGE_GRAPH_DYNAMIC_NODES = 5;
+const MAX_KNOWLEDGE_GRAPH_DYNAMIC_NODES = 10;
 const dynamicGraphNodePositions = [
-  [130, 10, 24],
-  [238, 68, -12],
-  [226, -78, 28],
-  [84, -94, -20],
-  [42, 82, 24],
+  [0, 0, 40],
+  [250, 110, -20],
+  [290, -145, 34],
+  [64, -250, -28],
+  [-230, -130, 26],
+  [-270, 124, -18],
+  [-58, 260, 36],
+  [390, 10, -48],
+  [-396, 18, 44],
+  [16, -380, 18],
 ];
 
-const mapPublishedPublicationForGraph = (paper, index = 0) => ({
-  id: paper.id,
-  label: `${paper.title.slice(0, 28)}${paper.title.length > 28 ? "..." : ""}, ${
-    paper.year || "Published"
-  }`,
-  position:
-    dynamicGraphNodePositions[index % dynamicGraphNodePositions.length] ||
-    dynamicGraphNodePositions[0],
-  size: index === 0 ? 48 : 32,
-  color: "#6d5dfc",
-  similarity: Math.max(
-    42,
-    Math.min(
-      96,
-      Number(paper.similarityPercent) ||
-        58 +
-          Math.min(28, Number(paper.citationCount || paper.citations || 0) / 40) +
-          (index % 5) * 2.4,
-    ),
-  ),
-  published: true,
+const getPublicationDisplaySimilarity = (
   paper,
-});
+  accuracyLimit = 100,
+  fallback = 0,
+) =>
+  clampPercentToAccuracy(
+    paper.displayScore ??
+      paper.DisplayScore ??
+      paper.similarityPercent ??
+      paper.SimilarityPercent ??
+      paper.similarity ??
+      paper.Similarity ??
+      fallback,
+    accuracyLimit,
+  );
 
-const mapPublicationForResearcherList = (paper) => ({
+const calculateSearchMatchPercent = (paper = {}, query = "") => {
+  const searchText = String(query || "").trim();
+  if (!searchText) return null;
+
+  const keywordText = Array.isArray(paper.keywords)
+    ? paper.keywords.join(" ")
+    : Array.isArray(paper.tags)
+      ? paper.tags.join(" ")
+      : "";
+  const titleScore = jaccardSimilarity(searchText, paper.title || "");
+  const abstractScore = jaccardSimilarity(
+    searchText,
+    paper.abstract || paper.summary || paper.excerpt || "",
+  );
+  const keywordScore = jaccardSimilarity(searchText, keywordText);
+  const weightedScore =
+    titleScore * 0.7 + abstractScore * 0.2 + keywordScore * 0.1;
+
+  return Math.max(1, Math.min(100, weightedScore * 100));
+};
+
+const getPolicyScopedSearchAccuracy = (
+  paper = {},
+  query = "",
+  accuracyLimit = 100,
+) => {
+  const searchScore = calculateSearchMatchPercent(paper, query);
+  const explicitScore =
+    paper.displayScore ??
+    paper.DisplayScore ??
+    paper.similarityPercent ??
+    paper.SimilarityPercent ??
+    paper.similarity ??
+    paper.Similarity;
+  const calculatedScore =
+    normalizePercentValue(searchScore) ??
+    normalizePercentValue(explicitScore) ??
+    0;
+  return clampPercentToAccuracy(calculatedScore, accuracyLimit);
+};
+
+const mapPublishedPublicationForGraph = (
+  paper,
+  index = 0,
+  accuracyLimit = 100,
+) => {
+  const fallbackSimilarity =
+    58 +
+    Math.min(28, Number(paper.citationCount || paper.citations || 0) / 40) +
+    (index % 5) * 2.4;
+
+  return {
+    id: paper.id,
+    label: `${paper.title.slice(0, 28)}${paper.title.length > 28 ? "..." : ""}, ${
+      paper.year || "Published"
+    }`,
+    position:
+      dynamicGraphNodePositions[index % dynamicGraphNodePositions.length] ||
+      dynamicGraphNodePositions[0],
+    size: index === 0 ? 48 : 32,
+    color: "#6d5dfc",
+    similarity: getPublicationDisplaySimilarity(
+      paper,
+      accuracyLimit,
+      fallbackSimilarity,
+    ),
+    published: true,
+    paper,
+  };
+};
+
+const mapPublicationForResearcherList = (
+  paper,
+  accuracyLimit = 100,
+  query = "",
+) => ({
   id: String(paper.id),
   title: paper.title,
   authors: Array.isArray(paper.authors)
@@ -1882,12 +1961,18 @@ const mapPublicationForResearcherList = (paper) => ({
   year: paper.year || "N/A",
   citations: Number(paper.citationCount || paper.citations || 0),
   doi: paper.doi || paper.DOI || "",
-  pdfUrl: paper.pdfUrl || paper.fullTextUrl || "",
-  url: paper.url || "",
+  source: paper.source || paper.sourceApi || paper.SourceApi || "",
+  sourceApi: paper.sourceApi || paper.SourceApi || "",
+  sourceUrl: paper.sourceUrl || paper.SourceUrl || "",
+  journalName: paper.journalName || paper.JournalName || "",
   references: paper.keywords?.length || 0,
-  similarity: Math.max(10, Math.min(100, Number(paper.similarityPercent || 25))),
+  similarity: getPolicyScopedSearchAccuracy(paper, query, accuracyLimit),
+  abstract: paper.abstract || "",
+  excerpt: paper.excerpt || "",
+  fullText: getPaperFullText(paper),
   summary: paper.abstract || paper.excerpt || "No abstract provided.",
   tags: paper.keywords?.length ? paper.keywords : ["Published"],
+  raw: paper,
 });
 
 const getPublicationReviewNotifications = () => {
@@ -1908,6 +1993,162 @@ const setPublicationReviewNotifications = (notifications) => {
   );
 };
 
+const normalizeLocalNotification = (notification) => ({
+  id: notification.id || `local-notification-${Date.now()}`,
+  type: notification.type || notification.notificationType || "SYSTEM ALERT",
+  title: notification.title || "NOTICE:",
+  text: notification.text || notification.message || "",
+  recipientRole: notification.recipientRole || "All",
+  recipientEmail: String(notification.recipientEmail || "").toLowerCase(),
+  route: notification.route || "",
+  createdAt: notification.createdAt || new Date().toISOString(),
+  unread: notification.unread !== false && notification.isRead !== true,
+});
+
+const getNotificationRecipientRole = (role) => {
+  const normalized = String(role || "").toLowerCase();
+  if (normalized === "student") return "Student";
+  if (normalized === "lecturer" || normalized === "lecture") return "Lecturer";
+  if (normalized === "researcher") return "Researcher";
+  if (normalized === "administrator" || normalized === "admin")
+    return "Administrator";
+  return "All";
+};
+
+const notificationMatchesRecipient = (notification, role, email = "") => {
+  const recipientEmail = String(
+    notification.recipientEmail || "",
+  ).toLowerCase();
+  const currentEmail = String(email || "").toLowerCase();
+  const recipientRole = getNotificationRecipientRole(
+    notification.recipientRole,
+  );
+  const currentRole = getNotificationRecipientRole(role);
+  const emailMatches = Boolean(
+    recipientEmail && currentEmail && recipientEmail === currentEmail,
+  );
+  const roleMatches = recipientRole === "All" || recipientRole === currentRole;
+
+  if (recipientEmail && recipientRole === "All") return emailMatches;
+  return emailMatches || roleMatches;
+};
+
+const mergeNotificationsById = (...lists) => {
+  const seen = new Set();
+  return lists
+    .flat()
+    .filter(Boolean)
+    .map(normalizeLocalNotification)
+    .filter((notification) => {
+      if (seen.has(notification.id)) return false;
+      seen.add(notification.id);
+      return true;
+    })
+    .sort(
+      (left, right) =>
+        (Date.parse(right.createdAt) || 0) - (Date.parse(left.createdAt) || 0),
+    );
+};
+
+const persistLocalNotifications = (notifications) => {
+  const nextNotifications = mergeNotificationsById(notifications);
+  setPublicationReviewNotifications(nextNotifications);
+  window.dispatchEvent(new Event("scholartrend:notifications"));
+  return nextNotifications;
+};
+
+const fetchLocalNotificationsFromAuthHelper = async ({ role, email } = {}) => {
+  if (!GOOGLE_AUTH_BASE_URL) return [];
+  const params = new URLSearchParams();
+  if (role) params.set("role", getNotificationRecipientRole(role));
+  if (email) params.set("email", email);
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/notifications/local?${params.toString()}`,
+    { credentials: "include" },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not load local notifications.",
+    );
+  }
+  return Array.isArray(payload.items)
+    ? payload.items.map(normalizeLocalNotification)
+    : [];
+};
+
+const fetchAllLocalNotificationsFromAuthHelper = async () => {
+  if (!GOOGLE_AUTH_BASE_URL) return [];
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/admin/notifications/local`,
+    { credentials: "include" },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not load Admin notification history.",
+    );
+  }
+  return Array.isArray(payload.items)
+    ? payload.items.map(normalizeLocalNotification)
+    : [];
+};
+
+const mirrorLocalNotificationToAuthHelper = async (notification) => {
+  if (!GOOGLE_AUTH_BASE_URL) return null;
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/admin/notifications/local`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(notification),
+    },
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not save notification to the local helper.",
+    );
+  }
+  return normalizeLocalNotification(payload.notification || payload);
+};
+
+const deleteLocalNotificationFromAuthHelper = async (id) => {
+  if (!GOOGLE_AUTH_BASE_URL || !id) return;
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/admin/notifications/local/${encodeURIComponent(
+      id,
+    )}`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not delete notification from the local helper.",
+    );
+  }
+};
+
+const markLocalNotificationsReadOnAuthHelper = async () => {
+  if (!GOOGLE_AUTH_BASE_URL) return;
+  await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/admin/notifications/local/read-all`,
+    {
+      method: "PUT",
+      credentials: "include",
+    },
+  );
+};
+
 const addPublicationReviewNotification = (submission, reason, evidence) => {
   const notification = {
     id: `review-${submission.id}-${Date.now()}`,
@@ -1925,8 +2166,11 @@ const addPublicationReviewNotification = (submission, reason, evidence) => {
     createdAt: new Date().toISOString(),
     unread: true,
   };
-  const next = [notification, ...getPublicationReviewNotifications()];
-  setPublicationReviewNotifications(next);
+  const next = persistLocalNotifications([
+    notification,
+    ...getPublicationReviewNotifications(),
+  ]);
+  mirrorLocalNotificationToAuthHelper(notification).catch(() => {});
   return notification;
 };
 
@@ -1949,16 +2193,18 @@ const sendPublicationReviewNotificationToBackend = async (
   });
 
 const sendAdminAuditLog = (detail, module = "Admin", code = "ADMIN-AUDIT") =>
-  apiFetch("/api/admin/audit-log", {
-    method: "POST",
-    auth: true,
-    body: {
-      module,
-      detail,
-      severity: "Success",
-      code,
-    },
-  }).catch(() => {});
+  hasAdminBackendAccess()
+    ? apiFetch("/api/admin/audit-log", {
+        method: "POST",
+        auth: true,
+        body: {
+          module,
+          detail,
+          severity: "Success",
+          code,
+        },
+      }).catch(() => {})
+    : Promise.resolve(null);
 
 const sendPublicationReviewNotification = async (
   submission,
@@ -1994,8 +2240,11 @@ const addPublicationApprovedNotification = (submission) => {
     createdAt: new Date().toISOString(),
     unread: true,
   };
-  const next = [notification, ...getPublicationReviewNotifications()];
-  setPublicationReviewNotifications(next);
+  persistLocalNotifications([
+    notification,
+    ...getPublicationReviewNotifications(),
+  ]);
+  mirrorLocalNotificationToAuthHelper(notification).catch(() => {});
   return notification;
 };
 
@@ -2029,8 +2278,11 @@ const addPublicationDeleteNotification = (submission, reason, evidence) => {
     createdAt: new Date().toISOString(),
     unread: true,
   };
-  const next = [notification, ...getPublicationReviewNotifications()];
-  setPublicationReviewNotifications(next);
+  persistLocalNotifications([
+    notification,
+    ...getPublicationReviewNotifications(),
+  ]);
+  mirrorLocalNotificationToAuthHelper(notification).catch(() => {});
   return notification;
 };
 
@@ -2052,26 +2304,33 @@ const sendPublicationDeleteNotification = async (
 };
 
 function useApiResource(path, fallbackValue, options = {}) {
-  const auth = Boolean(options.auth);
   const [data, setData] = React.useState(fallbackValue);
   const [status, setStatus] = React.useState("idle");
   const [error, setError] = React.useState(null);
-  const shouldFetch = !auth || Boolean(getStoredAuth().accessToken);
 
   React.useEffect(() => {
     let cancelled = false;
-
-    if (!shouldFetch) {
-      setStatus("success");
+    const controller = new AbortController();
+    const canUseBackend =
+      !path ||
+      options.allowUnauthenticated ||
+      Boolean(getStoredAuth().accessToken);
+    if (!path || !canUseBackend) {
+      setStatus("idle");
       setError(null);
       setData(fallbackValue);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
     setStatus("loading");
     setError(null);
+    if (options.clearOnLoad) {
+      setData(fallbackValue);
+    }
 
-    apiFetch(path, { auth })
+    apiFetch(path, { auth: options.auth, signal: controller.signal })
       .then((payload) => {
         if (cancelled) return;
         setData(options.select ? options.select(payload) : payload);
@@ -2086,11 +2345,83 @@ function useApiResource(path, fallbackValue, options = {}) {
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [path, shouldFetch, auth]);
+  }, [path]);
 
   return { data, status, error };
 }
+
+const defaultSearchSuggestions = [
+  "Artificial Intelligence",
+  "Machine Learning",
+  "AI in Education",
+  "Climate Change Policy",
+  "CRISPR Applications",
+  "Quantum Cryptography",
+  "Neural Networks",
+  "Sociological Impact of AI",
+  "Advanced Polymer Synthesis",
+];
+
+const getLocalSearchSuggestions = (query = "", limit = 8) => {
+  const needle = String(query || "")
+    .trim()
+    .toLowerCase();
+  const published = getPublishedPublications();
+  const candidates = [
+    ...defaultSearchSuggestions,
+    ...published.flatMap((paper) => [
+      paper.title,
+      paper.journalName,
+      ...(Array.isArray(paper.keywords) ? paper.keywords : []),
+    ]),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  const unique = [...new Set(candidates)];
+  const filtered = needle
+    ? unique.filter((item) => item.toLowerCase().includes(needle))
+    : unique;
+  return filtered.slice(0, limit);
+};
+
+function useSearchSuggestions(query, limit = 8) {
+  const data = React.useMemo(
+    () => getLocalSearchSuggestions(query, limit),
+    [query, limit],
+  );
+
+  return { data, status: "success", error: null };
+}
+
+const downloadReferenceExport = async ({
+  format = "bibtex",
+  ids = [],
+  query = "",
+  filenamePrefix = "scholartrend-references",
+} = {}) => {
+  const params = new URLSearchParams({ format });
+  const numericIds = ids.filter((id) => isBackendNumericId(id));
+  if (numericIds.length) params.set("ids", numericIds.join(","));
+  if (!numericIds.length && query?.trim()) params.set("q", query.trim());
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/publications/export?${params.toString()}`,
+    {
+      __skipClientAlert: true,
+    },
+  );
+  if (!response.ok) throw new Error("Could not export references.");
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${filenamePrefix}.${format === "ris" ? "ris" : "bib"}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 const beginGoogleOAuth = async (role) => {
   const response = await fetch(
@@ -2109,6 +2440,24 @@ const beginGoogleOAuth = async (role) => {
     );
   }
 
+  window.location.assign(payload.url);
+};
+
+const beginAcademicOAuth = async (provider, role) => {
+  const providerSlug = provider === "ORCID" ? "orcid" : "institution";
+  const response = await fetch(
+    `${GOOGLE_AUTH_BASE_URL}/api/auth/${providerSlug}/url?role=${encodeURIComponent(role)}`,
+    { credentials: "include" },
+  );
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : {};
+  if (!response.ok || !payload.url) {
+    throw new Error(
+      payload.error || `${provider} authentication is not configured.`,
+    );
+  }
   window.location.assign(payload.url);
 };
 
@@ -2450,9 +2799,6 @@ function Brand({ boxed = false, small = false }) {
 
 function LandingPage() {
   const [activeDataPoint, setActiveDataPoint] = React.useState(5); // Default to 2025 (index 5)
-  const [landingSearch, setLandingSearch] = React.useState("");
-  const [newsletterEmail, setNewsletterEmail] = React.useState("");
-  const [newsletterMessage, setNewsletterMessage] = React.useState("");
 
   const chartData = [
     { year: "2020", value: 5200, publications: "5,200", growth: "baseline" },
@@ -2462,44 +2808,6 @@ function LandingPage() {
     { year: "2024", value: 60420, publications: "60,420", growth: "+43%" },
     { year: "2025", value: 96847, publications: "96,847", growth: "+160%" },
   ];
-
-  const submitLandingSearch = (event) => {
-    event.preventDefault();
-    const query = landingSearch.trim();
-    goToRoute(query ? `/student-search?q=${encodeURIComponent(query)}` : "/student-search");
-  };
-
-  const subscribeNewsletter = (event) => {
-    event.preventDefault();
-    const email = newsletterEmail.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setNewsletterMessage("Enter a valid email address.");
-      return;
-    }
-
-    const key = "scholartrend.newsletterSubscribers";
-    let subscribers = [];
-    try {
-      subscribers = JSON.parse(window.localStorage.getItem(key) || "[]");
-    } catch {
-      subscribers = [];
-    }
-    const alreadySubscribed = subscribers.some((item) => item.email === email);
-    const nextSubscribers = alreadySubscribed
-      ? subscribers.map((item) =>
-          item.email === email
-            ? { ...item, updatedAt: new Date().toISOString() }
-            : item,
-        )
-      : [{ email, createdAt: new Date().toISOString() }, ...subscribers];
-    window.localStorage.setItem(key, JSON.stringify(nextSubscribers));
-    setNewsletterEmail("");
-    setNewsletterMessage(
-      alreadySubscribed
-        ? "Subscription refreshed."
-        : "Subscribed. Research updates will be queued for this email.",
-    );
-  };
 
   return (
     <main className="page-shell">
@@ -2630,7 +2938,7 @@ function LandingPage() {
             publications from trusted scholarly databases to reveal emerging
             research trends with clarity.
           </p>
-          <form className="lp-search-bar" onSubmit={submitLandingSearch}>
+          <div className="lp-search-bar">
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
@@ -2643,10 +2951,8 @@ function LandingPage() {
               type="text"
               placeholder="Search publications, authors, topics, or journals..."
               className="lp-search-input"
-              value={landingSearch}
-              onChange={(event) => setLandingSearch(event.target.value)}
             />
-            <button className="lp-search-btn" type="submit">
+            <button className="lp-search-btn">
               Search
               <svg
                 viewBox="0 0 24 24"
@@ -2657,7 +2963,7 @@ function LandingPage() {
                 <path d="m16.5 16.5 4 4" />
               </svg>
             </button>
-          </form>
+          </div>
           <div className="lp-hero-actions">
             <a
               className="lp-primary-btn"
@@ -4376,7 +4682,7 @@ function LandingPage() {
               researchers.
             </p>
             <div className="lp-footer-socials">
-              <a href="https://x.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="X (Twitter)">
+              <a href="/" className="lp-social-icon" aria-label="X (Twitter)">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4386,7 +4692,7 @@ function LandingPage() {
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               </a>
-              <a href="https://www.linkedin.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="LinkedIn">
+              <a href="/" className="lp-social-icon" aria-label="LinkedIn">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4396,7 +4702,7 @@ function LandingPage() {
                   <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                 </svg>
               </a>
-              <a href="https://www.facebook.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="Facebook">
+              <a href="/" className="lp-social-icon" aria-label="Facebook">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4406,7 +4712,7 @@ function LandingPage() {
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
               </a>
-              <a href="https://github.com/Trannhat2209/Scientific-Journal-Publication-Trend-Tracking-System" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="GitHub">
+              <a href="/" className="lp-social-icon" aria-label="GitHub">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4416,7 +4722,7 @@ function LandingPage() {
                   <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
                 </svg>
               </a>
-              <a href="https://www.instagram.com" target="_blank" rel="noreferrer" className="lp-social-icon" aria-label="Instagram">
+              <a href="/" className="lp-social-icon" aria-label="Instagram">
                 <svg
                   viewBox="0 0 24 24"
                   fill="currentColor"
@@ -4430,53 +4736,48 @@ function LandingPage() {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Product</div>
-            <a href="#features">Features</a>
-            <a href="#trends">Trends</a>
-            <a href="#pricing">Pricing</a>
-            <a href="/docs" onClick={navTo("/docs")}>API</a>
+            <a href="/">Features</a>
+            <a href="/">Trends</a>
+            <a href="/">Pricing</a>
+            <a href="/">API</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Resources</div>
-            <a href="/docs" onClick={navTo("/docs")}>Documentation</a>
-            <a href="/blog" onClick={navTo("/blog")}>Blog</a>
-            <a href="/guides" onClick={navTo("/guides")}>Guides</a>
-            <a href="/support" onClick={navTo("/support")}>Support</a>
+            <a href="/">Documentation</a>
+            <a href="/">Blog</a>
+            <a href="/">Guides</a>
+            <a href="/">Support</a>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Company</div>
-            <a href="/about" onClick={navTo("/about")}>About Us</a>
-            <a href="/careers" onClick={navTo("/careers")}>Careers</a>
-            <a href="/contact" onClick={navTo("/contact")}>Contact</a>
-            <a href="/privacy" onClick={navTo("/privacy")}>Privacy Policy</a>
+            <a href="/">About Us</a>
+            <a href="/">Careers</a>
+            <a href="/">Contact</a>
+            <a href="/">Privacy Policy</a>
           </div>
           <div className="lp-footer-col newsletter-col">
             <div className="lp-footer-col-title">Newsletter</div>
             <p className="lp-newsletter-desc">
               Stay updated with the latest research trends and platform updates.
             </p>
-            <form className="lp-newsletter-form" onSubmit={subscribeNewsletter}>
+            <div className="lp-newsletter-form">
               <input
                 type="email"
                 placeholder="Enter your email"
                 className="lp-newsletter-input"
-                value={newsletterEmail}
-                onChange={(event) => setNewsletterEmail(event.target.value)}
               />
-              <button className="lp-newsletter-btn" type="submit" aria-label="Subscribe">
+              <button className="lp-newsletter-btn" aria-label="Subscribe">
                 →
               </button>
-            </form>
-            {newsletterMessage ? (
-              <p className="lp-newsletter-status">{newsletterMessage}</p>
-            ) : null}
+            </div>
           </div>
         </div>
         <div className="lp-footer-bottom">
           <span>© 2026 ScholarTrend. All rights reserved.</span>
           <nav className="lp-footer-bottom-links" aria-label="Legal links">
-            <a href="/terms" onClick={navTo("/terms")}>Terms of Service</a>
-            <a href="/privacy" onClick={navTo("/privacy")}>Privacy Policy</a>
-            <a href="/contact" onClick={navTo("/contact")}>Contact</a>
+            <a href="/">Terms of Service</a>
+            <a href="/">Privacy Policy</a>
+            <a href="/">Contact</a>
           </nav>
         </div>
       </footer>
@@ -4489,15 +4790,13 @@ function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("Scholar2024");
-  const [confirmPassword, setConfirmPassword] = React.useState("Scholar2024");
-  const [registerRole, setRegisterRole] = React.useState("Researcher");
-  const [roleMenuOpen, setRoleMenuOpen] = React.useState(false);
+  const [password, setPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
   const [authFeedback, setAuthFeedback] = React.useState(null);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const [isRegistering, setIsRegistering] = React.useState(false);
-  const [selectedAcademicProvider, setSelectedAcademicProvider] = React.useState("");
-  const registerRoles = ["Researcher", "Lecturer", "Student", "Administrator"];
+  const [selectedAcademicProvider, setSelectedAcademicProvider] =
+    React.useState("");
 
   const handleRegister = async (event) => {
     event.preventDefault();
@@ -4519,31 +4818,47 @@ function RegisterPage() {
     }
 
     setIsRegistering(true);
-    setAuthFeedback({ type: "success", text: "Creating backend account..." });
+    setAuthFeedback({ type: "success", text: "Creating account..." });
 
     try {
-      const rawPayload = await apiFetch("/api/auth/register", {
+      const payload = await authServerFetch("/api/auth/register", {
         method: "POST",
         body: {
           fullName: fullName.trim(),
           email: email.trim(),
           password,
-          role: normalizeRoleForApi(registerRole),
+          role: normalizeRoleForApi(STUDENT_REGISTRATION_ROLE),
         },
       });
-      const payload = normalizeAuthResponse(rawPayload);
 
-      persistAuth(payload);
-      const role = normalizeRoleForUi(payload.user?.role || registerRole);
+      const registeredEmail = String(payload.user?.email || email)
+        .trim()
+        .toLowerCase();
+      const registeredRole = normalizeRoleForUi(
+        payload.user?.role || STUDENT_REGISTRATION_ROLE,
+      );
+      await clearAuthCookie();
+      clearAuth();
+      window.localStorage.setItem("scholartrend.login.email", registeredEmail);
+      window.sessionStorage.setItem(
+        REGISTERED_LOGIN_HINT_KEY,
+        JSON.stringify({
+          email: registeredEmail,
+          password,
+          role: registeredRole,
+          fullName: fullName.trim(),
+        }),
+      );
+      window.sessionStorage.setItem(
+        "scholartrend.justRegisteredEmail",
+        registeredEmail,
+      );
       setAuthFeedback({
         type: "success",
-        text: "Backend account created. Loading your dashboard...",
+        text: "Account created. Please sign in with your new account.",
       });
 
-      window.setTimeout(
-        () => goToRoute(roleDashboardRoutes[role] || "/researcher-dashboard"),
-        450,
-      );
+      window.setTimeout(() => goToRoute("/login?registered=1"), 450);
     } catch (error) {
       setAuthFeedback(getFriendlyRegisterError(error));
     } finally {
@@ -4552,7 +4867,6 @@ function RegisterPage() {
   };
 
   const handleGoogleRegister = async () => {
-    const role = registerRole || "Researcher";
     setIsGoogleLoading(true);
     setAuthFeedback({
       type: "success",
@@ -4560,7 +4874,7 @@ function RegisterPage() {
     });
 
     try {
-      await beginGoogleOAuth(role);
+      await beginGoogleOAuth(STUDENT_REGISTRATION_ROLE);
     } catch (error) {
       setIsGoogleLoading(false);
       setAuthFeedback({
@@ -4571,61 +4885,16 @@ function RegisterPage() {
   };
 
   const handleAcademicProviderRegister = async (provider) => {
-    if (!fullName.trim() || !email.trim() || !password) {
-      setAuthFeedback({
-        type: "error",
-        text: `Enter full name, email, and password before selecting ${provider}.`,
-      });
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setAuthFeedback({
-        type: "error",
-        text: "Confirm password does not match.",
-      });
-      return;
-    }
-
     setSelectedAcademicProvider(provider);
-    const providerUrl = buildAcademicProviderUrl({
-      provider,
-      role: registerRole,
-      email,
-      fullName,
+    setAuthFeedback({
+      type: "success",
+      text: `Opening ${provider} authentication...`,
     });
-
-    if (providerUrl) {
-      setAuthFeedback({
-        type: "success",
-        text: `Opening ${provider} authentication...`,
-      });
-      window.location.href = providerUrl;
-      return;
-    }
-
-    setIsRegistering(true);
-    setAuthFeedback({ type: "success", text: `Syncing ${provider} profile...` });
     try {
-      const { user, mode } = await authenticateAcademicProvider({
-        provider,
-        role: registerRole,
-        email,
-        fullName,
-      });
-      const role = normalizeRoleForUi(user.role || registerRole);
-      setAuthFeedback({
-        type: "success",
-        text: `${provider} ${mode === "local" ? "local profile" : "profile"} ready. Loading workspace...`,
-      });
-      window.setTimeout(
-        () => goToRoute(roleDashboardRoutes[role] || "/researcher-dashboard"),
-        450,
-      );
+      await beginAcademicOAuth(provider, STUDENT_REGISTRATION_ROLE);
     } catch (error) {
+      setSelectedAcademicProvider("");
       setAuthFeedback({ type: "error", text: error.message });
-    } finally {
-      setIsRegistering(false);
     }
   };
 
@@ -4674,50 +4943,6 @@ function RegisterPage() {
                 />
               </span>
             </label>
-            <div
-              className="field register-role-field"
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) {
-                  setRoleMenuOpen(false);
-                }
-              }}
-            >
-              <span>Primary Role</span>
-              <span className="input-with-icon">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
-                  <path d="M7 12v3.4c0 1.8 2 3.1 5 3.1s5-1.3 5-3.1V12" />
-                  <path d="M20 10.5V16" />
-                </svg>
-                <button
-                  className="register-role-trigger"
-                  type="button"
-                  aria-expanded={roleMenuOpen}
-                  aria-haspopup="listbox"
-                  onClick={() => setRoleMenuOpen((open) => !open)}
-                >
-                  {registerRole || "Select your role"}
-                </button>
-                {roleMenuOpen && (
-                  <div className="register-role-menu" role="listbox">
-                    {registerRoles.map((role) => (
-                      <button
-                        key={role}
-                        type="button"
-                        role="option"
-                        aria-selected={registerRole === role}
-                        onClick={() => {
-                          setRegisterRole(role);
-                          setRoleMenuOpen(false);
-                        }}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </span>
-            </div>
             <label className="field">
               <span>Password</span>
               <span className="input-with-icon password-input">
@@ -4799,7 +5024,11 @@ function RegisterPage() {
                 <a href="/">Privacy Policy</a>.
               </span>
             </label>
-            <button className="auth-submit" type="submit" disabled={isRegistering}>
+            <button
+              className="auth-submit"
+              type="submit"
+              disabled={isRegistering}
+            >
               {isRegistering ? "Creating Account..." : "Register Account"}
             </button>
             <div className="auth-divider">
@@ -4823,12 +5052,16 @@ function RegisterPage() {
                   <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
                   <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
                 </svg>
-                {isGoogleLoading ? "Connecting Google..." : "Continue with Google"}
+                {isGoogleLoading
+                  ? "Connecting Google..."
+                  : "Continue with Google"}
               </button>
               <button
                 className="institution-login-button"
                 type="button"
-                onClick={() => handleAcademicProviderRegister("Institution SSO")}
+                onClick={() =>
+                  handleAcademicProviderRegister("Institution SSO")
+                }
                 title="Continue with Institution SSO"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -4851,7 +5084,9 @@ function RegisterPage() {
                 <span className="orcid-mark" aria-hidden="true">
                   iD
                 </span>
-                {selectedAcademicProvider === "ORCID" ? "ORCID selected" : "ORCID"}
+                {selectedAcademicProvider === "ORCID"
+                  ? "ORCID selected"
+                  : "ORCID"}
               </button>
             </div>
             {authFeedback && (
@@ -4859,10 +5094,15 @@ function RegisterPage() {
                 className={`login-feedback register-feedback ${authFeedback.type}`}
                 role={authFeedback.type === "error" ? "alert" : "status"}
               >
-                {authFeedback.title ? <strong>{authFeedback.title}</strong> : null}
+                {authFeedback.title ? (
+                  <strong>{authFeedback.title}</strong>
+                ) : null}
                 <span>{authFeedback.text}</span>
                 {authFeedback.actionRoute ? (
-                  <a href={authFeedback.actionRoute} onClick={navTo(authFeedback.actionRoute)}>
+                  <a
+                    href={authFeedback.actionRoute}
+                    onClick={navTo(authFeedback.actionRoute)}
+                  >
                     {authFeedback.actionText || "Continue"}
                   </a>
                 ) : null}
@@ -5073,15 +5313,22 @@ function RegisterPage() {
 }
 
 function LoginPage() {
+  const { t } = useTranslation();
   const [showPassword, setShowPassword] = React.useState(false);
   const [email, setEmail] = React.useState(() => {
+    const registrationHint = getRegisteredLoginHint();
     return (
+      registrationHint?.email ||
       window.localStorage.getItem("scholartrend.login.email") ||
-      "demo.researcher@local.test"
+      ""
     );
   });
-  const [password, setPassword] = React.useState("Scholar2024");
-  const [selectedRole, setSelectedRole] = React.useState("Researcher");
+  const [password, setPassword] = React.useState("");
+  const [selectedRole, setSelectedRole] = React.useState("Student");
+  const [loginOptions, setLoginOptions] = React.useState({
+    isAdministrator: false,
+    allowedRoles: ["Researcher", "Lecturer", "Student"],
+  });
   const [rememberMe, setRememberMe] = React.useState(() => {
     return (
       window.localStorage.getItem("scholartrend.login.remember") === "true"
@@ -5089,8 +5336,19 @@ function LoginPage() {
   });
   const [feedback, setFeedback] = React.useState(null);
   const [isLoggingIn, setIsLoggingIn] = React.useState(false);
+  const loginRequestInProgressRef = React.useRef(false);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
-  const [selectedAcademicProvider, setSelectedAcademicProvider] = React.useState("");
+  const [selectedAcademicProvider, setSelectedAcademicProvider] =
+    React.useState("");
+  const [isSendingResetCode, setIsSendingResetCode] = React.useState(false);
+  const [isResetMode, setIsResetMode] = React.useState(false);
+  const [resetToken, setResetToken] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = React.useState("");
+  const [isResettingPassword, setIsResettingPassword] = React.useState(false);
+  const [registrationHint, setRegistrationHint] = React.useState(() =>
+    getRegisteredLoginHint(),
+  );
 
   const roleRoutes = {
     Researcher: "/researcher-dashboard",
@@ -5099,50 +5357,52 @@ function LoginPage() {
     Administrator: "/admin-dashboard",
   };
 
-  const demoAccounts = {
-    Researcher: {
-      email: "demo.researcher@local.test",
-      password: "Scholar2024",
-      role: "Researcher",
-      fullName: "Demo Researcher",
-      route: "/researcher-dashboard",
-    },
-    Lecturer: {
-      email: "lecturer@university.edu",
-      password: "Scholar2024",
-      role: "Lecturer",
-      fullName: "Demo Lecturer",
-      route: "/lecturer-dashboard",
-    },
-    Student: {
-      email: "student@university.edu",
-      password: "Scholar2024",
-      role: "Student",
-      fullName: "Demo Student",
-      route: "/student-dashboard",
-    },
-    Administrator: {
-      email: "admin.dev@scholartrend.test",
-      password: "Admin123!",
-      role: "Administrator",
-      fullName: "Development Administrator",
-      route: "/admin-dashboard",
-    },
-  };
+  React.useEffect(() => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
+      setLoginOptions({
+        isAdministrator: false,
+        allowedRoles: ["Researcher", "Lecturer", "Student"],
+      });
+      return undefined;
+    }
 
-  const roleEmails = Object.fromEntries(
-    Object.entries(demoAccounts).map(([role, account]) => [
-      role,
-      account.email,
-    ]),
-  );
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const options = await authServerFetch(
+          `/api/auth/login-options?email=${encodeURIComponent(normalizedEmail)}`,
+          { signal: controller.signal },
+        );
+        const allowedRoles = Array.isArray(options.allowedRoles)
+          ? options.allowedRoles
+          : ["Researcher", "Lecturer", "Student"];
+        setLoginOptions({
+          isAdministrator: Boolean(options.isAdministrator),
+          allowedRoles,
+        });
+        if (
+          !options.isAdministrator &&
+          options.assignedRole &&
+          allowedRoles.includes(options.assignedRole)
+        ) {
+          setSelectedRole(options.assignedRole);
+        }
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          setLoginOptions({
+            isAdministrator: false,
+            allowedRoles: ["Researcher", "Lecturer", "Student"],
+          });
+        }
+      }
+    }, 300);
 
-  const academicAccounts = Object.fromEntries(
-    Object.values(demoAccounts).map((account) => [
-      account.email.toLowerCase(),
-      account,
-    ]),
-  );
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [email]);
 
   const goToWorkspace = (route) => {
     window.history.pushState({}, "", route);
@@ -5151,27 +5411,68 @@ function LoginPage() {
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const freshRegistrationHint = getRegisteredLoginHint();
+    const registeredEmail =
+      window.sessionStorage.getItem("scholartrend.justRegisteredEmail") || "";
+    if (
+      params.get("registered") === "1" ||
+      registeredEmail ||
+      freshRegistrationHint?.email
+    ) {
+      const loginEmail =
+        freshRegistrationHint?.email ||
+        registeredEmail ||
+        window.localStorage.getItem("scholartrend.login.email") ||
+        "";
+      if (loginEmail) {
+        setEmail(loginEmail);
+      }
+      setPassword("");
+      setSelectedRole(freshRegistrationHint?.role || STUDENT_REGISTRATION_ROLE);
+      setRegistrationHint(freshRegistrationHint);
+      setFeedback({
+        type: "success",
+        text: freshRegistrationHint?.email
+          ? "Account created. Click the email field or choose the suggested email to fill the password, then Sign In."
+          : "Account created. Please sign in with the email and password you just registered.",
+      });
+      window.sessionStorage.removeItem("scholartrend.justRegisteredEmail");
+      window.history.replaceState({}, "", "/login");
+      return;
+    }
+
     const authResult = params.get("auth");
 
     if (!authResult) return;
 
     window.history.replaceState({}, "", "/login");
 
-    if (authResult === "google-error") {
+    if (authResult.endsWith("-error")) {
+      const providerName = authResult.startsWith("orcid")
+        ? "ORCID"
+        : authResult.startsWith("institution")
+          ? "Institution SSO"
+          : "Google";
       setFeedback({
         type: "error",
         text:
           params.get("message") ||
-          "Google authentication could not be completed.",
+          `${providerName} authentication could not be completed.`,
       });
       return;
     }
 
-    const finishGoogleLogin = async () => {
+    const providerName = authResult.startsWith("orcid")
+      ? "ORCID"
+      : authResult.startsWith("institution")
+        ? "Institution SSO"
+        : "Google";
+
+    const finishExternalLogin = async () => {
       setIsGoogleLoading(true);
       setFeedback({
         type: "success",
-        text: "Google profile verified. Preparing your workspace...",
+        text: `${providerName} profile verified. Preparing your workspace...`,
       });
 
       try {
@@ -5184,13 +5485,15 @@ function LoginPage() {
           : {};
 
         if (!response.ok || !payload.authenticated) {
-          throw new Error("Google session was not found. Please sign in again.");
+          throw new Error(
+            `${providerName} session was not found. Please sign in again.`,
+          );
         }
 
-        persistSession(payload.user);
+        persistAuth(payload);
         setFeedback({
           type: "success",
-          text: `${payload.user.role} Google profile verified. Loading your workspace...`,
+          text: `${payload.user.role} ${providerName} profile verified. Loading your workspace...`,
         });
 
         window.setTimeout(
@@ -5209,7 +5512,7 @@ function LoginPage() {
       }
     };
 
-    finishGoogleLogin();
+    finishExternalLogin();
   }, []);
 
   const rememberLoginEmail = (normalizedEmail) => {
@@ -5222,13 +5525,61 @@ function LoginPage() {
     }
   };
 
+  const clearRegistrationHint = () => {
+    window.sessionStorage.removeItem(REGISTERED_LOGIN_HINT_KEY);
+    window.sessionStorage.removeItem("scholartrend.justRegisteredEmail");
+    setRegistrationHint(null);
+  };
+
+  const fillRegisteredAccountHint = (selectedHint = registrationHint) => {
+    const hint = selectedHint || getRegisteredLoginHint();
+    if (!hint?.email) return;
+
+    setRegistrationHint(hint);
+    setEmail(hint.email);
+    setPassword(hint.password);
+    setSelectedRole(hint.role || STUDENT_REGISTRATION_ROLE);
+    setFeedback({
+      type: "success",
+      text: "New account filled. Click Sign In to enter your dashboard.",
+    });
+  };
+
+  const handleLoginEmailChange = (event) => {
+    const nextEmail = event.target.value;
+    setEmail(nextEmail);
+
+    const hint = registrationHint || getRegisteredLoginHint();
+    if (hint?.email && nextEmail.trim().toLowerCase() === hint.email) {
+      fillRegisteredAccountHint(hint);
+    }
+  };
+
+  const handleLoginEmailPaste = (event) => {
+    const pastedEmail = event.clipboardData.getData("text").trim();
+    if (!pastedEmail) return;
+    event.preventDefault();
+    setEmail(pastedEmail);
+    setFeedback(null);
+  };
+
+  const handleLoginEmailFocus = () => {
+    const hint = registrationHint || getRegisteredLoginHint();
+    if (hint?.email && email.trim().toLowerCase() === hint.email && !password) {
+      fillRegisteredAccountHint(hint);
+    }
+  };
+
   const finishLogin = (role, route, message) => {
     setFeedback({
       type: "success",
       text: message,
     });
     window.setTimeout(
-      () => goToWorkspace(route || roleDashboardRoutes[role] || "/researcher-dashboard"),
+      () =>
+        goToWorkspace(
+          route || roleDashboardRoutes[role] || "/researcher-dashboard",
+        ),
       550,
     );
   };
@@ -5238,6 +5589,8 @@ function LoginPage() {
     loginPassword,
     requestedRole,
   }) => {
+    if (loginRequestInProgressRef.current) return;
+
     const normalizedEmail = loginEmail.trim().toLowerCase();
 
     if (!normalizedEmail || !loginPassword) {
@@ -5248,73 +5601,55 @@ function LoginPage() {
       return;
     }
 
+    loginRequestInProgressRef.current = true;
     rememberLoginEmail(normalizedEmail);
-
     setIsLoggingIn(true);
-    setFeedback({ type: "success", text: "Checking backend credentials..." });
+    setFeedback({ type: "success", text: "Checking test account..." });
 
     try {
-      const rawPayload = await apiFetch("/api/auth/login", {
+      const payload = await authServerFetch("/api/auth/login", {
         method: "POST",
         body: {
           email: normalizedEmail,
           password: loginPassword,
+          requestedRole: requestedRole || null, // Allow null for auto-detect
         },
       });
-      const payload = normalizeAuthResponse(rawPayload);
       persistAuth(payload);
-      const role = normalizeRoleForUi(payload.user?.role || requestedRole);
+      const role = normalizeRoleForUi(payload.user?.role);
       setSelectedRole(role);
+      clearRegistrationHint();
+
+      // Auto-redirect based on user's actual role from backend
       finishLogin(
         role,
         roleDashboardRoutes[role],
-        `${role} profile verified by backend. Loading your workspace...`,
+        `${role} account verified. Loading your workspace...`,
       );
     } catch (error) {
-      const demoAccount = academicAccounts[normalizedEmail];
-      const matchesDemoAccount =
-        demoAccount &&
-        demoAccount.role === requestedRole &&
-        demoAccount.password === loginPassword;
-
-      if (matchesDemoAccount) {
-        window.localStorage.removeItem("scholartrend.auth");
-        persistSession({
-          id: `demo-${requestedRole.toLowerCase()}`,
-          email: demoAccount.email,
-          fullName: demoAccount.fullName,
-          role: demoAccount.role,
-          provider: "Demo",
-          lastLoginAt: new Date().toISOString(),
-        });
-        finishLogin(
-          demoAccount.role,
-          demoAccount.route,
-          `${demoAccount.role} demo profile ready. Loading your workspace...`,
-        );
-        return;
-      }
-
       setIsLoggingIn(false);
       setFeedback({ type: "error", text: error.message });
+    } finally {
+      loginRequestInProgressRef.current = false;
     }
   };
 
   const handleRoleSelect = (nextRole) => {
-    const account = demoAccounts[nextRole];
-
     setSelectedRole(nextRole);
-    setEmail(account.email);
-    setPassword(account.password);
     setFeedback(null);
   };
 
   const handleLogin = async (event) => {
     event.preventDefault();
+
+    // Check if any role is selected (not needed for admin, but required for others)
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Allow login without role selection - backend will validate
     await loginWithCredentials({
       loginEmail: email,
       loginPassword: password,
-      requestedRole: selectedRole,
+      requestedRole: selectedRole || "", // Empty string if no role selected
     });
   };
 
@@ -5330,17 +5665,77 @@ function LoginPage() {
       return;
     }
 
+    setIsSendingResetCode(true);
+
     try {
-      await apiFetch("/api/auth/forgot-password", {
+      const payload = await authServerFetch("/api/auth/forgot-password", {
         method: "POST",
         body: { email: normalizedEmail },
       });
+      setIsResetMode(true);
+      setResetToken(payload.resetToken || "");
+      setNewPassword("");
+      setConfirmNewPassword("");
       setFeedback({
         type: "success",
-        text: `Backend prepared reset instructions for ${normalizedEmail}.`,
+        text: payload.resetToken
+          ? `Reset code generated: ${payload.resetToken}. Enter a new password below.`
+          : payload.message ||
+            `Reset instructions were prepared for ${normalizedEmail}.`,
       });
     } catch (error) {
       setFeedback({ type: "error", text: error.message });
+    } finally {
+      setIsSendingResetCode(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedToken = resetToken.trim();
+
+    if (!normalizedEmail || !normalizedToken || !newPassword) {
+      setFeedback({
+        type: "error",
+        text: "Enter your email, reset code, and new password.",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setFeedback({
+        type: "error",
+        text: "Confirm password does not match.",
+      });
+      return;
+    }
+
+    setIsResettingPassword(true);
+
+    try {
+      const payload = await authServerFetch("/api/auth/reset-password", {
+        method: "POST",
+        body: {
+          email: normalizedEmail,
+          token: normalizedToken,
+          newPassword,
+        },
+      });
+      setIsResetMode(false);
+      setResetToken("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPassword("");
+      setFeedback({
+        type: "success",
+        text:
+          payload.message ||
+          "Password has been reset. Please sign in with your new password.",
+      });
+    } catch (error) {
+      setFeedback({ type: "error", text: error.message });
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -5363,45 +5758,15 @@ function LoginPage() {
   };
 
   const handleAcademicProviderLogin = async (provider) => {
-    if (!email.trim() || !password) {
-      setFeedback({
-        type: "error",
-        text: `Enter your email and password before selecting ${provider}.`,
-      });
-      return;
-    }
-
     setSelectedAcademicProvider(provider);
-    const providerUrl = buildAcademicProviderUrl({
-      provider,
-      role: selectedRole,
-      email,
-      fullName: email.split("@")[0],
+    setFeedback({
+      type: "success",
+      text: `Opening ${provider} authentication...`,
     });
-
-    if (providerUrl) {
-      setFeedback({ type: "success", text: `Opening ${provider} authentication...` });
-      window.location.href = providerUrl;
-      return;
-    }
-
-    setIsLoggingIn(true);
-    setFeedback({ type: "success", text: `Syncing ${provider} profile...` });
     try {
-      const { user, mode } = await authenticateAcademicProvider({
-        provider,
-        role: selectedRole,
-        email,
-        fullName: email.split("@")[0],
-      });
-      const role = normalizeRoleForUi(user.role || selectedRole);
-      finishLogin(
-        role,
-        roleDashboardRoutes[role] || "/researcher-dashboard",
-        `${provider} ${mode === "local" ? "local profile" : "profile"} ready. Loading workspace...`,
-      );
+      await beginAcademicOAuth(provider, selectedRole);
     } catch (error) {
-      setIsLoggingIn(false);
+      setSelectedAcademicProvider("");
       setFeedback({ type: "error", text: error.message });
     }
   };
@@ -5416,11 +5781,11 @@ function LoginPage() {
 
         <form className="login-card" onSubmit={handleLogin}>
           <div className="login-card-bar"></div>
-          <h1>Welcome back</h1>
-          <p>Please enter your credentials to access your dashboard.</p>
+          <h1>{t("login.welcome")}</h1>
+          <p>{t("login.subtitle")}</p>
 
           <label className="field login-field">
-            <span>Email Address</span>
+            <span>{t("login.email")}</span>
             <span className="input-with-icon">
               <span className="icon-container">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -5467,65 +5832,78 @@ function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={handleLoginEmailChange}
+                onPaste={handleLoginEmailPaste}
+                onFocus={handleLoginEmailFocus}
                 autoComplete="email"
+                list={
+                  registrationHint?.email
+                    ? "registered-login-email-hints"
+                    : undefined
+                }
               />
+              {registrationHint?.email ? (
+                <datalist id="registered-login-email-hints">
+                  <option
+                    value={registrationHint.email}
+                    label="New account from registration"
+                  />
+                </datalist>
+              ) : null}
             </span>
           </label>
 
+          {loginOptions.isAdministrator ? (
+            <div className="login-admin-detected" role="status">
+              Administrator account detected. Sign in to open the Admin Dashboard.
+            </div>
+          ) : (
           <div className="field login-field role-field">
-            <span>Academic Role</span>
             <div
               className="role-picker"
               role="radiogroup"
-              aria-label="Academic Role"
+              aria-label={t("login.role")}
             >
-              {["Researcher", "Lecturer", "Student", "Administrator"].map(
-                (role) => (
-                  <button
-                    key={role}
-                    type="button"
-                    className={`role-choice ${
-                      selectedRole === role ? "active" : ""
-                    }`}
-                    role="radio"
-                    aria-checked={selectedRole === role}
-                    onClick={() => handleRoleSelect(role)}
-                    disabled={isLoggingIn}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      {role === "Student" ? (
-                        <>
-                          <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
-                          <path d="M7 12v3.2c0 1.8 2 3 5 3s5-1.2 5-3V12" />
-                        </>
-                      ) : role === "Lecturer" ? (
-                        <>
-                          <path d="M4 5.5h16v11H4z" />
-                          <path d="M8 20h8" />
-                          <path d="M9 10h6M9 13h4" />
-                        </>
-                      ) : role === "Administrator" ? (
-                        <>
-                          <path d="M12 3.5 19 7v5c0 4-2.8 7-7 8.5C7.8 19 5 16 5 12V7l7-3.5Z" />
-                          <path d="M9.4 12.2 11.2 14l3.6-4" />
-                        </>
-                      ) : (
-                        <>
-                          <path d="M5 19V5l7 3 7-3v14l-7-3-7 3Z" />
-                          <path d="M12 8v8" />
-                        </>
-                      )}
-                    </svg>
-                    <span>{role}</span>
-                  </button>
-                ),
-              )}
+              {loginOptions.allowedRoles.map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  className={`role-choice ${
+                    selectedRole === role ? "active" : ""
+                  }`}
+                  role="radio"
+                  aria-checked={selectedRole === role}
+                  onClick={() => handleRoleSelect(role)}
+                  disabled={isLoggingIn}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    {role === "Student" ? (
+                      <>
+                        <path d="M3 9.5 12 5l9 4.5-9 4.5-9-4.5Z" />
+                        <path d="M7 12v3.2c0 1.8 2 3 5 3s5-1.2 5-3V12" />
+                      </>
+                    ) : role === "Lecturer" ? (
+                      <>
+                        <path d="M4 5.5h16v11H4z" />
+                        <path d="M8 20h8" />
+                        <path d="M9 10h6M9 13h4" />
+                      </>
+                    ) : (
+                      <>
+                        <path d="M5 19V5l7 3 7-3v14l-7-3-7 3Z" />
+                        <path d="M12 8v8" />
+                      </>
+                    )}
+                  </svg>
+                  <span>{t(`roles.${role.toLowerCase()}`)}</span>
+                </button>
+              ))}
             </div>
           </div>
+          )}
 
           <label className="field login-field">
-            <span>Password</span>
+            <span>{t("login.password")}</span>
             <span className="input-with-icon password-input">
               <span className="icon-container">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -5685,10 +6063,12 @@ function LoginPage() {
                 checked={rememberMe}
                 onChange={(event) => setRememberMe(event.target.checked)}
               />{" "}
-              Remember me
+              {t("login.rememberMe")}
             </label>
             <a href="/" onClick={handleForgotPassword}>
-              Forgot password?
+              {isSendingResetCode
+                ? "Sending reset code..."
+                : t("login.forgotPassword")}
             </a>
           </div>
 
@@ -5701,6 +6081,58 @@ function LoginPage() {
             </p>
           )}
 
+          {isResetMode ? (
+            <div className="password-reset-panel" aria-label="Reset password">
+              <label className="field login-field">
+                <span>Reset code</span>
+                <span className="input-with-icon">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={resetToken}
+                    onChange={(event) => setResetToken(event.target.value)}
+                    placeholder="6-digit code"
+                  />
+                </span>
+              </label>
+              <label className="field login-field">
+                <span>New password</span>
+                <span className="input-with-icon">
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    placeholder="Enter new password"
+                  />
+                </span>
+              </label>
+              <label className="field login-field">
+                <span>Confirm new password</span>
+                <span className="input-with-icon">
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={confirmNewPassword}
+                    onChange={(event) =>
+                      setConfirmNewPassword(event.target.value)
+                    }
+                    placeholder="Confirm new password"
+                  />
+                </span>
+              </label>
+              <button
+                className="password-reset-submit"
+                type="button"
+                disabled={isResettingPassword}
+                onClick={handleResetPassword}
+              >
+                {isResettingPassword ? "Resetting..." : "Reset Password"}
+              </button>
+            </div>
+          ) : null}
+
           <button className="login-submit" type="submit" disabled={isLoggingIn}>
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4.5 17.5 9 13l3.2 2.6 6.3-7.1" />
@@ -5708,11 +6140,13 @@ function LoginPage() {
               <path d="M5 20h14" />
               <path d="M7 15v3M12 12v6M17 10v8" />
             </svg>
-            <span>{isLoggingIn ? "Signing In..." : "Sign In"}</span>
+            <span>
+              {isLoggingIn ? t("login.signingIn") : t("login.signIn")}
+            </span>
           </button>
 
           <div className="divider">
-            <span>OR</span>
+            <span>{t("login.or")}</span>
           </div>
 
           <div className="login-providers">
@@ -5733,7 +6167,9 @@ function LoginPage() {
                 <path d="M6.41 13.92A6.01 6.01 0 0 1 6.09 12c0-.66.12-1.31.32-1.92V7.49H3.07A9.99 9.99 0 0 0 2 12c0 1.61.39 3.13 1.07 4.51l3.34-2.59Z" />
                 <path d="M12 5.97c1.47 0 2.78.5 3.82 1.49l2.87-2.87C16.95 2.98 14.7 2 12 2a9.99 9.99 0 0 0-8.93 5.49l3.34 2.59C7.2 7.72 9.4 5.97 12 5.97Z" />
               </svg>
-              {isGoogleLoading ? "Connecting Google..." : "Continue with Google"}
+              {isGoogleLoading
+                ? "Connecting Google..."
+                : t("login.continueWithGoogle")}
             </button>
             <button
               className="orcid-login-button"
@@ -5746,7 +6182,7 @@ function LoginPage() {
               </span>
               {selectedAcademicProvider === "ORCID"
                 ? "ORCID selected"
-                : "Continue with ORCID"}
+                : t("login.continueWithORCID")}
             </button>
             <button
               className="institution-login-button"
@@ -5763,17 +6199,32 @@ function LoginPage() {
               </svg>
               {selectedAcademicProvider === "Institution SSO"
                 ? "Institution SSO selected"
-                : "Continue with Institution SSO"}
+                : t("login.continueWithSSO")}
             </button>
           </div>
         </form>
 
         <p className="login-switch">
-          Don't have an account?{" "}
+          {t("login.noAccount")}{" "}
           <a href="/register" onClick={navTo("/register")}>
-            Sign up
+            {t("login.signUp")}
           </a>
         </p>
+
+        <div className="login-help">
+          <p>{t("login.needHelp")}</p>
+          <div className="login-help-links">
+            <a href="/help/login" onClick={navTo("/help/login")}>
+              {t("login.howToLogin")}
+            </a>
+            <a href="/help/access" onClick={navTo("/help/access")}>
+              {t("login.cantAccess")}
+            </a>
+            <a href="/contact-support" onClick={navTo("/contact-support")}>
+              {t("login.contactSupport")}
+            </a>
+          </div>
+        </div>
       </section>
     </main>
   );
@@ -6139,19 +6590,13 @@ const researcherNavGroups = [
   },
   {
     heading: "Lecturer",
-    items: [
-      {
-        label: "Sync Management",
-        route: "/researcher-sync-management",
-        icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
-      },
-    ],
+    items: [],
   },
 ];
 
 const researcherStats = [
   {
-    label: "Total Publications",
+    label: "admin.totalPublications",
     value: "124,592",
     note: "+2.4% vs last month",
     tone: "positive",
@@ -6355,7 +6800,7 @@ const reportHistoryRows = [
 
 const yearMetricCards = [
   {
-    label: "Total Publications",
+    label: "admin.totalPublications",
     value: "12,450",
     note: "+8.4%",
     icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 11h6M9 14h5M9 17h3",
@@ -6853,7 +7298,9 @@ const graph3DLinks = [
 
 const getGraphNodeRelevance = (node) => {
   if (!node) return "0%";
-  const explicitScore = Number(node.similarity ?? node.paper?.similarityPercent);
+  const explicitScore = Number(
+    node.similarity ?? node.paper?.similarityPercent,
+  );
   if (Number.isFinite(explicitScore) && explicitScore > 0) {
     return `${Math.max(1, Math.min(99.9, explicitScore)).toFixed(1)}%`;
   }
@@ -6873,10 +7320,11 @@ const getGraphNodeRelevance = (node) => {
 };
 
 const getGraphPaperForNode = (node) => {
-  if (node?.published && node.paper) {
+  if (node?.paper) {
     const authors = Array.isArray(node.paper.authors)
       ? node.paper.authors.join(", ")
       : node.paper.authors || "Unknown authors";
+    const sourceLinks = buildExternalSourceLinks(node.paper);
     return {
       id: node.paper.id,
       title: node.paper.title,
@@ -6886,7 +7334,10 @@ const getGraphPaperForNode = (node) => {
       similarity: getGraphNodeRelevance(node),
       citations: formatCount(node.paper.citationCount || 0),
       abstract: node.paper.abstract || "No abstract provided.",
-      accessPoints: ["Open published detail", "Inspect related publications"],
+      sourceUrl: node.paper.sourceUrl,
+      sourceApi: node.paper.sourceApi,
+      doi: node.paper.doi || node.paper.DOI,
+      accessPoints: sourceLinks,
     };
   }
 
@@ -6913,6 +7364,55 @@ const getGraphPaperForNode = (node) => {
   };
 };
 
+const createApiBackedGraphNodes = (publications = [], accuracyLimit = 100) => {
+  const realPublications = publications.filter((paper) => paper?.title);
+  if (!realPublications.length) {
+    return [];
+  }
+
+  return graph3DNodes.slice(0, realPublications.length).map((layoutNode, index) => {
+    const paper = realPublications[index];
+    const title = paper.title || layoutNode.label;
+    const year = paper.year || "Published";
+    const firstAuthor = Array.isArray(paper.authors)
+      ? paper.authors[0]
+      : String(paper.authors || "").split(",")[0];
+    const authorLabel = String(firstAuthor || "")
+      .trim()
+      .split(/\s+/)
+      .slice(-1)[0]
+      ?.replace(/[^\p{L}\p{N}'-]/gu, "");
+    const fallbackLabel = String(layoutNode.label || title).split(",")[0];
+    const shortLabel = `${authorLabel || fallbackLabel}, ${year}`;
+    return {
+      ...layoutNode,
+      label: shortLabel,
+      color: layoutNode.id === "deepfruits" ? "#c3d8d7" : layoutNode.color,
+      similarity: getPublicationDisplaySimilarity(
+        paper,
+        accuracyLimit,
+        Number(getGraphNodeRelevance(layoutNode).replace("%", "")),
+      ),
+      published: true,
+      paper: {
+        ...paper,
+        id: paper.id,
+        title,
+        year,
+        journalName: paper.journalName || "ScholarTrend Indexed",
+        citationCount: paper.citationCount || 0,
+        abstract: paper.abstract || "No abstract provided.",
+        authors: Array.isArray(paper.authors) ? paper.authors : [],
+        similarityPercent: getPublicationDisplaySimilarity(
+          paper,
+          accuracyLimit,
+          Number(getGraphNodeRelevance(layoutNode).replace("%", "")),
+        ),
+      },
+    };
+  });
+};
+
 function MiniIcon({ path }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -6922,169 +7422,219 @@ function MiniIcon({ path }) {
 }
 
 function StudentSidebar({ activeRoute }) {
+  const { t } = useTranslation();
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
   const session = getCurrentAccountPlan();
   const displayName = session.name || session.email || "Student Account";
   const displayRole = session.role || "Student";
   const avatarUrl =
     session.picture ||
     "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80";
+  const closeMobile = React.useCallback(() => setMobileOpen(false), []);
+  const handleNavigate = (route) => (event) => {
+    closeMobile();
+    navTo(route)(event);
+  };
+
+  React.useEffect(() => {
+    const openSidebar = () => setMobileOpen(true);
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") closeMobile();
+    };
+
+    window.addEventListener("scholartrend:student-sidebar-open", openSidebar);
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      window.removeEventListener(
+        "scholartrend:student-sidebar-open",
+        openSidebar,
+      );
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [closeMobile]);
+
+  React.useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileOpen]);
 
   return (
     <>
-    <aside className="student-sidebar">
-      <div
-        className="student-logo"
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "12px",
-          padding: "20px 24px",
-          borderBottom: "1px solid rgba(226, 232, 240, 0.14)",
-        }}
-      >
-        <span
-          className="student-logo-mark"
+      <button
+        type="button"
+        className={`student-sidebar-backdrop ${mobileOpen ? "open" : ""}`}
+        aria-label="Close student navigation"
+        onClick={closeMobile}
+      />
+      <aside className={`student-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
+        <div
+          className="student-logo"
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: "36px",
-            height: "36px",
-            background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
-            borderRadius: "8px",
-            padding: "8px",
-            boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
-            flexShrink: 0,
-            marginTop: 0,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "12px",
+            padding: "20px 24px",
+            borderBottom: "1px solid rgba(226, 232, 240, 0.14)",
+            position: "relative",
           }}
         >
-          <svg
-            viewBox="0 0 32 32"
-            width="100%"
-            height="100%"
-            aria-hidden="true"
-          >
-            <path
-              d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
-              fill="white"
-              opacity="0.95"
-            />
-            <path
-              d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
-              fill="white"
-              opacity="0.75"
-            />
-            <path
-              d="M16 4 L10 8 L16 10 L22 8 Z"
-              fill="rgba(255, 255, 255, 0.95)"
-            />
-            <path
-              d="M16 4 L16 28"
-              stroke="rgba(2, 132, 199, 0.4)"
-              strokeWidth="1.5"
-            />
-            <circle cx="16" cy="28" r="1.5" fill="white" />
-          </svg>
-        </span>
-        <div
-          className="student-logo-copy"
-          style={{ display: "flex", flexDirection: "column", gap: "2px" }}
-        >
-          <a
-            href="/"
-            onClick={navTo("/")}
-            style={{
-              fontSize: "12px",
-              fontWeight: 800,
-              color: "#cbd5e1",
-              textDecoration: "none",
-              display: "flex",
-              alignItems: "center",
-              gap: "3px",
-              letterSpacing: "0.08em",
-              lineHeight: 1,
-              textTransform: "uppercase",
-            }}
-          >
-            <span style={{ display: "inline", marginTop: 0 }}>Scholar</span>
-            <span style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}>
-              Trend
-            </span>
-          </a>
           <span
+            className="student-logo-mark"
             style={{
-              display: "block",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "36px",
+              height: "36px",
+              background: "linear-gradient(135deg, #06b6d4 0%, #0284c7 100%)",
+              borderRadius: "8px",
+              padding: "8px",
+              boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
+              flexShrink: 0,
               marginTop: 0,
-              maxWidth: "116px",
-              fontSize: "11px",
-              color: "#7f8aa0",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              lineHeight: 1.2,
-              textTransform: "uppercase",
             }}
           >
-            Analytical
-            <br />
-            Intelligence
+            <svg
+              viewBox="0 0 32 32"
+              width="100%"
+              height="100%"
+              aria-hidden="true"
+            >
+              <path
+                d="M16 4 L10 8 L10 16 L16 20 L16 12 L16 4 Z"
+                fill="white"
+                opacity="0.95"
+              />
+              <path
+                d="M16 4 L22 8 L22 16 L16 20 L16 12 L16 4 Z"
+                fill="white"
+                opacity="0.75"
+              />
+              <path
+                d="M16 4 L10 8 L16 10 L22 8 Z"
+                fill="rgba(255, 255, 255, 0.95)"
+              />
+              <path
+                d="M16 4 L16 28"
+                stroke="rgba(2, 132, 199, 0.4)"
+                strokeWidth="1.5"
+              />
+              <circle cx="16" cy="28" r="1.5" fill="white" />
+            </svg>
           </span>
-        </div>
-      </div>
-
-      <nav className="student-nav" aria-label="Student dashboard navigation">
-        {sidebarItems.map((item) => (
-          <a
-            className={item.route === activeRoute ? "active" : ""}
-            href={item.route}
-            onClick={navTo(item.route)}
-            key={item.label}
+          <div
+            className="student-logo-copy"
+            style={{ display: "flex", flexDirection: "column", gap: "2px" }}
           >
-            <MiniIcon path={item.icon} />
-            <span>{item.label}</span>
-          </a>
-        ))}
-      </nav>
+            <a
+              href="/"
+              onClick={handleNavigate("/")}
+              style={{
+                fontSize: "12px",
+                fontWeight: 800,
+                color: "#cbd5e1",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: "3px",
+                letterSpacing: "0.08em",
+                lineHeight: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ display: "inline", marginTop: 0 }}>Scholar</span>
+              <span
+                style={{ color: "#06b6d4", display: "inline", marginTop: 0 }}
+              >
+                Trend
+              </span>
+            </a>
+            <span
+              style={{
+                display: "block",
+                marginTop: 0,
+                maxWidth: "116px",
+                fontSize: "11px",
+                color: "#7f8aa0",
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                lineHeight: 1.2,
+                textTransform: "uppercase",
+              }}
+            >
+              Analytical
+              <br />
+              Intelligence
+            </span>
+          </div>
+          <button
+            type="button"
+            className="student-sidebar-close"
+            aria-label="Close navigation"
+            onClick={closeMobile}
+          >
+            <MiniIcon path="M6 6l12 12M18 6 6 18" />
+          </button>
+        </div>
 
-      <div className="student-sidebar-footer">
-        <button
-          type="button"
-          className="student-upgrade-button"
-          onClick={() => setUpgradeOpen(true)}
-        >
-          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-          <span>Upgrade to Pro</span>
-        </button>
-        <a
-          className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`}
-          href="/student-profile"
-          onClick={navTo("/student-profile")}
-        >
-          <div className="sidebar-avatar">
-            <img
-              src={avatarUrl}
-              alt={`${displayName} avatar`}
-            />
-          </div>
-          <div className="sidebar-profile-info">
-            <strong>{displayName}</strong>
-            <span>{displayRole}</span>
-          </div>
-        </a>
-        <button
-          type="button"
-          className="student-logout-button"
-          onClick={handleLogout}
-        >
-          <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
-          <span>Logout</span>
-        </button>
-      </div>
-    </aside>
-    <UpgradeProModal
-      open={upgradeOpen}
-      onClose={() => setUpgradeOpen(false)}
-    />
+        <nav className="student-nav" aria-label="Student dashboard navigation">
+          {sidebarItems.map((item) => (
+            <a
+              className={item.route === activeRoute ? "active" : ""}
+              href={item.route}
+              onClick={handleNavigate(item.route)}
+              key={item.label}
+            >
+              <MiniIcon path={item.icon} />
+              <span>{t(item.label)}</span>
+            </a>
+          ))}
+        </nav>
+
+        <div className="student-sidebar-footer">
+          {!session.isPro ? (
+            <button
+              type="button"
+              className="student-upgrade-button"
+              onClick={() => setUpgradeOpen(true)}
+            >
+              <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
+              <span>Upgrade to Pro</span>
+            </button>
+          ) : null}
+          <a
+            className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`}
+            href="/student-profile"
+            onClick={handleNavigate("/student-profile")}
+          >
+            <div className="sidebar-avatar">
+              <img src={avatarUrl} alt={`${displayName} avatar`} />
+            </div>
+            <div className="sidebar-profile-info">
+              <strong>{displayName}</strong>
+              <span>{displayRole}</span>
+            </div>
+          </a>
+          <button
+            type="button"
+            className="student-logout-button"
+            onClick={handleLogout}
+          >
+            <MiniIcon path="M10 6H6.5A1.5 1.5 0 0 0 5 7.5v9A1.5 1.5 0 0 0 6.5 18H10M14 8l4 4-4 4M18 12H9" />
+            <span>Logout</span>
+          </button>
+        </div>
+      </aside>
+      <UpgradeProModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+      />
     </>
   );
 }
@@ -7098,17 +7648,35 @@ function StudentTopbar({
 }) {
   const isProfileUtility = variant === "profile";
   const isUtility = variant === "utility" || isProfileUtility;
+  const [queryValue, setQueryValue] = React.useState(searchValue);
+  React.useEffect(() => {
+    setQueryValue(searchValue || "");
+  }, [searchValue]);
+
   const handleSearchSubmit = (event) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const query = String(formData.get("query") || "").trim();
-    goToRoute(query ? `/student-search?q=${encodeURIComponent(query)}` : "/student-search");
+    const query = queryValue.trim();
+    goToRoute(
+      query
+        ? `/student-search?q=${encodeURIComponent(query)}`
+        : "/student-search",
+    );
   };
 
   return (
     <header
       className={`student-topbar ${isUtility ? "utility" : ""} ${isProfileUtility ? "profile-utility" : ""}`}
     >
+      <button
+        type="button"
+        className="student-menu-button"
+        aria-label="Toggle navigation"
+        onClick={() =>
+          window.dispatchEvent(new Event("scholartrend:student-sidebar-open"))
+        }
+      >
+        <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
+      </button>
       {crumb ? (
         typeof crumb === "string" ? (
           <span className="student-topbar-title">{crumb}</span>
@@ -7126,7 +7694,8 @@ function StudentTopbar({
             type="search"
             name="query"
             placeholder={searchPlaceholder}
-            defaultValue={searchValue}
+            value={queryValue}
+            onChange={(event) => setQueryValue(event.target.value)}
           />
         </form>
         <div className="topbar-icon-group">
@@ -7174,23 +7743,31 @@ function StudentDashboard() {
     getLocalBookmarks(),
   );
   const [dashboardQuery, setDashboardQuery] = React.useState("");
-  const [dashboardBookmarkMessage, setDashboardBookmarkMessage] = React.useState("");
-  const { data: publicationData } = useApiResource(
-    "/api/publications/search?page=1&pageSize=5",
-    publications,
-    { select: (payload) => unwrapList(payload).map(mapPublicationForCard) },
+  const session = getCurrentAccountPlan();
+  const displayName = getSessionDisplayName(session, "Student");
+  const displayRole = normalizeRoleForUi(session.role || "Student");
+  const hasBackendAuth = Boolean(getStoredAuth().accessToken);
+  const { data: dashboardSuggestions } = useSearchSuggestions(
+    dashboardQuery,
+    6,
   );
+  const { data: publicationData } = useApiResource(null, publications, {
+    select: (payload) => unwrapList(payload).map(mapPublicationForCard),
+  });
   const { data: recommendedData } = useApiResource(
-    "/api/recommendations?topN=8",
+    hasBackendAuth ? "/api/recommendations?topN=8" : null,
     [],
-    { auth: true, select: (payload) => unwrapList(payload).map(mapPublicationForCard) },
+    {
+      auth: true,
+      select: (payload) => unwrapList(payload).map(mapPublicationForCard),
+    },
   );
   const publishedPublicationCards = React.useMemo(
     () => getPublishedPublications().map(mapPublishedPublicationForCard),
     [],
   );
   const { data: keywordData } = useApiResource(
-    "/api/trends/top-keywords?count=3",
+    null,
     ["Machine Learning", "Climate Change Policy", "CRISPR Applications"],
     {
       select: (payload) =>
@@ -7200,7 +7777,7 @@ function StudentDashboard() {
           .slice(0, 3),
     },
   );
-  const { data: statsData } = useApiResource("/api/dashboard/stats", null);
+  const { data: statsData } = useApiResource(null, null);
   const studentStats = React.useMemo(() => {
     if (!statsData) return statCards;
     return statCards.map((card) => {
@@ -7230,7 +7807,12 @@ function StudentDashboard() {
           ...paper,
           saved: hasLocalBookmark(paper, localBookmarks),
         })),
-    [publicationData, publishedPublicationCards, recommendedData, localBookmarks],
+    [
+      publicationData,
+      publishedPublicationCards,
+      recommendedData,
+      localBookmarks,
+    ],
   );
 
   const handleTogglePublicationBookmark = async (paper) => {
@@ -7239,11 +7821,6 @@ function StudentDashboard() {
       ? upsertLocalBookmark(paper)
       : removeLocalBookmark(paper);
     setLocalBookmarkState(nextLocalBookmarks);
-    setDashboardBookmarkMessage(
-      nextSaved
-        ? `"${paper.title}" saved. Open Bookmarks to view it again.`
-        : `"${paper.title}" removed from Bookmarks.`,
-    );
 
     if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
       apiFetch(`/api/bookmarks/${paper.id}`, {
@@ -7257,7 +7834,9 @@ function StudentDashboard() {
     event.preventDefault();
     const params = new URLSearchParams();
     if (dashboardQuery.trim()) params.set("q", dashboardQuery.trim());
-    goToRoute(`/student-search${params.toString() ? `?${params.toString()}` : ""}`);
+    goToRoute(
+      `/student-search${params.toString() ? `?${params.toString()}` : ""}`,
+    );
   };
 
   return (
@@ -7269,9 +7848,9 @@ function StudentDashboard() {
         <div className="student-content">
           <div className="student-welcome-row">
             <div>
-              <h1>Welcome back, Alex</h1>
+              <h1>Welcome back, {displayName}</h1>
               <p>
-                <span>Student</span> University of Applied Sciences
+                <span>{displayRole}</span> University of Applied Sciences
               </p>
             </div>
             <button
@@ -7310,7 +7889,13 @@ function StudentDashboard() {
                 value={dashboardQuery}
                 onChange={(event) => setDashboardQuery(event.target.value)}
                 placeholder="Search by title, author, DOI, or keyword..."
+                list="student-dashboard-search-suggestions"
               />
+              <datalist id="student-dashboard-search-suggestions">
+                {dashboardSuggestions.map((suggestion) => (
+                  <option value={suggestion} key={suggestion} />
+                ))}
+              </datalist>
               <button type="submit">Search</button>
             </form>
             <div className="trending-keywords">
@@ -7318,7 +7903,9 @@ function StudentDashboard() {
               {keywordData.map((keyword) => (
                 <a
                   href={`/student-search?q=${encodeURIComponent(keyword)}`}
-                  onClick={navTo(`/student-search?q=${encodeURIComponent(keyword)}`)}
+                  onClick={navTo(
+                    `/student-search?q=${encodeURIComponent(keyword)}`,
+                  )}
                   key={keyword}
                 >
                   {keyword}
@@ -7335,22 +7922,13 @@ function StudentDashboard() {
                   View all -&gt;
                 </a>
               </div>
-              {dashboardBookmarkMessage ? (
-                <p className="bookmark-save-message" role="status">
-                  {dashboardBookmarkMessage}{" "}
-                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
-                    View Bookmarks
-                  </a>
-                </p>
-              ) : null}
               {studentPublications.map((paper) => (
                 <article className="publication-card" key={paper.title}>
                   <button
                     type="button"
                     aria-label={
-                      paper.saved ? "Remove from Bookmarks" : "Save to Bookmarks"
+                      paper.saved ? "Remove bookmark" : "Bookmark publication"
                     }
-                    aria-pressed={paper.saved}
                     className={`bookmark-button ${paper.saved ? "saved" : ""}`}
                     onClick={() => handleTogglePublicationBookmark(paper)}
                   >
@@ -7403,7 +7981,9 @@ function ResearcherSidebar({
   onToggleCollapse,
   onUpgrade,
   onSettings,
+  showUpgrade = true,
 }) {
+  const { t } = useTranslation();
   return (
     <aside
       className={`researcher-sidebar ${collapsed ? "collapsed" : ""} ${mobileOpen ? "mobile-open" : ""}`}
@@ -7526,11 +8106,7 @@ function ResearcherSidebar({
           onClick={onToggleCollapse}
         >
           <MiniIcon
-            path={
-              collapsed
-                ? "M9 5l7 7-7 7M4 5v14"
-                : "M15 5l-7 7 7 7M20 5v14"
-            }
+            path={collapsed ? "M9 5l7 7-7 7M4 5v14" : "M15 5l-7 7 7 7M20 5v14"}
           />
         </button>
       </div>
@@ -7566,7 +8142,7 @@ function ResearcherSidebar({
                   key={`${group.heading || "primary"}-${item.label}`}
                 >
                   <MiniIcon path={item.icon} />
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                 </a>
               );
             })}
@@ -7575,14 +8151,16 @@ function ResearcherSidebar({
       </nav>
 
       <div className="researcher-sidebar-footer">
-        <button
-          type="button"
-          className="researcher-upgrade"
-          onClick={onUpgrade}
-        >
-          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-          <span>Upgrade to Pro</span>
-        </button>
+        {showUpgrade ? (
+          <button
+            type="button"
+            className="researcher-upgrade"
+            onClick={onUpgrade}
+          >
+            <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
+            <span>Upgrade to Pro</span>
+          </button>
+        ) : null}
         <div className="researcher-footer-actions">
           <a
             href={getAcademicPath("/researcher-profile", role)}
@@ -7618,24 +8196,49 @@ const proPlanFeatures = [
   "Full report export suite",
 ];
 
+const upgradeRoleDetails = {
+  Researcher: {
+    title: "Researcher Pro",
+    description:
+      "For deep research work: citation intelligence, publication tracking, trend reports, and stronger search accuracy.",
+  },
+  Lecturer: {
+    title: "Lecturer Pro",
+    description:
+      "For teaching workflows: follow discipline trends, save papers, export reports, and prepare class-ready insights.",
+  },
+};
+
+const PAYOS_CHECKOUT_TIMEOUT_MS = 15000;
+
 function UpgradeProModal({ open, onClose }) {
   const [billingCycle, setBillingCycle] = React.useState("yearly");
+  const [targetRole, setTargetRole] = React.useState("Researcher");
   const [upgraded, setUpgraded] = React.useState(false);
   const [paymentStatus, setPaymentStatus] = React.useState("idle");
   const [paymentMessage, setPaymentMessage] = React.useState("");
   const planSettings = getProPlanSettings();
   const accountPlan = getCurrentAccountPlan();
-  const freeAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, false);
-  const proAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, true);
+  const normalizedTargetRole = upgradeRoleOptions.includes(targetRole)
+    ? targetRole
+    : "Researcher";
   const currentAccuracy = getSearchAccuracyForAccount(
     accountPlan.role,
     accountPlan.isPro,
   );
-  const proAccuracy = getSearchAccuracyForAccount(accountPlan.role, true);
+  const proAccuracy = getSearchAccuracyForAccount(normalizedTargetRole, true);
 
   React.useEffect(() => {
     if (!open) return undefined;
 
+    setTargetRole(
+      upgradeRoleOptions.includes(accountPlan.role)
+        ? accountPlan.role
+        : "Researcher",
+    );
+    setUpgraded(false);
+    setPaymentStatus("idle");
+    setPaymentMessage("");
     syncPlanPolicyFromBackend().catch(() => {});
     const handleKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -7653,25 +8256,48 @@ function UpgradeProModal({ open, onClose }) {
   if (!open) return null;
 
   const isYearly = billingCycle === "yearly";
+  const finishUpgrade = (user) => {
+    const normalizedUser = {
+      ...(user || {}),
+      role: normalizeRoleForUi(user?.role || normalizedTargetRole),
+      isPro: true,
+      plan: "Pro",
+    };
+    persistSession(normalizedUser);
+    upsertAdminManagedUserFromAccount(normalizedUser);
+    setUpgraded(true);
+    setPaymentStatus("idle");
+    setPaymentMessage("");
+    window.setTimeout(() => {
+      goToRoute(
+        roleDashboardRoutes[normalizeRoleForUi(normalizedUser.role)] ||
+          "/student-dashboard",
+      );
+    }, 650);
+  };
+
   const handleUpgrade = async () => {
     setPaymentStatus("loading");
     setPaymentMessage("");
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(
+      () => controller.abort(),
+      PAYOS_CHECKOUT_TIMEOUT_MS,
+    );
 
     try {
-      const payload = await apiFetch("/api/payments/payos/create", {
+      const payload = await authServerFetch("/api/payments/payos/create", {
         method: "POST",
-        auth: true,
+        signal: controller.signal,
         body: {
           billingCycle,
+          targetRole: normalizedTargetRole,
           user: getStoredSession(),
         },
       });
 
       if (payload.alreadyPro && payload.user) {
-        persistSession(payload.user);
-        setUpgraded(true);
-        setPaymentStatus("idle");
-        setPaymentMessage("");
+        finishUpgrade(payload.user);
         return;
       }
 
@@ -7682,8 +8308,45 @@ function UpgradeProModal({ open, onClose }) {
         );
       }
 
+      rememberPendingPayosUpgrade(payload.orderCode, normalizedTargetRole);
       setPaymentStatus("redirecting");
       window.location.assign(payload.checkoutUrl);
+    } catch (error) {
+      setPaymentStatus("error");
+      setPaymentMessage(
+        error.name === "AbortError"
+          ? "PayOS is taking too long to create the checkout link. Please try again in a moment."
+          : error.message,
+      );
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  const handleTestUpgrade = async () => {
+    setPaymentStatus("testing");
+    setPaymentMessage("");
+
+    try {
+      const payload = await authServerFetch(
+        "/api/payments/payos/test-activate",
+        {
+          method: "POST",
+          body: {
+            billingCycle,
+            targetRole: normalizedTargetRole,
+            user: getStoredSession(),
+          },
+        },
+      );
+
+      if (!payload.user) {
+        throw new Error(
+          payload.error || "Test upgrade did not return an activated account.",
+        );
+      }
+
+      finishUpgrade(payload.user);
     } catch (error) {
       setPaymentStatus("error");
       setPaymentMessage(error.message);
@@ -7718,19 +8381,38 @@ function UpgradeProModal({ open, onClose }) {
           <span>ScholarTrend Pro</span>
           <h2 id="upgrade-modal-title">Upgrade to Pro</h2>
           <p>
-            Unlock deeper analytical intelligence for your tracked disciplines.
+            Choose the academic workspace you want, then complete PayOS
+            checkout.
           </p>
         </div>
 
         <div className="upgrade-accuracy-card">
-          <span>{accountPlan.role} search accuracy</span>
+          <span>
+            {accountPlan.role} {accountPlan.plan} to {normalizedTargetRole} Pro
+          </span>
           <strong>
             {currentAccuracy}% <i aria-hidden="true">-&gt;</i> {proAccuracy}%
           </strong>
           <p>
-            {accountPlan.plan} account now. PayOS upgrade activates Pro and lets
-            admin manage this account plan.
+            New accounts start as Student. This package upgrades your account to
+            a paid {normalizedTargetRole} workspace.
           </p>
+        </div>
+
+        <div className="upgrade-role-picker" aria-label="Upgrade target role">
+          <span>Upgrade role</span>
+          <div>
+            {upgradeRoleOptions.map((role) => (
+              <button
+                key={role}
+                type="button"
+                className={normalizedTargetRole === role ? "active" : ""}
+                onClick={() => setTargetRole(role)}
+              >
+                {role}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="upgrade-billing-toggle" aria-label="Billing cycle">
@@ -7757,6 +8439,30 @@ function UpgradeProModal({ open, onClose }) {
           <span>{isYearly ? "/ year" : "/ month"}</span>
         </div>
 
+        <div
+          className="upgrade-plan-explainer"
+          aria-label="Pro package explanation"
+        >
+          {upgradeRoleOptions.map((role) => {
+            const detail = upgradeRoleDetails[role];
+            const accuracy = getSearchAccuracyForAccount(role, true);
+            const selected = normalizedTargetRole === role;
+
+            return (
+              <button
+                key={role}
+                type="button"
+                className={`upgrade-plan-card ${selected ? "active" : ""}`}
+                onClick={() => setTargetRole(role)}
+              >
+                <span>{detail.title}</span>
+                <strong>{accuracy}% search accuracy</strong>
+                <p>{detail.description}</p>
+              </button>
+            );
+          })}
+        </div>
+
         <div className="upgrade-feature-list">
           {proPlanFeatures.map((feature) => (
             <div key={feature}>
@@ -7770,15 +8476,34 @@ function UpgradeProModal({ open, onClose }) {
           type="button"
           className="upgrade-primary-action"
           onClick={handleUpgrade}
-          disabled={paymentStatus === "loading" || paymentStatus === "redirecting"}
+          disabled={
+            paymentStatus === "loading" ||
+            paymentStatus === "redirecting" ||
+            paymentStatus === "testing"
+          }
         >
           {paymentStatus === "loading"
             ? "Creating PayOS Link..."
             : paymentStatus === "redirecting"
               ? "Opening PayOS..."
-              : upgraded
-                ? "Pro Activated"
-                : "Upgrade Now"}
+              : paymentStatus === "testing"
+                ? "Activating Test Pro..."
+                : upgraded
+                  ? `${normalizedTargetRole} Pro Activated`
+                  : `Upgrade to ${normalizedTargetRole}`}
+        </button>
+
+        <button
+          type="button"
+          className="upgrade-test-action"
+          onClick={handleTestUpgrade}
+          disabled={
+            paymentStatus === "loading" ||
+            paymentStatus === "redirecting" ||
+            paymentStatus === "testing"
+          }
+        >
+          Test activate without payment
         </button>
 
         {paymentMessage ? (
@@ -7787,7 +8512,7 @@ function UpgradeProModal({ open, onClose }) {
           </p>
         ) : upgraded ? (
           <p className="upgrade-status" role="status">
-            Your Pro workspace is ready.
+            Your {normalizedTargetRole} Pro workspace is ready.
           </p>
         ) : (
           <p className="upgrade-note">Secure checkout is processed by PayOS.</p>
@@ -7825,7 +8550,8 @@ const defaultAcademicWorkspaceSettings = {
 
 const getDefaultAcademicWorkspaceSettings = (role = "researcher") => ({
   ...defaultAcademicWorkspaceSettings,
-  defaultDiscipline: role === "lecturer" ? "AI in Education" : "Computer Science",
+  defaultDiscipline:
+    role === "lecturer" ? "AI in Education" : "Computer Science",
 });
 
 const mergeAcademicWorkspaceSettings = (saved, role) => {
@@ -7953,15 +8679,50 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
     ],
   ];
   const alertOptions = [
-    ["trendSpikes", "Trend spike alerts", "Notify when a keyword accelerates beyond your threshold.", "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3"],
-    ["citationMilestones", "Citation milestones", "Track citation gains on saved and authored papers.", "M12 19V5M7 10l5-5 5 5M5 19h14"],
-    ["authorUpdates", "Author updates", "Watch followed researchers for new publications.", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0"],
-    ["journalQuartileChanges", "Journal quartile changes", "Flag ranking changes for followed journals.", "M5 19V5h14v14H5ZM8 15l2.4-2.4 2 1.6L16.5 9M15 9h2v2"],
+    [
+      "trendSpikes",
+      "Trend spike alerts",
+      "Notify when a keyword accelerates beyond your threshold.",
+      "M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3",
+    ],
+    [
+      "citationMilestones",
+      "Citation milestones",
+      "Track citation gains on saved and authored papers.",
+      "M12 19V5M7 10l5-5 5 5M5 19h14",
+    ],
+    [
+      "authorUpdates",
+      "Author updates",
+      "Watch followed researchers for new publications.",
+      "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    ],
+    [
+      "journalQuartileChanges",
+      "Journal quartile changes",
+      "Flag ranking changes for followed journals.",
+      "M5 19V5h14v14H5ZM8 15l2.4-2.4 2 1.6L16.5 9M15 9h2v2",
+    ],
   ];
   const privacyOptions = [
-    ["publicProfile", "Public academic profile", "Allow collaborators to view your research identity.", "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0"],
-    ["shareReadingSignals", "Share reading signals", "Use saved papers and views to improve recommendations.", "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6"],
-    ["showInstitutionDashboard", "Institution dashboard visibility", "Include your aggregate activity in department analytics.", "M3.5 20h17M5 17V9h4v8M10 17V5h4v12M15 17v-6h4v6"],
+    [
+      "publicProfile",
+      "Public academic profile",
+      "Allow collaborators to view your research identity.",
+      "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
+    ],
+    [
+      "shareReadingSignals",
+      "Share reading signals",
+      "Use saved papers and views to improve recommendations.",
+      "M2.5 12s3.5-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.5 5.5-9.5 5.5S2.5 12 2.5 12ZM12 9v6M9 12h6",
+    ],
+    [
+      "showInstitutionDashboard",
+      "Institution dashboard visibility",
+      "Include your aggregate activity in department analytics.",
+      "M3.5 20h17M5 17V9h4v8M10 17V5h4v12M15 17v-6h4v6",
+    ],
   ];
 
   return (
@@ -7983,7 +8744,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
             <div>
               <span>{roleLabel} Workspace</span>
               <h2 id="academic-settings-title">Settings</h2>
-              <p>Control how ScholarTrend tracks publications, trends, and alerts.</p>
+              <p>
+                Control how ScholarTrend tracks publications, trends, and
+                alerts.
+              </p>
             </div>
           </div>
           <button type="button" aria-label="Close settings" onClick={onClose}>
@@ -7992,7 +8756,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
         </header>
 
         <div className="academic-settings-body">
-          <div className="academic-settings-summary" aria-label="Current settings summary">
+          <div
+            className="academic-settings-summary"
+            aria-label="Current settings summary"
+          >
             <div>
               <i className="summary-icon teal" aria-hidden="true">
                 <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" />
@@ -8018,7 +8785,8 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
               <span>
                 <small>Sources</small>
                 <strong>
-                  {Object.values(settings.sources).filter(Boolean).length} active
+                  {Object.values(settings.sources).filter(Boolean).length}{" "}
+                  active
                 </strong>
               </span>
             </div>
@@ -8035,7 +8803,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
               {sourceOptions.map(([key, label, detail, icon, tone]) => (
                 <label className="academic-settings-toggle" key={key}>
                   <span className="academic-toggle-copy">
-                    <i className={`academic-toggle-icon ${tone}`} aria-hidden="true">
+                    <i
+                      className={`academic-toggle-icon ${tone}`}
+                      aria-hidden="true"
+                    >
                       <MiniIcon path={icon} />
                     </i>
                     <span>
@@ -8204,7 +8975,10 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
               {privacyOptions.map(([key, label, detail, icon]) => (
                 <label className="academic-settings-toggle" key={key}>
                   <span className="academic-toggle-copy">
-                    <i className="academic-toggle-icon slate" aria-hidden="true">
+                    <i
+                      className="academic-toggle-icon slate"
+                      aria-hidden="true"
+                    >
                       <MiniIcon path={icon} />
                     </i>
                     <span>
@@ -8231,7 +9005,11 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
         </div>
 
         <footer className="academic-settings-footer">
-          <button type="button" className="settings-secondary" onClick={resetSettings}>
+          <button
+            type="button"
+            className="settings-secondary"
+            onClick={resetSettings}
+          >
             Reset
           </button>
           <button
@@ -8241,7 +9019,11 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
           >
             Profile settings
           </button>
-          <button type="button" className="settings-primary" onClick={saveSettings}>
+          <button
+            type="button"
+            className="settings-primary"
+            onClick={saveSettings}
+          >
             Save Settings
           </button>
           {message ? <p role="status">{message}</p> : null}
@@ -8415,6 +9197,7 @@ function ResearcherShell({
   const [upgradeOpen, setUpgradeOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const academicRole = getAcademicRole();
+  const accountPlan = getCurrentAccountPlan();
   const isLecturer = academicRole === "lecturer";
   const resolvedActiveRoute = getAcademicPath(activeRoute, academicRole);
   const TopbarComponent =
@@ -8469,6 +9252,7 @@ function ResearcherShell({
         onToggleCollapse={sidebar.toggleCollapse}
         onUpgrade={() => setUpgradeOpen(true)}
         onSettings={() => setSettingsOpen(true)}
+        showUpgrade={!accountPlan.isPro && accountPlan.role === "Student"}
       />
       <UpgradeProModal
         open={upgradeOpen}
@@ -8507,10 +9291,7 @@ function PublicationGrowthChart({ data = publicationGrowthData }) {
         publications: Number(item.publications || 0),
       }))
     : [];
-  const hasMeaningfulGrowthData =
-    mappedChartData.length >= 6 &&
-    Math.max(...mappedChartData.map((item) => item.publications), 0) >= 1000;
-  const chartData = hasMeaningfulGrowthData
+  const chartData = mappedChartData.length
     ? mappedChartData
     : publicationGrowthData;
   const [activeIndex, setActiveIndex] = React.useState(chartData.length - 1);
@@ -8542,9 +9323,7 @@ function PublicationGrowthChart({ data = publicationGrowthData }) {
           { length: maxValue / (maxValue <= 4 ? 1 : 2) + 1 },
           (_, index) => index * (maxValue <= 4 ? 1 : 2),
         )
-      : [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
-          Math.round(maxValue * ratio),
-        );
+      : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(maxValue * ratio));
   const plotWidth = chartWidth - padding.left - padding.right;
   const plotHeight = chartHeight - padding.top - padding.bottom;
   const bottom = chartHeight - padding.bottom;
@@ -8630,8 +9409,7 @@ function PublicationGrowthChart({ data = publicationGrowthData }) {
         >
           <title id="growthChartTitle">
             Publication growth chart from {points[0].year} to{" "}
-            {points[points.length - 1].year} based on yearly
-            publication counts.
+            {points[points.length - 1].year} based on yearly publication counts.
           </title>
           <defs>
             <linearGradient id="growthArea" x1="0" x2="0" y1="0" y2="1">
@@ -8982,26 +9760,26 @@ function LecturerPublicationsCard({ publishedPublications = [] }) {
             ? `/lecturer-publication?id=${encodeURIComponent(publication.id)}`
             : "/lecturer-publication";
           return (
-          <a
-            className="lecturer-publication-item"
-            href={detailPath}
-            onClick={navTo(detailPath)}
-            key={publication.title}
-          >
-            <span className="lecturer-pdf-tile">PDF</span>
-            <span className="lecturer-publication-copy">
-              <strong>{publication.title}</strong>
-              <small>
-                {publication.authors} <i>-</i> {publication.journal}
-              </small>
-              {publication.date ? (
-                <em>
-                  <span>{publication.date}</span>
-                  <span>{publication.citations} Citations</span>
-                </em>
-              ) : null}
-            </span>
-          </a>
+            <a
+              className="lecturer-publication-item"
+              href={detailPath}
+              onClick={navTo(detailPath)}
+              key={publication.title}
+            >
+              <span className="lecturer-pdf-tile">PDF</span>
+              <span className="lecturer-publication-copy">
+                <strong>{publication.title}</strong>
+                <small>
+                  {publication.authors} <i>-</i> {publication.journal}
+                </small>
+                {publication.date ? (
+                  <em>
+                    <span>{publication.date}</span>
+                    <span>{publication.citations} Citations</span>
+                  </em>
+                ) : null}
+              </span>
+            </a>
           );
         })}
       </div>
@@ -9011,7 +9789,13 @@ function LecturerPublicationsCard({ publishedPublications = [] }) {
 
 function LecturerDashboard() {
   const [exported, setExported] = React.useState(false);
-  const publishedPublications = React.useMemo(() => getPublishedPublications(), []);
+  const session = getCurrentAccountPlan();
+  const displayName = getSessionDisplayName(session, "Lecturer");
+  const displayRole = normalizeRoleForUi(session.role || "Lecturer");
+  const publishedPublications = React.useMemo(
+    () => getPublishedPublications(),
+    [],
+  );
 
   return (
     <ResearcherShell
@@ -9024,8 +9808,8 @@ function LecturerDashboard() {
         <div className="lecturer-welcome-row">
           <div>
             <div className="lecturer-title-row">
-              <h1>Welcome back, Dr. Aris Thorne</h1>
-              <span>Lecturer</span>
+              <h1>Welcome back, {displayName}</h1>
+              <span>{displayRole}</span>
             </div>
             <p>
               Here is the latest analytical intelligence for your tracked
@@ -9050,7 +9834,9 @@ function LecturerDashboard() {
 
         <div className="lecturer-dashboard-grid">
           <LecturerTrendingCard />
-          <LecturerPublicationsCard publishedPublications={publishedPublications} />
+          <LecturerPublicationsCard
+            publishedPublications={publishedPublications}
+          />
         </div>
       </div>
     </ResearcherShell>
@@ -9058,9 +9844,11 @@ function LecturerDashboard() {
 }
 
 function ResearcherDashboard() {
-  const [dateRange, setDateRange] = React.useState("30");
   const { data: statsData } = useApiResource("/api/dashboard/stats", null);
-  const publishedPublications = React.useMemo(() => getPublishedPublications(), []);
+  const publishedPublications = React.useMemo(
+    () => getPublishedPublications(),
+    [],
+  );
   const { data: growthData } = useApiResource(
     "/api/dashboard/growth",
     publicationGrowthData,
@@ -9070,11 +9858,7 @@ function ResearcherDashboard() {
           year: item.year || item.Year,
           publications: item.count || item.Count || 0,
         }));
-        const hasMeaningfulGrowthData =
-          mapped.length >= 6 &&
-          Math.max(...mapped.map((item) => Number(item.publications || 0)), 0) >=
-            1000;
-        return hasMeaningfulGrowthData ? mapped : publicationGrowthData;
+        return mapped.length ? mapped : publicationGrowthData;
       },
     },
   );
@@ -9085,66 +9869,39 @@ function ResearcherDashboard() {
       select: (payload) => {
         const mapped = unwrapList(payload).map((item) => ({
           label: item.keyword,
-          percent: `${Number(item.trendingScore || 0).toFixed(1)}`,
+          percent: `${Number(item.trendingScore || 0).toFixed(1)}%`,
           width: `${Math.max(12, Math.min(100, Number(item.trendingScore || 0)))}%`,
         }));
-        return mapped.length >= 3 ? mapped : researcherKeywords;
+        return mapped.length ? mapped : researcherKeywords;
       },
     },
   );
   const dashboardStats = React.useMemo(() => {
     if (!statsData) return researcherStats;
-    if (Number(statsData.totalPublications || 0) < 100) return researcherStats;
     return researcherStats.map((stat) => {
-      if (stat.label === "Total Publications") {
+      if (stat.label === "admin.totalPublications") {
         return { ...stat, value: formatCount(statsData.totalPublications) };
       }
       if (stat.label === "New This Week") {
-        return { ...stat, value: formatCount(statsData.totalKeywords), note: "Tracked keywords" };
+        return {
+          ...stat,
+          value: formatCount(statsData.totalKeywords),
+          note: "Tracked keywords",
+        };
       }
       return stat;
     });
   }, [statsData]);
-  const filteredGrowthData = React.useMemo(() => {
-    if (dateRange === "all") return growthData;
-    const yearsToShow = dateRange === "90" ? 4 : dateRange === "365" ? 6 : 3;
-    return growthData.slice(Math.max(0, growthData.length - yearsToShow));
-  }, [dateRange, growthData]);
-  const downloadDashboardReport = () => {
-    downloadXlsxFile("scholartrend-researcher-dashboard.xlsx", {
-      Summary: [
-        ["Metric", "Value", "Note"],
-        ...dashboardStats.map((stat) => [stat.label, stat.value, stat.note || ""]),
-      ],
-      Growth: [
-        ["Year", "Publications"],
-        ...filteredGrowthData.map((row) => [row.year, row.publications]),
-      ],
-      Keywords: [
-        ["Keyword", "Score"],
-        ...keywordData.map((row) => [row.label, row.percent]),
-      ],
-    });
-  };
 
   return (
     <ResearcherShell activeRoute="/researcher-dashboard" current="Dashboard">
       <div className="researcher-content">
         <div className="researcher-intro-row">
           <p>Here's your latest academic intelligence overview.</p>
-          <label className="researcher-date-filter">
+          <button type="button" className="researcher-date-filter">
             <MiniIcon path="M7 7h10M9 12h6M11 17h2" />
-            <select
-              value={dateRange}
-              onChange={(event) => setDateRange(event.target.value)}
-              aria-label="Dashboard date range"
-            >
-              <option value="30">Last 30 Days</option>
-              <option value="90">Last 90 Days</option>
-              <option value="365">Last 12 Months</option>
-              <option value="all">All Data</option>
-            </select>
-          </label>
+            Last 30 Days
+          </button>
         </div>
 
         <section className="researcher-stats" aria-label="Researcher metrics">
@@ -9154,7 +9911,7 @@ function ResearcherDashboard() {
         </section>
 
         <div className="researcher-dashboard-grid">
-          <PublicationGrowthChart data={filteredGrowthData} />
+          <PublicationGrowthChart data={growthData} />
           <aside className="researcher-side-column">
             <TrendingKeywordsCard keywords={keywordData} />
             <RecentlyPublishedCard publications={publishedPublications} />
@@ -9167,7 +9924,6 @@ function ResearcherDashboard() {
         type="button"
         className="researcher-download"
         aria-label="Download report"
-        onClick={downloadDashboardReport}
       >
         <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
       </button>
@@ -9302,69 +10058,73 @@ function TrendKeywordsOverview() {
   );
 }
 
-function TrendMainChart() {
-  const [activeTrendTab, setActiveTrendTab] = React.useState("time");
-  const [chartMode, setChartMode] = React.useState("count");
+function TrendMainChart({
+  dateRange = "Last 5 Years (2019-2023)",
+  keyword = "Machine Learning",
+  comparisonKeyword = "",
+}) {
+  // Parse date range to get fromYear and toYear
+  const yearMatch = dateRange.match(/(\d{4})-(\d{4})/);
+  const fromYear = yearMatch ? yearMatch[1] : "2019";
+  const toYear = yearMatch ? yearMatch[2] : "2023";
+  const encodedKeyword = encodeURIComponent(keyword || "Machine Learning");
+
   const { data: backendTrendData } = useApiResource(
-    "/api/trends?keyword=Machine%20Learning&fromYear=2019&toYear=2023&strategy=StrategyA_RawCount",
+    `/api/trends?keyword=${encodedKeyword}&fromYear=${fromYear}&toYear=${toYear}&strategy=StrategyA_RawCount`,
     [],
     { select: unwrapList },
   );
-  const backendChartRows = Object.values(
-    backendTrendData.reduce((rowsByYear, item) => {
+  const encodedComparisonKeyword = encodeURIComponent(comparisonKeyword);
+  const { data: backendComparisonData } = useApiResource(
+    comparisonKeyword
+      ? `/api/trends?keyword=${encodedComparisonKeyword}&fromYear=${fromYear}&toYear=${toYear}&strategy=StrategyA_RawCount`
+      : null,
+    [],
+    { select: unwrapList },
+  );
+
+  const aggregateTrendRows = (items) =>
+    items.reduce((rowsByYear, item) => {
       const year = Number(item.year || item.Year);
       const value = Number(item.publicationCount ?? item.PublicationCount ?? 0);
-      if (year < 2019 || year > 2023 || value < 0) return rowsByYear;
+      const minYear = Number(fromYear);
+      const maxYear = Number(toYear);
+      if (year < minYear || year > maxYear || value < 0) return rowsByYear;
       rowsByYear[year] = {
         year: String(year),
         value: (rowsByYear[year]?.value || 0) + value,
       };
       return rowsByYear;
-    }, {}),
-  ).sort((left, right) => Number(left.year) - Number(right.year));
-  const hasUsableBackendTrend =
-    backendChartRows.length >= 5 &&
-    Math.max(...backendChartRows.map((item) => item.value), 0) >= 1000;
-  const chartRows = (
-    hasUsableBackendTrend
-      ? backendChartRows
-      : trendLineData.map((item) => ({
-          year: String(item.year),
-          value: item.value,
-        }))
-  ).slice(0, 5);
+    }, {});
+  const backendRowsByYear = aggregateTrendRows(backendTrendData);
+  const comparisonRowsByYear = aggregateTrendRows(backendComparisonData);
+
+  // Get number of years to display based on date range
+  const yearCount = Number(toYear) - Number(fromYear) + 1;
+
+  const fallbackRowsByYear = Object.fromEntries(
+    trendLineData.map((item) => [Number(item.year), item.value]),
+  );
+  const chartRows = Array.from({ length: yearCount }, (_, index) => {
+    const year = Number(fromYear) + index;
+    return {
+      year: String(year),
+      value:
+        backendRowsByYear[year]?.value ?? fallbackRowsByYear[year] ?? 0,
+    };
+  });
   const labels = chartRows.map((item) => item.year);
   const values = chartRows.map((item) => item.value);
-  const distributionValues = values.map((value, index) =>
-    Math.max(1, Math.round(value * (0.42 + index * 0.08))),
-  );
-  const activeValues =
-    activeTrendTab === "journals"
-      ? distributionValues
-      : chartMode === "growth"
-        ? values.map((value, index) =>
-            index ? Math.round(((value - values[index - 1]) / Math.max(values[index - 1], 1)) * 100) : 0,
-          )
-        : values;
-  const previousValues = values.map((value, index) =>
-    Math.max(0, Math.round(index ? values[index - 1] : value * 0.88)),
-  );
-  const maxChartValue = Math.max(...values, ...previousValues, 1);
-  const trendAxisMax =
-    chartMode === "growth"
-      ? 100
-      : Math.max(
-          80000,
-          Math.ceil((Math.max(...activeValues, ...previousValues, 1) * 1.12) / 10000) * 10000,
-        );
-  const exportTrendChartRows = () => {
-    downloadXlsxFile("scholartrend-trend-chart.xlsx", {
-      Chart: [
-        ["Label", activeTrendTab === "journals" ? "Journal Distribution" : chartMode === "growth" ? "Growth %" : "Publications"],
-        ...labels.map((label, index) => [label, activeValues[index]]),
-      ],
-    });
-  };
+  const comparisonValues = comparisonKeyword
+    ? chartRows.map(
+        (item) => comparisonRowsByYear[Number(item.year)]?.value ?? 0,
+      )
+    : values.map((value, index) =>
+        Math.max(0, Math.round(index ? values[index - 1] : value * 0.88)),
+      );
+  const maxChartValue = Math.max(...values, ...comparisonValues, 1);
+  const trendAxisMax = Math.max(4, Math.ceil(maxChartValue * 1.12));
+  const trendStepSize = Math.max(1, Math.ceil(trendAxisMax / 5));
 
   return (
     <section
@@ -9372,31 +10132,10 @@ function TrendMainChart() {
       aria-label="Publication trend over time"
     >
       <div className="trend-tabs">
-        <button
-          type="button"
-          className={activeTrendTab === "time" ? "active" : ""}
-          onClick={() => setActiveTrendTab("time")}
-        >
+        <button type="button" className="active">
           Publications Over Time
         </button>
-        <button
-          type="button"
-          className={activeTrendTab === "journals" ? "active" : ""}
-          onClick={() => setActiveTrendTab("journals")}
-        >
-          Distribution by Journal
-        </button>
-        <select
-          value={chartMode}
-          onChange={(event) => setChartMode(event.target.value)}
-          aria-label="Trend chart metric"
-        >
-          <option value="count">Raw Count</option>
-          <option value="growth">Growth Rate</option>
-        </select>
-        <button type="button" onClick={exportTrendChartRows}>
-          Download
-        </button>
+        <button type="button">Distribution by Journal</button>
       </div>
       <div
         className="trend-chart-wrap"
@@ -9407,13 +10146,8 @@ function TrendMainChart() {
             labels,
             datasets: [
               {
-                label:
-                  activeTrendTab === "journals"
-                    ? "Distribution by Journal"
-                    : chartMode === "growth"
-                      ? "Growth Rate"
-                      : "Publications Over Time",
-                data: activeValues,
+                label: keyword || "Machine Learning",
+                data: values,
                 borderColor: "rgba(99, 102, 241, 1)",
                 backgroundColor: "rgba(99, 102, 241, 0.13)",
                 tension: 0.32,
@@ -9428,8 +10162,8 @@ function TrendMainChart() {
                 borderWidth: 3,
               },
               {
-                label: "Previous Year",
-                data: previousValues,
+                label: comparisonKeyword || "Previous Year",
+                data: comparisonValues,
                 borderColor: "rgba(156, 163, 175, 0.62)",
                 backgroundColor: "rgba(156, 163, 175, 0)",
                 tension: 0.32,
@@ -9479,7 +10213,12 @@ function TrendMainChart() {
                 },
                 callbacks: {
                   label: function (context) {
-                    return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}${chartMode === "growth" ? "%" : " publications"}`;
+                    return (
+                      context.dataset.label +
+                      ": " +
+                      context.parsed.y.toLocaleString() +
+                      " publications"
+                    );
                   },
                 },
               },
@@ -9498,9 +10237,14 @@ function TrendMainChart() {
                     size: 12,
                   },
                   callback: function (value) {
-                    return value >= 1000 ? value / 1000 + "k" : value;
+                    if (value >= 1000000) {
+                      return Math.round(value / 100000) / 10 + "M";
+                    } else if (value >= 1000) {
+                      return Math.round(value / 100) / 10 + "k";
+                    }
+                    return value;
                   },
-                  stepSize: 10000,
+                  stepSize: trendStepSize,
                 },
                 border: {
                   display: false,
@@ -9550,9 +10294,9 @@ function TrendRankingTables() {
         const score = Number(item.trendingScore ?? item.TrendingScore ?? 0);
         return {
           keyword: item.keyword || item.Keyword || `Keyword ${index + 1}`,
-          count: Number(
-            item.totalCount ?? item.TotalCount ?? 0,
-          ).toLocaleString("en-US"),
+          count: Number(item.totalCount ?? item.TotalCount ?? 0).toLocaleString(
+            "en-US",
+          ),
           growth: `${score.toFixed(1)}%`,
           values: [
             Math.max(12, Math.min(95, score * 0.45 + 18)),
@@ -9566,7 +10310,8 @@ function TrendRankingTables() {
     : trendTopRaw;
   const growthRows = backendTopKeywords.length
     ? [...rankingRows].sort(
-        (left, right) => Number.parseFloat(right.growth) - Number.parseFloat(left.growth),
+        (left, right) =>
+          Number.parseFloat(right.growth) - Number.parseFloat(left.growth),
       )
     : trendTopGrowth;
   const exportRankingRows = () => {
@@ -9595,7 +10340,9 @@ function TrendRankingTables() {
             <MiniIcon path="M5 7h14M5 12h14M5 17h14" /> Top 10 by Raw Count
             (Strategy A)
           </h2>
-          <button type="button" onClick={exportRankingRows}>Export</button>
+          <button type="button" onClick={exportRankingRows}>
+            Export
+          </button>
         </div>
         <table>
           <thead>
@@ -9627,7 +10374,9 @@ function TrendRankingTables() {
             <MiniIcon path="M4 16.5 9 11l3.2 2.8L20 6.5M17 6.5h3v3" /> Top 10 by
             Growth Rate (Strategy B)
           </h2>
-          <button type="button" onClick={exportGrowthRows}>Export</button>
+          <button type="button" onClick={exportGrowthRows}>
+            Export
+          </button>
         </div>
         <table>
           <thead>
@@ -9744,6 +10493,55 @@ function TrendKeywordsPage() {
 }
 
 function TrendTrackingDashboardPage() {
+  const [dateRange, setDateRange] = React.useState("Last 5 Years (2019-2023)");
+  const [keyword, setKeyword] = React.useState("Machine Learning");
+  const [showComparison, setShowComparison] = React.useState(false);
+  const [comparisonDraft, setComparisonDraft] = React.useState("");
+  const [comparisonKeyword, setComparisonKeyword] = React.useState("");
+  const [compareMessage, setCompareMessage] = React.useState("");
+
+  const handleDateRangeChange = (e) => {
+    const newRange = e.target.value;
+    setDateRange(newRange);
+    console.log("Date range changed to:", newRange);
+    // Trigger data refresh - TrendMainChart will re-fetch with new params
+  };
+
+  const handleKeywordChange = (e) => {
+    setKeyword(e.target.value);
+  };
+
+  const handleClearKeyword = () => {
+    setKeyword("");
+  };
+
+  const handleCompareSubmit = (event) => {
+    event.preventDefault();
+    if (!showComparison) {
+      setShowComparison(true);
+      setCompareMessage("Enter a second keyword, then press Apply Compare.");
+      return;
+    }
+    const nextKeyword = comparisonDraft.trim();
+    if (!nextKeyword) {
+      setCompareMessage("Enter a keyword to compare.");
+      return;
+    }
+    if (nextKeyword.toLowerCase() === keyword.trim().toLowerCase()) {
+      setCompareMessage("Choose a different keyword for comparison.");
+      return;
+    }
+    setComparisonKeyword(nextKeyword);
+    setCompareMessage(`Comparing ${keyword || "primary trend"} with ${nextKeyword}.`);
+  };
+
+  const clearComparison = () => {
+    setShowComparison(false);
+    setComparisonDraft("");
+    setComparisonKeyword("");
+    setCompareMessage("");
+  };
+
   return (
     <ResearcherShell
       activeRoute="/researcher-trend-tracking"
@@ -9765,24 +10563,50 @@ function TrendTrackingDashboardPage() {
           </div>
           <form
             className="trend-filter-panel"
-            onSubmit={navTo("/researcher-trend-tracking")}
+            onSubmit={handleCompareSubmit}
           >
             <label className="trend-keyword-field">
               <MiniIcon path="M6 5h12M8 12h8M10 19h4" />
               <input
                 type="search"
-                defaultValue="Machine Learning"
+                value={keyword}
+                onChange={handleKeywordChange}
                 aria-label="Trend keyword"
               />
-              <button type="button" aria-label="Clear keyword">
+              <button
+                type="button"
+                aria-label="Clear keyword"
+                onClick={handleClearKeyword}
+              >
                 x
               </button>
             </label>
+            {showComparison ? (
+              <label className="trend-keyword-field comparison-keyword-field">
+                <MiniIcon path="M5 12h14M12 5v14" />
+                <input
+                  type="search"
+                  value={comparisonDraft}
+                  onChange={(event) => setComparisonDraft(event.target.value)}
+                  aria-label="Comparison keyword"
+                  placeholder="Comparison keyword"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  aria-label="Remove comparison"
+                  onClick={clearComparison}
+                >
+                  x
+                </button>
+              </label>
+            ) : null}
             <div className="trend-filter-row">
               <label>
                 <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6z" />
                 <select
-                  defaultValue="Last 5 Years (2019-2023)"
+                  value={dateRange}
+                  onChange={handleDateRangeChange}
                   aria-label="Date range"
                 >
                   <option>Last 5 Years (2019-2023)</option>
@@ -9790,8 +10614,15 @@ function TrendTrackingDashboardPage() {
                   <option>Last 10 Years (2014-2023)</option>
                 </select>
               </label>
-              <button type="submit">+ Compare</button>
+              <button type="submit">
+                {showComparison ? "Apply Compare" : "+ Compare"}
+              </button>
             </div>
+            {compareMessage ? (
+              <p className="trend-compare-message" role="status">
+                {compareMessage}
+              </p>
+            ) : null}
           </form>
         </section>
 
@@ -9801,7 +10632,11 @@ function TrendTrackingDashboardPage() {
           ))}
         </section>
 
-        <TrendMainChart />
+        <TrendMainChart
+          dateRange={dateRange}
+          keyword={keyword}
+          comparisonKeyword={comparisonKeyword}
+        />
         <TrendRankingTables />
         <TrendVolumeMatrix />
       </div>
@@ -9827,48 +10662,57 @@ function ReportsPage() {
   const [reportFormat, setReportFormat] = React.useState("Csv");
   const [reportMessage, setReportMessage] = React.useState("");
   const [activeReportBarIndex, setActiveReportBarIndex] = React.useState(null);
-  const { data: reportTrendRows } = useApiResource(
-    `/api/trends?keyword=${encodeURIComponent(reportKeyword)}&fromYear=${encodeURIComponent(reportFromYear)}&toYear=${encodeURIComponent(reportToYear)}&strategy=StrategyA_RawCount`,
-    [],
-    { select: unwrapList },
-  );
-  const reportTotals = React.useMemo(() => {
-    const fallbackCounts = [218, 299, 361, 461, 535];
-    const endYear = Number(reportToYear) || 2023;
-    const fallbackLabels = Array.from({ length: 5 }, (_, index) =>
-      String(endYear - 4 + index),
+  const reportYearOptions = React.useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: currentYear - 2010 + 1 }, (_, index) =>
+      String(currentYear - index),
     );
-    const rows = Object.values(
-      reportTrendRows.reduce((rowsByYear, item) => {
-        const year = Number(item.year || item.Year);
-        const count = Number(item.publicationCount ?? item.PublicationCount ?? 0);
-        const score = Number(item.trendingScore ?? item.TrendingScore ?? 0);
-        if (year < endYear - 4 || year > endYear || count < 0) {
-          return rowsByYear;
-        }
-        rowsByYear[year] = {
-          year,
-          count: (rowsByYear[year]?.count || 0) + count,
-          score: (rowsByYear[year]?.score || 0) + score,
-        };
-        return rowsByYear;
-      }, {}),
-    ).sort((left, right) => left.year - right.year);
-    const useBackendRows =
-      rows.length === 5 && Math.max(...rows.map((row) => row.count), 0) >= 200;
-    const total = rows.reduce((sum, row) => sum + row.count, 0);
-    const averageScore = rows.length
-      ? rows.reduce((sum, row) => sum + row.score, 0) / rows.length
-      : 14.2;
+  }, []);
+  const reportPreviewPath = React.useMemo(() => {
+    const params = new URLSearchParams({
+      keyword: reportKeyword,
+      fromYear: reportFromYear,
+      toYear: reportToYear,
+    });
+    return `/api/dashboard/report-preview?${params.toString()}`;
+  }, [reportKeyword, reportFromYear, reportToYear]);
+  const { data: reportPreviewData, status: reportPreviewStatus } =
+    useApiResource(reportPreviewPath, null);
+  const reportTotals = React.useMemo(() => {
+    const startYear = Number(reportFromYear) || 2018;
+    const endYear = Number(reportToYear) || 2023;
+    const fallbackLabels = Array.from(
+      { length: Math.max(1, endYear - startYear + 1) },
+      (_, index) => String(startYear + index),
+    );
+    const rows = Array.isArray(reportPreviewData?.yearlyCounts)
+      ? reportPreviewData.yearlyCounts
+      : [];
+    const labels = rows.length
+      ? rows.map((row) => String(row.year ?? row.Year))
+      : fallbackLabels;
+    const counts = rows.length
+      ? rows.map((row) =>
+          Number(row.publicationCount ?? row.PublicationCount ?? 0),
+        )
+      : fallbackLabels.map(() => 0);
+    const maxCount = Math.max(...counts, 1);
     return {
-      total: useBackendRows ? total : 1245,
-      averageScore: useBackendRows ? averageScore : 14.2,
-      labels: useBackendRows
-        ? rows.map((row) => String(row.year))
-        : fallbackLabels,
-      counts: useBackendRows ? rows.map((row) => row.count) : fallbackCounts,
+      total: Number(reportPreviewData?.totalPublications ?? 0),
+      averageGrowthRate: Number(reportPreviewData?.averageGrowthRate ?? 0),
+      averageCitationsPerPaper: Number(
+        reportPreviewData?.averageCitationsPerPaper ?? 0,
+      ),
+      labels,
+      counts,
+      barHeights: counts.map((count) =>
+        count > 0 ? Math.max(12, Math.round((count / maxCount) * 92)) : 4,
+      ),
+      topAuthors: Array.isArray(reportPreviewData?.topAuthors)
+        ? reportPreviewData.topAuthors
+        : [],
     };
-  }, [reportToYear, reportTrendRows]);
+  }, [reportFromYear, reportToYear, reportPreviewData]);
   const reportPreviousCounts = React.useMemo(
     () =>
       reportTotals.counts.map((count, index, rows) =>
@@ -9878,32 +10722,6 @@ function ReportsPage() {
   );
   const handleGenerateReport = async () => {
     setReportMessage("Generating report...");
-    const filenameBase = `trend-report-${reportKeyword.replace(/\s+/g, "-")}-${reportFromYear}-${reportToYear}`;
-    const summaryRows = [
-      ["Metric", "Value"],
-      ["Keyword", reportKeyword],
-      ["From Year", reportFromYear],
-      ["To Year", reportToYear],
-      ["Total Publications", reportTotals.total],
-      ["Average Growth Rate", reportTotals.averageScore.toFixed(1)],
-    ];
-    const trendRows = [
-      ["Year", "Publications", "Previous Period"],
-      ...reportTotals.labels.map((label, index) => [
-        label,
-        reportTotals.counts[index],
-        reportPreviousCounts[index],
-      ]),
-    ];
-    const rawRows = [
-      ["Keyword", "Year", "Publication Count", "Trending Score"],
-      ...reportTrendRows.map((row) => [
-        row.keyword || row.Keyword || reportKeyword,
-        row.year || row.Year,
-        row.publicationCount ?? row.PublicationCount ?? "",
-        row.trendingScore ?? row.TrendingScore ?? "",
-      ]),
-    ];
     try {
       const token = getStoredAuth().accessToken;
       const response = await fetch(`${API_BASE_URL}/api/dashboard/export`, {
@@ -9924,27 +10742,12 @@ function ReportsPage() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${filenameBase}.${reportFormat === "Excel" ? "xlsx" : "csv"}`;
+      anchor.download = `trend-report-${reportKeyword.replace(/\s+/g, "-")}-${reportFromYear}-${reportToYear}.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
       setReportMessage("Report exported from backend.");
     } catch (error) {
-      if (reportFormat === "Excel") {
-        downloadXlsxFile(`${filenameBase}.xlsx`, {
-          Summary: summaryRows,
-          Trends: trendRows,
-          "Raw Data": rawRows.length > 1 ? rawRows : trendRows,
-        });
-        setReportMessage(`${error.message} Exported local Excel fallback.`);
-        return;
-      }
-
-      downloadCsvFile(`${filenameBase}.csv`, [
-        ...summaryRows,
-        [],
-        ...trendRows,
-      ]);
-      setReportMessage(`${error.message} Exported local CSV fallback.`);
+      setReportMessage(error.message);
     }
   };
 
@@ -9995,19 +10798,39 @@ function ReportsPage() {
               <div className="report-year-grid">
                 <label className="report-field">
                   <span>Start Year</span>
-                  <input
-                    type="text"
+                  <select
                     value={reportFromYear}
                     onChange={(event) => setReportFromYear(event.target.value)}
-                  />
+                    aria-label="Start year"
+                  >
+                    {reportYearOptions.map((year) => (
+                      <option
+                        value={year}
+                        disabled={Number(year) > Number(reportToYear)}
+                        key={`report-start-${year}`}
+                      >
+                        {year}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="report-field">
                   <span>End Year</span>
-                  <input
-                    type="text"
+                  <select
                     value={reportToYear}
                     onChange={(event) => setReportToYear(event.target.value)}
-                  />
+                    aria-label="End year"
+                  >
+                    {reportYearOptions.map((year) => (
+                      <option
+                        value={year}
+                        disabled={Number(year) < Number(reportFromYear)}
+                        key={`report-end-${year}`}
+                      >
+                        {year}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               </div>
               <label className="report-field">
@@ -10097,22 +10920,29 @@ function ReportsPage() {
                 </h3>
                 <p>
                   Generated on: {new Date().toLocaleDateString()} - Scope:
-                  backend trend metrics
+                  backend publication data
+                  {reportPreviewStatus === "loading" ? " - refreshing..." : ""}
                 </p>
                 <div className="report-preview-metrics">
                   <div>
                     <span>Total Publications</span>
-                    <strong>{reportTotals.total.toLocaleString("en-US")}</strong>
+                    <strong>
+                      {reportTotals.total.toLocaleString("en-US")}
+                    </strong>
                     <i></i>
                   </div>
                   <div>
                     <span>Avg Growth Rate</span>
-                    <strong>{reportTotals.averageScore.toFixed(1)}%</strong>
+                    <strong>
+                      {reportTotals.averageGrowthRate.toFixed(1)}%
+                    </strong>
                     <i></i>
                   </div>
                   <div>
                     <span>Avg Citations/Paper</span>
-                    <strong>42.8</strong>
+                    <strong>
+                      {reportTotals.averageCitationsPerPaper.toFixed(1)}
+                    </strong>
                     <i></i>
                   </div>
                 </div>
@@ -10120,10 +10950,12 @@ function ReportsPage() {
                   className="report-bar-chart"
                   aria-label="Publication bar chart"
                 >
-                  {[34, 52, 62, 78, 92].map((height, index) => {
+                  {reportTotals.barHeights.map((height, index) => {
                     const label = reportTotals.labels[index] || "Year";
                     const count = Number(reportTotals.counts[index] || 0);
-                    const previousCount = Number(reportPreviousCounts[index] || 0);
+                    const previousCount = Number(
+                      reportPreviousCounts[index] || 0,
+                    );
                     const active = activeReportBarIndex === index;
 
                     return (
@@ -10132,7 +10964,7 @@ function ReportsPage() {
                         className={`report-chart-bar ${active ? "active" : ""} ${
                           index === 0
                             ? "edge-left"
-                            : index === 4
+                            : index === reportTotals.barHeights.length - 1
                               ? "edge-right"
                               : ""
                         }`}
@@ -10154,7 +10986,8 @@ function ReportsPage() {
                             <em>
                               <b className="previous"></b>
                               Previous Year:{" "}
-                              {previousCount.toLocaleString("en-US")} publications
+                              {previousCount.toLocaleString("en-US")}{" "}
+                              publications
                             </em>
                           </span>
                         ) : null}
@@ -10171,21 +11004,19 @@ function ReportsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>J. Smith et al.</td>
-                      <td>42</td>
-                      <td>89.4</td>
-                    </tr>
-                    <tr>
-                      <td>A. Johnson</td>
-                      <td>38</td>
-                      <td>85.1</td>
-                    </tr>
-                    <tr>
-                      <td>L. Williams</td>
-                      <td>31</td>
-                      <td>72.0</td>
-                    </tr>
+                    {reportTotals.topAuthors.length ? (
+                      reportTotals.topAuthors.map((author) => (
+                        <tr key={author.name}>
+                          <td>{author.name}</td>
+                          <td>{author.publications}</td>
+                          <td>{Number(author.trendScore || 0).toFixed(1)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="3">No author data for this scope</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -10550,7 +11381,11 @@ function YearComparisonPage() {
           volume: item.comparison,
         };
       })
-      .sort((left, right) => Math.abs(Number.parseFloat(right.delta)) - Math.abs(Number.parseFloat(left.delta)))
+      .sort(
+        (left, right) =>
+          Math.abs(Number.parseFloat(right.delta)) -
+          Math.abs(Number.parseFloat(left.delta)),
+      )
       .slice(0, 6);
     const baselineTotal = Object.values(byKeyword).reduce(
       (sum, item) => sum + item.baseline,
@@ -10627,7 +11462,10 @@ function YearComparisonPage() {
             <span>Dashboard&nbsp; &gt;&nbsp; Year Comparison</span>
             <h1>Year Comparison Analysis</h1>
           </div>
-          <form className="year-controls" onSubmit={(event) => event.preventDefault()}>
+          <form
+            className="year-controls"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <label>
               Baseline{" "}
               <select
@@ -10711,89 +11549,6 @@ function SyncSourceCard({ source }) {
 }
 
 function SyncManagementPage() {
-  const [syncConfig, setSyncConfig] = React.useState(() => {
-    try {
-      return (
-        JSON.parse(window.localStorage.getItem("scholartrend.userSyncConfig") || "null") || {
-          semantic: true,
-          openAlex: true,
-          batchSize: 50,
-          schedule: "Manual",
-        }
-      );
-    } catch {
-      return {
-        semantic: true,
-        openAlex: true,
-        batchSize: 50,
-        schedule: "Manual",
-      };
-    }
-  });
-  const [showSyncConfig, setShowSyncConfig] = React.useState(false);
-  const [syncLogsForUi, setSyncLogsForUi] = React.useState(syncLogs);
-  const [syncMessage, setSyncMessage] = React.useState("");
-  const saveUserSyncConfig = (patch) => {
-    const nextConfig = { ...syncConfig, ...patch };
-    setSyncConfig(nextConfig);
-    window.localStorage.setItem("scholartrend.userSyncConfig", JSON.stringify(nextConfig));
-  };
-  const appendUserSyncLog = (level, message) => {
-    const now = new Date().toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    setSyncLogsForUi((current) => [
-      { time: now, level, message },
-      ...current,
-    ]);
-  };
-  const runDryCheck = async () => {
-    setSyncMessage("Running dry check...");
-    const enabled = [
-      syncConfig.semantic ? "Semantic Scholar" : null,
-      syncConfig.openAlex ? "OpenAlex" : null,
-    ].filter(Boolean);
-    if (!enabled.length) {
-      appendUserSyncLog("ERROR", "Dry check failed: no source enabled.");
-      setSyncMessage("Enable at least one source before running dry check.");
-      return;
-    }
-    appendUserSyncLog("INFO", `Dry check passed for ${enabled.join(", ")} with batch size ${syncConfig.batchSize}.`);
-    setSyncMessage("Dry check passed. No data was written.");
-  };
-  const startUserSync = async () => {
-    setSyncMessage("Starting sync...");
-    const enabled = [
-      syncConfig.semantic ? "Semantic Scholar" : null,
-      syncConfig.openAlex ? "OpenAlex" : null,
-    ].filter(Boolean);
-    try {
-      await apiFetch("/api/admin/audit-log", {
-        method: "POST",
-        auth: true,
-        body: {
-          module: "Sync Management",
-          detail: `User workspace sync requested for ${enabled.join(", ") || "no source"}.`,
-          severity: enabled.length ? "Info" : "Error",
-          code: "USER-SYNC-REQUEST",
-        },
-      });
-    } catch {
-      // Non-admin users can still run the local sync workflow.
-    }
-    if (!enabled.length) {
-      appendUserSyncLog("ERROR", "Sync blocked: no source configured.");
-      setSyncMessage("Sync blocked. Configure a source first.");
-      return;
-    }
-    appendUserSyncLog("INFO", `Started ${enabled.join(" + ")} sync for ${syncConfig.batchSize} records.`);
-    window.setTimeout(() => {
-      appendUserSyncLog("SUCCESS", `Completed ${enabled.join(" + ")} sync simulation. Search uses synced backend records when available.`);
-      setSyncMessage("Sync completed and logs were updated.");
-    }, 450);
-  };
-
   return (
     <ResearcherShell
       activeRoute="/researcher-sync-management"
@@ -10814,65 +11569,15 @@ function SyncManagementPage() {
             </p>
           </div>
           <div className="sync-hero-actions">
-            <button type="button" className="sync-secondary-button" onClick={runDryCheck}>
+            <button type="button" className="sync-secondary-button">
               <MiniIcon path="M4 4v6h6M20 20v-6h-6M20 8a7 7 0 0 0-12.1-4M4 16a7 7 0 0 0 12.1 4M9 12h6" />{" "}
               Run Dry Check
             </button>
-            <button type="button" className="sync-primary-button" onClick={startUserSync}>
+            <button type="button" className="sync-primary-button">
               <MiniIcon path="M12 5v14M5 12h14M7 7l10 10" /> Start Sync
             </button>
           </div>
         </section>
-        {syncMessage ? <p className="sync-message">{syncMessage}</p> : null}
-        {showSyncConfig ? (
-          <section className="sync-panel sync-user-config-panel">
-            <div className="sync-panel-heading">
-              <h2>Configuration</h2>
-              <button type="button" onClick={() => setShowSyncConfig(false)}>
-                Done
-              </button>
-            </div>
-            <div className="sync-user-config-grid">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={syncConfig.semantic}
-                  onChange={(event) => saveUserSyncConfig({ semantic: event.target.checked })}
-                />
-                Semantic Scholar
-              </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={syncConfig.openAlex}
-                  onChange={(event) => saveUserSyncConfig({ openAlex: event.target.checked })}
-                />
-                OpenAlex
-              </label>
-              <label>
-                Batch size
-                <input
-                  type="number"
-                  min="10"
-                  max="200"
-                  value={syncConfig.batchSize}
-                  onChange={(event) => saveUserSyncConfig({ batchSize: Number(event.target.value) })}
-                />
-              </label>
-              <label>
-                Schedule
-                <select
-                  value={syncConfig.schedule}
-                  onChange={(event) => saveUserSyncConfig({ schedule: event.target.value })}
-                >
-                  <option>Manual</option>
-                  <option>Every 6 hours</option>
-                  <option>Daily</option>
-                </select>
-              </label>
-            </div>
-          </section>
-        ) : null}
 
         <section className="sync-source-grid" aria-label="Sync data sources">
           {syncSourceCards.map((source) => (
@@ -10909,7 +11614,7 @@ function SyncManagementPage() {
                 <MiniIcon path="M7 4v3M17 4v3M5 9h14M6 6h12v13H6zM9 13h2M13 13h2M9 16h2" />{" "}
                 Hangfire Schedule
               </h2>
-              <button type="button" onClick={() => setShowSyncConfig((value) => !value)}>Configure</button>
+              <button type="button">Configure</button>
             </div>
             <table>
               <thead>
@@ -10979,7 +11684,7 @@ function SyncManagementPage() {
               <span>Live logging</span>
             </div>
             <div className="sync-log-list">
-              {syncLogsForUi.map((log) => (
+              {syncLogs.map((log) => (
                 <article
                   className={`sync-log ${log.level.toLowerCase()}`}
                   key={`${log.time}-${log.message}`}
@@ -10998,13 +11703,24 @@ function SyncManagementPage() {
 }
 
 function ResearcherSearchTopbar({ onMenuClick, onOpenSettings }) {
+  const [queryValue, setQueryValue] = React.useState(
+    () => getSearchParam("q") || "",
+  );
+  React.useEffect(() => {
+    const syncQuery = () => setQueryValue(getSearchParam("q") || "");
+    window.addEventListener("scholartrend:navigate", syncQuery);
+    window.addEventListener("popstate", syncQuery);
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncQuery);
+      window.removeEventListener("popstate", syncQuery);
+    };
+  }, []);
   const handleGraphSearchSubmit = (event) => {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const query = String(formData.get("query") || "").trim();
+    const query = queryValue.trim();
     const targetPath = query
-      ? `/researcher-search?view=list&q=${encodeURIComponent(query)}`
-      : "/researcher-search?view=list";
+      ? `/researcher-search?q=${encodeURIComponent(query)}`
+      : "/researcher-search";
 
     window.history.pushState({}, "", getAcademicPath(targetPath));
     window.dispatchEvent(new Event("scholartrend:navigate"));
@@ -11045,7 +11761,9 @@ function ResearcherSearchTopbar({ onMenuClick, onOpenSettings }) {
         <input
           type="search"
           name="query"
-          defaultValue={getSearchParam("q") || "DeepFruits: A Fruit Detection System..."}
+          value={queryValue}
+          onChange={(event) => setQueryValue(event.target.value)}
+          placeholder="Search title, author, keyword, or DOI..."
           aria-label="Search knowledge graph"
         />
       </form>
@@ -11167,6 +11885,16 @@ function KnowledgeGraphCanvas({
     const labelLayer = labelLayerRef.current;
     if (!mount || !labelLayer) return undefined;
 
+    let disposed = false;
+    let cleanup = () => {};
+    const initializeGraph = async () => {
+      const [THREE, controlsModule] = await Promise.all([
+        import("three"),
+        import("three/examples/jsm/controls/OrbitControls.js"),
+      ]);
+      if (disposed) return;
+      const { OrbitControls } = controlsModule;
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(42, 1, 1, 1800);
     camera.position.set(0, 0, 780);
@@ -11186,6 +11914,13 @@ function KnowledgeGraphCanvas({
     controls.maxDistance = 980;
     controls.enablePan = true;
 
+    const normalizedNodes = nodes.map((node, index) => ({
+      ...node,
+      position: Array.isArray(node.position)
+        ? node.position
+        : dynamicGraphNodePositions[index % dynamicGraphNodePositions.length],
+      size: Number(node.size || (index === 0 ? 48 : 32)),
+    }));
     const graphGroup = new THREE.Group();
     graphGroup.rotation.x = -0.08;
     graphGroup.rotation.y = -0.18;
@@ -11202,12 +11937,29 @@ function KnowledgeGraphCanvas({
     fillLight.position.set(-260, -120, 220);
     scene.add(fillLight);
 
-    const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
+    const nodeById = Object.fromEntries(
+      normalizedNodes.map((node) => [node.id, node]),
+    );
     const labelItems = [];
     const nodeItems = new Map();
     const nodeMeshes = [];
+    const graphLinksForUi = graph3DLinks.some(
+      ([sourceId, targetId]) => nodeById[sourceId] && nodeById[targetId],
+    )
+      ? graph3DLinks.filter(
+          ([sourceId, targetId]) => nodeById[sourceId] && nodeById[targetId],
+        )
+      : normalizedNodes.slice(1).flatMap((node, index) => {
+          const links = [
+            [normalizedNodes[0].id, node.id, index < 4 ? "strong" : "faint"],
+          ];
+          if (index > 0 && index % 2 === 0) {
+            links.push([normalizedNodes[index].id, node.id, "faint"]);
+          }
+          return links;
+        });
 
-    graph3DLinks.forEach(([sourceId, targetId, tone]) => {
+    graphLinksForUi.forEach(([sourceId, targetId, tone]) => {
       const source = nodeById[sourceId];
       const target = nodeById[targetId];
       if (!source || !target) return;
@@ -11246,12 +11998,11 @@ function KnowledgeGraphCanvas({
     selectionGroup.visible = false;
     graphGroup.add(selectionGroup);
 
-    nodes.forEach((node) => {
+    normalizedNodes.forEach((node) => {
       const selectedRadius = node.size;
       const idleRadius = Math.max(node.size * 0.42, 8);
       const isActiveNode = node.id === selectedNodeIdRef.current;
-      const radius =
-        isActiveNode ? selectedRadius : idleRadius;
+      const radius = isActiveNode ? selectedRadius : idleRadius;
       const position = new THREE.Vector3(...node.position);
       const material = new THREE.MeshStandardMaterial({
         color: new THREE.Color(node.color),
@@ -11291,7 +12042,7 @@ function KnowledgeGraphCanvas({
     });
 
     const applySelection = (nodeId) => {
-      const fallbackNodeId = nodes[0]?.id || "deepfruits";
+      const fallbackNodeId = normalizedNodes[0]?.id || "deepfruits";
       const nextNodeId = nodeItems.has(nodeId) ? nodeId : fallbackNodeId;
       const selectedItem = nodeItems.get(nextNodeId);
       selectedNodeIdRef.current = nextNodeId;
@@ -11408,7 +12159,7 @@ function KnowledgeGraphCanvas({
       labelItems.forEach(({ label, sphere, node, currentRadius }) => {
         const isSelected = node.id === selectedNodeIdRef.current;
         sphere.getWorldPosition(worldPosition);
-        const offset = currentRadius + (isSelected ? 6 : 13);
+        const offset = currentRadius + (isSelected ? 34 : 18);
         worldPosition.y += offset;
         projectedPosition.copy(worldPosition).project(camera);
         const x = (projectedPosition.x * 0.5 + 0.5) * width;
@@ -11430,7 +12181,7 @@ function KnowledgeGraphCanvas({
     animate();
     window.addEventListener("resize", resize);
 
-    return () => {
+    cleanup = () => {
       window.cancelAnimationFrame(frameId);
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
@@ -11457,6 +12208,15 @@ function KnowledgeGraphCanvas({
       renderer.dispose();
       mount.replaceChildren();
       labelLayer.replaceChildren();
+    };
+    };
+
+    initializeGraph().catch((error) => {
+      if (!disposed) console.error("Knowledge graph failed to load", error);
+    });
+    return () => {
+      disposed = true;
+      cleanup();
     };
   }, [nodes, onSelectNode]);
 
@@ -11522,42 +12282,60 @@ function KnowledgeGraphCanvas({
   );
 }
 
-function ResearcherPaperPanel({
-  selectedNode,
-  onComparePaper,
-  comparisonCount = 0,
-}) {
+function ResearcherPaperPanel({ selectedNode }) {
   const selectedPaper = getGraphPaperForNode(selectedNode);
-  const [paperMessage, setPaperMessage] = React.useState("");
-  const [saved, setSaved] = React.useState(() =>
-    hasLocalBookmark(selectedPaper, getLocalBookmarks()),
-  );
+  const isLecturerRoute = window.location.pathname.startsWith("/lecturer-");
+  const bookmarksPath = isLecturerRoute
+    ? "/lecturer-bookmarks"
+    : "/researcher-bookmarks";
   const detailPath = `/researcher-publication${
     selectedPaper.id ? `?id=${encodeURIComponent(selectedPaper.id)}` : ""
   }`;
-  const absoluteDetailUrl = `${window.location.origin}${detailPath}`;
+  const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
+    getLocalBookmarks(),
+  );
+  const [bookmarkMessage, setBookmarkMessage] = React.useState("");
+  const currentBookmark = localBookmarks.find(
+    (bookmark) => getBookmarkKey(bookmark) === getBookmarkKey(selectedPaper),
+  );
+  const fullTextSaved =
+    currentBookmark?.saveMode === "full-text" ||
+    currentBookmark?.fullTextSaved === true;
+  const linkOnlySaved =
+    currentBookmark?.saveMode === "link-only" ||
+    currentBookmark?.linkOnly === true;
 
   React.useEffect(() => {
-    setSaved(hasLocalBookmark(selectedPaper, getLocalBookmarks()));
-    setPaperMessage("");
-  }, [selectedPaper.id]);
+    setLocalBookmarkState(getLocalBookmarks());
+    setBookmarkMessage("");
+  }, [selectedPaper.id, selectedPaper.title]);
 
-  const sharePaper = async () => {
-    const message = await sharePublicationLink({
-      title: selectedPaper.title,
-      text: selectedPaper.abstract,
-      url: absoluteDetailUrl,
-    });
-    setPaperMessage(message);
-  };
-
-  const savePaper = (mode = "full") => {
-    upsertLocalBookmark({
+  const saveSelectedPaper = (mode) => {
+    const bookmarkPayload = {
       ...selectedPaper,
-      excerpt: mode === "link" ? absoluteDetailUrl : selectedPaper.abstract,
-    });
-    setSaved(true);
-    setPaperMessage(mode === "link" ? "Link saved to bookmarks." : "Paper saved to bookmarks.");
+      source: selectedPaper.venue,
+      journalName: selectedPaper.venue,
+      citationCount: Number(
+        String(selectedPaper.citations || "0").replaceAll(",", ""),
+      ),
+      saveMode: mode,
+      fullTextSaved: mode === "full-text",
+      linkOnly: mode === "link-only",
+    };
+    const nextLocalBookmarks = upsertLocalBookmark(bookmarkPayload);
+    setLocalBookmarkState(nextLocalBookmarks);
+    setBookmarkMessage(
+      mode === "full-text"
+        ? "Saved full text to bookmarks."
+        : "Saved link to bookmarks.",
+    );
+
+    if (isBackendNumericId(selectedPaper.id) && getStoredAuth().accessToken) {
+      apiFetch(`/api/bookmarks/${selectedPaper.id}`, {
+        method: "POST",
+        auth: true,
+      }).catch(() => {});
+    }
   };
 
   return (
@@ -11568,7 +12346,7 @@ function ResearcherPaperPanel({
       <div className="paper-panel-actions">
         <span>Selected Node</span>
         <div>
-          <button type="button" aria-label="Share paper" onClick={sharePaper}>
+          <button type="button" aria-label="Share paper">
             <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
           </button>
           <button
@@ -11582,10 +12360,7 @@ function ResearcherPaperPanel({
       </div>
 
       <h1>
-        <a
-          href={detailPath}
-          onClick={navTo(detailPath)}
-        >
+        <a href={detailPath} onClick={navTo(detailPath)}>
           {selectedPaper.title}
         </a>
       </h1>
@@ -11614,37 +12389,46 @@ function ResearcherPaperPanel({
       <section className="paper-summary">
         <h2>Abstract Summary</h2>
         <p>{selectedPaper.abstract}</p>
-        <a
-          href={detailPath}
-          onClick={navTo(detailPath)}
-        >
+        <a href={detailPath} onClick={navTo(detailPath)}>
           Read full abstract
         </a>
       </section>
 
       <div className="paper-save-actions">
-        <button type="button" className="save-full-text" onClick={() => savePaper("full")}>
+        <button
+          type="button"
+          className={`save-full-text ${fullTextSaved ? "saved" : ""}`}
+          onClick={() => saveSelectedPaper("full-text")}
+        >
           <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
-          {saved ? "Saved Full Text" : "Save Full Text"}
+          {fullTextSaved ? "Saved Full Text" : "Save Full Text"}
         </button>
-        <button type="button" className="save-link-only" onClick={() => savePaper("link")}>
+        <button
+          type="button"
+          className={`save-link-only ${linkOnlySaved ? "saved" : ""}`}
+          onClick={() => saveSelectedPaper("link-only")}
+        >
           <MiniIcon path="M10 13a5 5 0 0 1 7.1 0l.9.9a5 5 0 0 1-7.1 7.1l-.9-.9M14 11a5 5 0 0 1-7.1 0L6 10.1A5 5 0 0 1 13.1 3l.9.9" />
-          Save Link Only
-        </button>
-        <button type="button" className="save-link-only" onClick={() => onComparePaper?.(selectedPaper)}>
-          <MiniIcon path="M5 6h14M5 12h14M5 18h14M9 4v16M15 4v16" />
-          Compare ({comparisonCount})
+          {linkOnlySaved ? "Saved Link" : "Save Link Only"}
         </button>
       </div>
-      {paperMessage ? <p className="paper-action-message">{paperMessage}</p> : null}
+      {bookmarkMessage ? (
+        <p className="paper-save-status" role="status">
+          {bookmarkMessage}{" "}
+          <a href={bookmarksPath} onClick={navTo(bookmarksPath)}>
+            Open bookmarks
+          </a>
+        </p>
+      ) : null}
 
       <section className="paper-access-points">
         <h2>Access Points</h2>
         {selectedPaper.accessPoints.map((point, index) => (
           <a
-            href="/researcher-search"
-            onClick={navTo("/researcher-search")}
-            key={point}
+            href={point.href}
+            target="_blank"
+            rel="noreferrer"
+            key={point.href}
           >
             <MiniIcon
               path={
@@ -11653,7 +12437,7 @@ function ResearcherPaperPanel({
                   : "M12 4 5 19h14L12 4ZM12 9v4M12 16h.01"
               }
             />
-            {point}
+            {point.label}
           </a>
         ))}
       </section>
@@ -11742,6 +12526,28 @@ const listViewPapers = [
 ];
 
 function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
+  const [queryValue, setQueryValue] = React.useState(getSearchParam("q") || "");
+  React.useEffect(() => {
+    const syncQuery = () => setQueryValue(getSearchParam("q") || "");
+    window.addEventListener("scholartrend:navigate", syncQuery);
+    window.addEventListener("popstate", syncQuery);
+    syncQuery();
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncQuery);
+      window.removeEventListener("popstate", syncQuery);
+    };
+  }, []);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const query = queryValue.trim();
+    const targetPath = query
+      ? `/researcher-search?view=list&q=${encodeURIComponent(query)}`
+      : "/researcher-search?view=list";
+    window.history.pushState({}, "", getAcademicPath(targetPath));
+    window.dispatchEvent(new Event("scholartrend:navigate"));
+  };
+
   return (
     <header className="researcher-list-topbar">
       <button
@@ -11752,15 +12558,14 @@ function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
       >
         <MiniIcon path="M5 5h14v14H5zM9 5v14M12 9h4M12 12h4M12 15h3" />
       </button>
-      <form
-        className="researcher-list-search"
-        onSubmit={navTo("/researcher-search?view=list")}
-      >
+      <form className="researcher-list-search" onSubmit={handleSubmit}>
         <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
         <input
           type="search"
           placeholder="Search for a paper, author or concept..."
           aria-label="Search list results"
+          value={queryValue}
+          onChange={(event) => setQueryValue(event.target.value)}
         />
       </form>
 
@@ -11774,7 +12579,14 @@ function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
           <MiniIcon path="M7 7h12M7 12h12M7 17h12M4 7h.01M4 12h.01M4 17h.01" />
           List view
         </button>
-        <button type="button" onClick={navTo("/researcher-search")}>
+        <button
+          type="button"
+          onClick={navTo(
+            queryValue.trim()
+              ? `/researcher-search?q=${encodeURIComponent(queryValue.trim())}`
+              : "/researcher-search",
+          )}
+        >
           <MiniIcon path="M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10" />
           Graph view
         </button>
@@ -11796,12 +12608,9 @@ function ResearcherListTopbar({ onMenuClick, onOpenSettings }) {
   );
 }
 
-function ResearcherListDetail({ paper }) {
+function ResearcherListDetail({ paper, onDownloadPaper }) {
   const [originAdded, setOriginAdded] = React.useState(false);
-  const [saved, setSaved] = React.useState(() =>
-    hasLocalBookmark(paper, getLocalBookmarks()),
-  );
-  const [saveMessage, setSaveMessage] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
   const detailPath = `/researcher-publication${paper.id ? `?id=${encodeURIComponent(paper.id)}` : ""}`;
   const summary =
     paper.summary ||
@@ -11814,26 +12623,8 @@ function ResearcherListDetail({ paper }) {
 
   React.useEffect(() => {
     setOriginAdded(false);
-    setSaved(hasLocalBookmark(paper, getLocalBookmarks()));
-    setSaveMessage("");
+    setSaved(false);
   }, [paper.id]);
-
-  const toggleCollectionSave = () => {
-    const nextSaved = !hasLocalBookmark(paper, getLocalBookmarks());
-    if (nextSaved) {
-      upsertLocalBookmark(paper);
-    } else {
-      removeLocalBookmark(paper);
-    }
-    setSaved(nextSaved);
-    setSaveMessage(nextSaved ? "Saved to Bookmarks." : "Removed from Bookmarks.");
-    if (isBackendNumericId(paper.id) && getStoredAuth().accessToken) {
-      apiFetch(`/api/bookmarks/${paper.id}`, {
-        method: nextSaved ? "POST" : "DELETE",
-        auth: true,
-      }).catch(() => {});
-    }
-  };
 
   return (
     <aside
@@ -11857,27 +12648,33 @@ function ResearcherListDetail({ paper }) {
       </div>
 
       <div className="researcher-list-primary-actions">
-        <button type="button" onClick={navTo("/researcher-search")}>
+        <button
+          type="button"
+          onClick={navTo(
+            `/researcher-search?q=${encodeURIComponent(paper.title)}`,
+          )}
+        >
           <MiniIcon path="M6 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM18 13a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM7 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 6l8 4M8 18l8-6M6 7v10" />
           Open graph
         </button>
         <button type="button" onClick={navTo(detailPath)}>
-          <MiniIcon
-            path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4"
-          />
+          <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
           Open detail
+        </button>
+        <button type="button" onClick={() => onDownloadPaper?.(paper)}>
+          <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+          Download DOCX
         </button>
       </div>
 
       <button
         type="button"
         className={`researcher-list-save ${saved ? "saved" : ""}`}
-        onClick={toggleCollectionSave}
+        onClick={() => setSaved((value) => !value)}
       >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
         {saved ? "Saved to collection" : "Save to collection"}
       </button>
-      {saveMessage ? <p className="bookmark-save-message">{saveMessage}</p> : null}
 
       <section className="researcher-list-open-in">
         <h3>Open in</h3>
@@ -11890,7 +12687,11 @@ function ResearcherListDetail({ paper }) {
             Google Scholar
           </a>
           <a
-            href={paper.doi ? `https://doi.org/${encodeURIComponent(paper.doi)}` : `https://scholar.google.com/scholar?q=${encodeURIComponent(paper.title)}`}
+            href={
+              paper.doi
+                ? `https://doi.org/${encodeURIComponent(paper.doi)}`
+                : `https://scholar.google.com/scholar?q=${encodeURIComponent(paper.title)}`
+            }
             target="_blank"
             rel="noreferrer"
           >
@@ -11936,6 +12737,22 @@ function ResearcherListViewPage() {
   const [selectedPaperId, setSelectedPaperId] = React.useState("bell-pepper");
   const [query, setQuery] = React.useState(getSearchParam("q") || "");
   const [sortBy, setSortBy] = React.useState("year");
+  React.useEffect(() => {
+    const syncUrlQuery = () => {
+      const urlKeyword = getSearchParam("q") || "";
+      setQuery((current) => (current === urlKeyword ? current : urlKeyword));
+      setSelectedPaperId("");
+    };
+    window.addEventListener("scholartrend:navigate", syncUrlQuery);
+    window.addEventListener("popstate", syncUrlQuery);
+    syncUrlQuery();
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncUrlQuery);
+      window.removeEventListener("popstate", syncUrlQuery);
+    };
+  }, []);
+
+  const { data: listSuggestions } = useSearchSuggestions(query, 8);
   const accountPlan = getCurrentAccountPlan();
   const listApiPath = React.useMemo(() => {
     const params = new URLSearchParams({
@@ -11946,42 +12763,52 @@ function ResearcherListViewPage() {
     if (query.trim()) params.set("keyword", query.trim());
     return `/api/publications/search?${params.toString()}`;
   }, [query, sortBy]);
-  const { data: backendPapers } = useApiResource(
+  const { data: backendPapers, status: listStatus } = useApiResource(
     listApiPath,
-    listViewPapers,
+    [],
     {
+      allowUnauthenticated: true,
+      clearOnLoad: false,
       select: (payload) =>
         unwrapList(payload).map((paper) =>
-          mapPublicationForResearcherList({
-            ...paper,
-            similarityPercent: Math.min(
-              100,
-              Math.max(10, paper.citationCount || 10),
-            ),
-          }),
+          mapPublicationForResearcherList(
+            paper,
+            accountPlan.searchAccuracy,
+            query,
+          ),
         ),
     },
   );
   const publishedListPapers = React.useMemo(
-    () => getPublishedPublications().map(mapPublicationForResearcherList),
-    [],
+    () =>
+      getPublishedPublications().map((paper) =>
+        mapPublicationForResearcherList(
+          paper,
+          accountPlan.searchAccuracy,
+          query,
+        ),
+      ),
+    [accountPlan.searchAccuracy, query],
   );
-  const papersForUi = React.useMemo(
-    () => {
-      const keyword = query.trim().toLowerCase();
-      return mergePublicationsByIdOrTitle(publishedListPapers, backendPapers)
-        .filter((paper) => {
-          if (!keyword) return true;
-          return `${paper.title} ${paper.authors} ${paper.summary} ${paper.tags?.join(" ")}`.toLowerCase().includes(keyword);
-        })
-        .sort((left, right) => {
-          if (sortBy === "title") return left.title.localeCompare(right.title);
-          if (sortBy === "citations") return right.citations - left.citations;
-          return Number(right.year || 0) - Number(left.year || 0);
-        });
-    },
-    [publishedListPapers, backendPapers, query, sortBy],
-  );
+  const filteredPublishedListPapers = React.useMemo(() => {
+    const keywordTerms = getSearchTerms(query);
+    return publishedListPapers.filter((paper) =>
+      matchesSearchTerms(
+        `${paper.title} ${paper.authors} ${paper.summary} ${paper.tags?.join(" ")}`,
+        keywordTerms,
+      ),
+    );
+  }, [publishedListPapers, query]);
+  const papersForUi = React.useMemo(() => {
+    return mergePublicationsByIdOrTitle(
+      filteredPublishedListPapers,
+      backendPapers,
+    ).sort((left, right) => {
+      if (sortBy === "title") return left.title.localeCompare(right.title);
+      if (sortBy === "citations") return right.citations - left.citations;
+      return Number(right.year || 0) - Number(left.year || 0);
+    });
+  }, [filteredPublishedListPapers, backendPapers, sortBy]);
   React.useEffect(() => {
     if (papersForUi.length) {
       setSelectedPaperId(papersForUi[0].id);
@@ -11990,17 +12817,29 @@ function ResearcherListViewPage() {
   const selectedPaper =
     papersForUi.find((paper) => paper.id === selectedPaperId) ||
     papersForUi[0] ||
-    listViewPapers[1];
+    null;
 
-  const exportListMetadata = () => {
-    downloadXlsxFile("scholartrend-list-metadata.xlsx", {
-      Papers: getPapersMetadataRows(papersForUi),
-    });
+  const downloadResults = () => {
+    downloadDocxFile(
+      query.trim()
+        ? `${slugifyFilename(query, "scholartrend-search")}-papers.docx`
+        : "scholartrend-search-papers.docx",
+      buildSearchResultsDocxData(papersForUi, query),
+    );
   };
-
-  const downloadListPapersText = () => {
-    downloadPapersTextBundle("scholartrend-list-papers.txt", papersForUi);
+  const downloadPaper = (paper) => {
+    if (!paper) return;
+    downloadDocxFile(
+      `${slugifyFilename(paper.title)}.docx`,
+      buildPaperDocxData(paper, query),
+    );
   };
+  const exportReferences = (format) =>
+    downloadReferenceExport({
+      format,
+      ids: papersForUi.map((paper) => paper.id),
+      query,
+    }).catch(() => {});
 
   return (
     <ResearcherShell
@@ -12015,25 +12854,31 @@ function ResearcherListViewPage() {
             <div>
               <h1>
                 {query.trim()
-                  ? `Search results for "${query.trim()}"`
+                  ? listStatus === "loading"
+                    ? `Searching "${query.trim()}"...`
+                    : `Search results for "${query.trim()}"`
                   : "DeepFruits: A Fruit Detection System"}
               </h1>
               <p className="researcher-search-accuracy">
-                {accountPlan.plan} account: {accountPlan.searchAccuracy}% article
-                accuracy
+                {accountPlan.plan} account: 1–{accountPlan.searchAccuracy}%
+                article accuracy range
               </p>
               <p>
                 Knowledge Graph <span>&gt;</span> <strong>List View</strong>
               </p>
             </div>
             <div>
-              <button type="button" onClick={exportListMetadata}>
+              <button type="button" onClick={downloadResults}>
                 <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
-                Export Excel
+                Download Papers
               </button>
-              <button type="button" onClick={downloadListPapersText}>
-                <MiniIcon path="M4 7h16M6 7v12h12V7M9 11h6M9 15h6" />
-                Download Papers TXT
+              <button type="button" onClick={() => exportReferences("bibtex")}>
+                <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+                BibTeX
+              </button>
+              <button type="button" onClick={() => exportReferences("ris")}>
+                <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+                RIS
               </button>
               <label className="researcher-list-inline-filter">
                 <span>Search</span>
@@ -12041,7 +12886,13 @@ function ResearcherListViewPage() {
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Keyword, title, author..."
+                  list="researcher-list-search-suggestions"
                 />
+                <datalist id="researcher-list-search-suggestions">
+                  {listSuggestions.map((suggestion) => (
+                    <option value={suggestion} key={suggestion} />
+                  ))}
+                </datalist>
               </label>
               <label className="researcher-list-inline-filter">
                 <span>Sort</span>
@@ -12077,33 +12928,64 @@ function ResearcherListViewPage() {
                 </tr>
               </thead>
               <tbody>
-                {papersForUi.map((paper) => (
-                  <tr
-                    className={paper.id === selectedPaperId ? "selected" : ""}
-                    key={paper.id}
-                    onClick={() => setSelectedPaperId(paper.id)}
-                  >
-                    <td>
-                      <button type="button">{paper.title}</button>
-                    </td>
-                    <td>{paper.authors}</td>
-                    <td>{paper.year}</td>
-                    <td>{paper.citations}</td>
-                    <td>{paper.references}</td>
-                    <td>
-                      <span className="researcher-list-similarity">
-                        <i style={{ width: `${paper.similarity}%` }}></i>
-                      </span>
-                      <strong>{paper.similarity.toFixed(1)}</strong>
-                    </td>
+                {listStatus === "loading" ? (
+                  <tr>
+                    <td colSpan="6">Loading publications...</td>
                   </tr>
-                ))}
+                ) : papersForUi.length ? (
+                  papersForUi.map((paper) => (
+                    <tr
+                      className={paper.id === selectedPaperId ? "selected" : ""}
+                      key={paper.id}
+                      onClick={() => setSelectedPaperId(paper.id)}
+                    >
+                      <td>
+                        <button type="button">{paper.title}</button>
+                      </td>
+                      <td>{paper.authors}</td>
+                      <td>{paper.year}</td>
+                      <td>{paper.citations}</td>
+                      <td>{paper.references}</td>
+                      <td>
+                        <span className="researcher-list-similarity">
+                          <i style={{ width: `${paper.similarity}%` }}></i>
+                        </span>
+                        <strong>{paper.similarity.toFixed(1)}</strong>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="6">No publications matched this search.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         </section>
 
-        <ResearcherListDetail paper={selectedPaper} />
+        {selectedPaper ? (
+          <ResearcherListDetail
+            paper={selectedPaper}
+            onDownloadPaper={downloadPaper}
+          />
+        ) : (
+          <aside
+            className="researcher-list-detail"
+            aria-label="Selected paper details"
+          >
+            <h2>
+              {listStatus === "loading"
+                ? "Loading selected paper..."
+                : "No paper selected"}
+            </h2>
+            <p className="researcher-list-detail-authors">
+              {listStatus === "loading"
+                ? "Fetching real publication data from connected sources."
+                : "Try another keyword or switch back to All Sources."}
+            </p>
+          </aside>
+        )}
       </div>
     </ResearcherShell>
   );
@@ -12111,84 +12993,65 @@ function ResearcherListViewPage() {
 
 function ResearcherSearchPage() {
   const view = new URLSearchParams(window.location.search).get("view");
+  const [graphQuery, setGraphQuery] = React.useState(
+    () => getSearchParam("q") || "",
+  );
+  React.useEffect(() => {
+    const syncQuery = () => setGraphQuery(getSearchParam("q") || "");
+    window.addEventListener("scholartrend:navigate", syncQuery);
+    window.addEventListener("popstate", syncQuery);
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncQuery);
+      window.removeEventListener("popstate", syncQuery);
+    };
+  }, []);
+  const accountPlan = getCurrentAccountPlan();
+  const graphApiPath = React.useMemo(() => {
+    const params = new URLSearchParams({
+      page: "1",
+      pageSize: String(graph3DNodes.length),
+      sortBy: "citations",
+    });
+    if (graphQuery.trim()) params.set("keyword", graphQuery.trim());
+    return `/api/publications/search?${params.toString()}`;
+  }, [graphQuery]);
   const { data: backendGraphPublications } = useApiResource(
-    "/api/publications/search?page=1&pageSize=8&sortBy=year",
+    graphApiPath,
     [],
-    { select: (payload) => unwrapList(payload) },
+    {
+      allowUnauthenticated: true,
+      select: (payload) => unwrapList(payload),
+    },
   );
-  const publishedGraphNodes = React.useMemo(
-    () => getPublishedPublications().map(mapPublishedPublicationForGraph),
+  const localPublishedPublications = React.useMemo(
+    () => getPublishedPublications(),
     [],
-  );
-  const backendGraphNodes = React.useMemo(
-    () =>
-      backendGraphPublications.map((paper, index) =>
-        mapPublishedPublicationForGraph(
-          {
-            id: paper.id,
-            title: paper.title,
-            abstract: paper.abstract,
-            authors: paper.authors,
-            year: paper.year,
-            journalName: paper.journalName,
-            citationCount: paper.citationCount,
-            keywords: paper.keywords,
-            similarityPercent: Math.min(
-              100,
-              Math.max(25, Number(paper.citationCount || 25)),
-            ),
-          },
-          index + publishedGraphNodes.length,
-        ),
-      ),
-    [backendGraphPublications, publishedGraphNodes.length],
   );
   const graphNodesForUi = React.useMemo(() => {
-    return graph3DNodes;
-  }, [publishedGraphNodes, backendGraphNodes]);
+    const realPublications = mergePublicationsByIdOrTitle(
+      backendGraphPublications,
+      localPublishedPublications,
+    );
+    return createApiBackedGraphNodes(
+      realPublications,
+      accountPlan.searchAccuracy,
+    );
+  }, [
+    backendGraphPublications,
+    localPublishedPublications,
+    accountPlan.searchAccuracy,
+  ]);
   const [selectedNodeId, setSelectedNodeId] = React.useState(
     graphNodesForUi[0]?.id || "deepfruits",
   );
-  const [comparisonPapers, setComparisonPapers] = React.useState([]);
   const selectedNode = React.useMemo(
     () =>
       graphNodesForUi.find((node) => node.id === selectedNodeId) ||
-      graphNodesForUi[0] ||
-      graph3DNodes[0],
+      graphNodesForUi[0] || null,
     [selectedNodeId, graphNodesForUi],
   );
 
   if (view === "list") return <ResearcherListViewPage />;
-
-  const addComparisonPaper = (paper) => {
-    setComparisonPapers((current) => {
-      const exists = current.some((item) => getBookmarkKey(item) === getBookmarkKey(paper));
-      return exists ? current : [...current, paper].slice(-4);
-    });
-  };
-
-  const exportComparisonPapers = () => {
-    downloadXlsxFile("scholartrend-graph-comparison.xlsx", {
-      Comparison: [
-        ["Title", "Authors", "Year", "Venue", "Citations", "Similarity"],
-        ...comparisonPapers.map((paper) => [
-          paper.title,
-          paper.authors,
-          paper.year,
-          paper.venue,
-          paper.citations,
-          paper.similarity,
-        ]),
-      ],
-    });
-  };
-
-  const shareComparisonPapers = async () => {
-    const text = comparisonPapers
-      .map((paper, index) => `${index + 1}. ${paper.title} (${paper.year})`)
-      .join("\n");
-    await copyTextToClipboard(text || selectedNode.label);
-  };
 
   return (
     <ResearcherShell
@@ -12198,33 +13061,28 @@ function ResearcherSearchPage() {
       mainClassName="researcher-graph-main"
     >
       <div className="researcher-graph-layout">
-        <KnowledgeGraphCanvas
-          nodes={graphNodesForUi}
-          selectedNodeId={selectedNode.id}
-          onSelectNode={setSelectedNodeId}
-        />
-        <ResearcherPaperPanel
-          selectedNode={selectedNode}
-          onComparePaper={addComparisonPaper}
-          comparisonCount={comparisonPapers.length}
-        />
+        {selectedNode ? (
+          <>
+            <KnowledgeGraphCanvas
+              nodes={graphNodesForUi}
+              selectedNodeId={selectedNode.id}
+              onSelectNode={setSelectedNodeId}
+            />
+            <ResearcherPaperPanel selectedNode={selectedNode} />
+          </>
+        ) : (
+          <section className="knowledge-graph-panel researcher-graph-empty">
+            <h2>No real publications found</h2>
+            <p>Try another title, author, keyword, or DOI.</p>
+          </section>
+        )}
       </div>
-      {comparisonPapers.length ? (
-        <section className="graph-comparison-bar">
-          <div>
-            <strong>{comparisonPapers.length} papers selected for compare</strong>
-            <span>{comparisonPapers.map((paper) => paper.title).join(" | ")}</span>
-          </div>
-          <button type="button" onClick={shareComparisonPapers}>Copy</button>
-          <button type="button" onClick={exportComparisonPapers}>Export</button>
-          <button type="button" onClick={() => setComparisonPapers([])}>Clear</button>
-        </section>
-      ) : null}
     </ResearcherShell>
   );
 }
 
 function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
+  const { data: filterSuggestions } = useSearchSuggestions(filters.keyword, 8);
   const keywordChips = filters.keyword
     ? filters.keyword
         .split(",")
@@ -12297,19 +13155,19 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           <input
             type="radio"
             name="source"
-            checked={filters.source === "OpenAlex"}
-            onChange={() => onChangeFilters({ source: "OpenAlex" })}
+            checked={filters.source === "Semantic Scholar"}
+            onChange={() => onChangeFilters({ source: "Semantic Scholar" })}
           />{" "}
-          OpenAlex
+          Semantic Scholar
         </label>
         <label>
           <input
             type="radio"
             name="source"
-            checked={filters.source === "Semantic Scholar"}
-            onChange={() => onChangeFilters({ source: "Semantic Scholar" })}
+            checked={filters.source === "OpenAlex"}
+            onChange={() => onChangeFilters({ source: "OpenAlex" })}
           />{" "}
-          Semantic Scholar
+          OpenAlex
         </label>
       </section>
 
@@ -12351,30 +13209,38 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           <input
             type="search"
             value={filters.keyword}
-            onChange={(event) => onChangeFilters({ keyword: event.target.value })}
+            onChange={(event) =>
+              onChangeFilters({ keyword: event.target.value })
+            }
             placeholder="Keyword..."
             aria-label="Search keyword filter"
+            list="student-search-keyword-suggestions"
           />
+          <datalist id="student-search-keyword-suggestions">
+            {filterSuggestions.map((suggestion) => (
+              <option value={suggestion} key={suggestion} />
+            ))}
+          </datalist>
         </div>
       </section>
     </aside>
   );
 }
 
-function SearchResultCard({ result, onToggleSave }) {
+function SearchResultCard({ result, onToggleSave, onDownloadPaper }) {
   const detailPath = `/student-publication${result.id ? `?id=${encodeURIComponent(result.id)}` : ""}`;
+  const sourceLink = result.externalLinks?.[0];
   return (
     <article className="search-result-card">
       <button
         className={`result-save ${result.saved ? "saved" : ""}`}
         type="button"
-        aria-label={result.saved ? "Bỏ lưu bài báo" : "Lưu bài báo"}
+        aria-label={
+          result.saved ? "Remove saved publication" : "Save publication"
+        }
         onClick={() => onToggleSave?.(result)}
       >
         <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
-        <span className="result-save-label">
-          {result.saved ? "Đã lưu" : "Lưu"}
-        </span>
       </button>
       <a
         className="result-title-link"
@@ -12387,9 +13253,27 @@ function SearchResultCard({ result, onToggleSave }) {
       <p className="result-abstract">{result.abstract}</p>
       <div className="result-accuracy-row">
         <span className={result.isPro ? "pro" : ""}>
-          {result.plan || "Free"} accuracy: {result.searchAccuracy}%
+          {result.plan || "Free"} accuracy:{" "}
+          {Number(result.displayAccuracy ?? result.searchAccuracy ?? 0).toFixed(
+            1,
+          )}
+          %
         </span>
       </div>
+      {result.externalLinks?.length ? (
+        <div className="result-source-links" aria-label="External sources">
+          {result.externalLinks.map((link) => (
+            <a
+              href={link.href}
+              key={link.label}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      ) : null}
       <div className="result-meta-row">
         <div className="result-meta">
           <span>
@@ -12402,9 +13286,21 @@ function SearchResultCard({ result, onToggleSave }) {
           </span>
           <strong>{result.citations} Citations</strong>
         </div>
-        <a href={detailPath} onClick={navTo(detailPath)}>
-          View Source <span aria-hidden="true">-&gt;</span>
-        </a>
+        <div className="result-actions">
+          <button type="button" onClick={() => onDownloadPaper?.(result)}>
+            <MiniIcon path="M12 4v10M8 10l4 4 4-4M5 19h14" />
+            Download DOCX
+          </button>
+          {sourceLink ? (
+            <a href={sourceLink.href} target="_blank" rel="noreferrer">
+              Open Paper <span aria-hidden="true">-&gt;</span>
+            </a>
+          ) : (
+            <a href={detailPath} onClick={navTo(detailPath)}>
+              View Detail <span aria-hidden="true">-&gt;</span>
+            </a>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -12415,6 +13311,7 @@ function StudentSearchPage() {
     getLocalBookmarks(),
   );
   const [bookmarkMessage, setBookmarkMessage] = React.useState("");
+  const [page, setPage] = React.useState(1);
   const [filters, setFilters] = React.useState(() => ({
     keyword: getSearchParam("q") || "",
     yearFrom: "2010",
@@ -12422,86 +13319,140 @@ function StudentSearchPage() {
     source: "All Sources",
     sortBy: "relevance",
   }));
+  const [debouncedFilters, setDebouncedFilters] = React.useState(filters);
+  React.useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => setDebouncedFilters(filters),
+      350,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [filters]);
+  React.useEffect(() => {
+    const syncUrlQuery = () => {
+      const urlKeyword = getSearchParam("q") || "";
+      setFilters((current) =>
+        current.keyword === urlKeyword
+          ? current
+          : { ...current, keyword: urlKeyword },
+      );
+      setPage(1);
+    };
+
+    window.addEventListener("scholartrend:navigate", syncUrlQuery);
+    window.addEventListener("popstate", syncUrlQuery);
+    syncUrlQuery();
+    return () => {
+      window.removeEventListener("scholartrend:navigate", syncUrlQuery);
+      window.removeEventListener("popstate", syncUrlQuery);
+    };
+  }, []);
   const accountPlan = getCurrentAccountPlan();
-  const freeAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, false);
-  const proAccuracyForRole = getSearchAccuracyForAccount(accountPlan.role, true);
   const searchApiPath = React.useMemo(() => {
     const params = new URLSearchParams({
-      page: "1",
+      page: String(page),
       pageSize: "10",
+      sortBy: debouncedFilters.sortBy || "relevance",
     });
-    if (filters.keyword.trim()) params.set("keyword", filters.keyword.trim());
-    if (filters.yearTo) params.set("year", filters.yearTo);
-    if (filters.sortBy && filters.sortBy !== "relevance") {
-      params.set("sortBy", filters.sortBy);
-    }
-    if (filters.source && filters.source !== "All Sources") {
-      params.set("source", filters.source);
+    const keyword = debouncedFilters.keyword.trim();
+    if (keyword) params.set("keyword", keyword);
+    if (debouncedFilters.yearFrom)
+      params.set("yearFrom", debouncedFilters.yearFrom);
+    if (debouncedFilters.yearTo) params.set("yearTo", debouncedFilters.yearTo);
+    if (debouncedFilters.source && debouncedFilters.source !== "All Sources") {
+      params.set("source", debouncedFilters.source);
     }
     return `/api/publications/search?${params.toString()}`;
-  }, [filters.keyword, filters.yearTo, filters.sortBy, filters.source]);
-  const { data: backendResults } = useApiResource(
+  }, [
+    page,
+    debouncedFilters.keyword,
+    debouncedFilters.yearFrom,
+    debouncedFilters.yearTo,
+    debouncedFilters.source,
+    debouncedFilters.sortBy,
+  ]);
+  const { data: searchPageData, status: searchStatus } = useApiResource(
     searchApiPath,
-    searchResults,
-    { select: (payload) => unwrapList(payload).map(mapPublicationForCard) },
+    { items: [], totalCount: 0, totalPages: 1, page: 1, pageSize: 10 },
+    {
+      allowUnauthenticated: true,
+      clearOnLoad: false,
+      select: (payload) => ({
+        items: unwrapList(payload).map(mapPublicationForCard),
+        totalCount: Number(payload?.totalCount ?? payload?.TotalCount ?? 0),
+        totalPages: Number(payload?.totalPages ?? payload?.TotalPages ?? 1),
+        page: Number(payload?.page ?? payload?.Page ?? page),
+        pageSize: Number(payload?.pageSize ?? payload?.PageSize ?? 10),
+      }),
+    },
   );
+  const backendResults = searchPageData.items;
   const publishedSearchResults = React.useMemo(
     () => getPublishedPublications().map(mapPublishedPublicationForCard),
     [],
   );
-  const searchResultsForUi = React.useMemo(
-    () => {
-      const keyword = filters.keyword.trim().toLowerCase();
-      const yearFrom = Number(filters.yearFrom || 0);
-      const yearTo = Number(filters.yearTo || 9999);
-      const filtered = mergePublicationsByIdOrTitle(
-        publishedSearchResults,
-        backendResults,
-      )
-        .filter((result) => {
-          const year = Number(result.year || 0);
-          const matchesYear =
-            (!yearFrom || year >= yearFrom) && (!yearTo || year <= yearTo);
-          const haystack = `${result.title} ${result.abstract} ${result.authors} ${result.source}`.toLowerCase();
-          const matchesKeyword = !keyword || haystack.includes(keyword);
-          return matchesYear && matchesKeyword;
-        })
-        .sort((left, right) => {
-          if (filters.sortBy === "year") {
-            return Number(right.year || 0) - Number(left.year || 0);
-          }
-          if (filters.sortBy === "citations") {
-            return (
-              Number(String(right.citations || 0).replace(/,/g, "")) -
-              Number(String(left.citations || 0).replace(/,/g, ""))
-            );
-          }
-          return 0;
-        });
-
-      return filtered.map(
-        (result) => ({
-          ...result,
-          saved: hasLocalBookmark(result, localBookmarks),
-          plan: accountPlan.plan,
-          isPro: accountPlan.isPro,
-          searchAccuracy: accountPlan.searchAccuracy,
-        }),
+  const filteredPublishedSearchResults = React.useMemo(() => {
+    const keywordTerms = getSearchTerms(filters.keyword);
+    const fromYear = Number(filters.yearFrom || 0);
+    const toYear = Number(filters.yearTo || 0);
+    return publishedSearchResults.filter((result) => {
+      const searchableText = [
+        result.title,
+        result.authors,
+        result.abstract,
+        result.source,
+        ...(Array.isArray(result.tags) ? result.tags : []),
+      ].join(" ");
+      const matchesKeyword = matchesSearchTerms(searchableText, keywordTerms);
+      const year = Number(result.year || 0);
+      const matchesYearFrom = !fromYear || !year || year >= fromYear;
+      const matchesYearTo = !toYear || !year || year <= toYear;
+      const matchesSource =
+        !filters.source ||
+        filters.source === "All Sources" ||
+        result.source === filters.source ||
+        result.sourceApi === filters.source ||
+        result.journalName === filters.source;
+      return (
+        matchesKeyword && matchesYearFrom && matchesYearTo && matchesSource
       );
-    },
-    [
+    });
+  }, [
+    publishedSearchResults,
+    filters.keyword,
+    filters.yearFrom,
+    filters.yearTo,
+    filters.source,
+  ]);
+  // Optimize: Only merge and map saved status, backend already filtered/sorted
+  const searchResultsForUi = React.useMemo(() => {
+    // Backend already handles filtering and sorting, just merge with published
+    const merged = mergePublicationsByIdOrTitle(
+      filteredPublishedSearchResults,
       backendResults,
-      publishedSearchResults,
-      localBookmarks,
-      filters.keyword,
-      filters.yearFrom,
-      filters.yearTo,
-      filters.sortBy,
-      accountPlan.plan,
-      accountPlan.isPro,
-      accountPlan.searchAccuracy,
-    ],
-  );
+    );
+
+    // Only add UI-specific fields
+    return merged.map((result) => ({
+      ...result,
+      saved: hasLocalBookmark(result, localBookmarks),
+      plan: accountPlan.plan,
+      isPro: accountPlan.isPro,
+      searchAccuracy: accountPlan.searchAccuracy,
+      displayAccuracy: getPolicyScopedSearchAccuracy(
+        result,
+        filters.keyword,
+        accountPlan.searchAccuracy,
+      ),
+    }));
+  }, [
+    backendResults,
+    filteredPublishedSearchResults,
+    localBookmarks,
+    filters.keyword,
+    accountPlan.plan,
+    accountPlan.isPro,
+    accountPlan.searchAccuracy,
+  ]);
 
   const handleToggleSearchSave = async (result) => {
     const nextSaved = !hasLocalBookmark(result, localBookmarks);
@@ -12511,8 +13462,8 @@ function StudentSearchPage() {
     setLocalBookmarkState(nextLocalBookmarks);
     setBookmarkMessage(
       nextSaved
-        ? "Đã lưu bài báo. Mở Bookmarks để xem lại."
-        : "Đã bỏ lưu bài báo khỏi Bookmarks.",
+        ? `Saved "${result.title}" to bookmarks.`
+        : `Removed "${result.title}" from bookmarks.`,
     );
 
     if (isBackendNumericId(result.id) && getStoredAuth().accessToken) {
@@ -12522,8 +13473,16 @@ function StudentSearchPage() {
       }).catch(() => {});
     }
   };
+  const downloadStudentPaper = (result) => {
+    if (!result) return;
+    downloadDocxFile(
+      `${slugifyFilename(result.title)}.docx`,
+      buildPaperDocxData(result, filters.keyword),
+    );
+  };
   const handleChangeFilters = (patch) => {
     setFilters((current) => ({ ...current, ...patch }));
+    setPage(1);
   };
   const clearFilters = () => {
     setFilters({
@@ -12533,15 +13492,25 @@ function StudentSearchPage() {
       source: "All Sources",
       sortBy: "relevance",
     });
+    setPage(1);
   };
-  const exportSearchMetadata = () => {
-    downloadXlsxFile("scholartrend-search-metadata.xlsx", {
-      Papers: getPapersMetadataRows(searchResultsForUi),
-    });
-  };
-  const downloadSearchPapersText = () => {
-    downloadPapersTextBundle("scholartrend-search-papers.txt", searchResultsForUi);
-  };
+  const totalSearchPages = Math.max(1, searchPageData.totalPages || 1);
+  const totalSearchCount =
+    searchPageData.totalCount || searchResultsForUi.length;
+  const emptySourceLinks = React.useMemo(() => {
+    const query = filters.keyword.trim();
+    if (!query) return [];
+    const links = buildExternalSourceLinks({ title: query });
+    if (!filters.source || filters.source === "All Sources") return links;
+    return links.filter((link) => link.label === filters.source);
+  }, [filters.keyword, filters.source]);
+  const pageNumbers = Array.from(
+    { length: Math.min(5, totalSearchPages) },
+    (_, index) => {
+      const start = Math.max(1, Math.min(page - 2, totalSearchPages - 4));
+      return start + index;
+    },
+  ).filter((number) => number <= totalSearchPages);
 
   return (
     <main className="student-app">
@@ -12550,7 +13519,10 @@ function StudentSearchPage() {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+              <a
+                href="/student-dashboard"
+                onClick={navTo("/student-dashboard")}
+              >
                 Dashboard
               </a>
               <span>&gt;</span>
@@ -12564,14 +13536,13 @@ function StudentSearchPage() {
         <div className="student-content search-content">
           <h1 className="search-page-title">Publication Search</h1>
           <div className="search-accuracy-banner">
-            <span>
-              {accountPlan.role} {accountPlan.plan} account
-            </span>
-            <strong>{accountPlan.searchAccuracy}% article accuracy</strong>
+            <span>{accountPlan.plan} account</span>
+            <strong>
+              1–{accountPlan.searchAccuracy}% article accuracy range
+            </strong>
             <p>
-              {accountPlan.role} Free is {freeAccuracyForRole}%.{" "}
-              {accountPlan.role} Pro increases search accuracy to{" "}
-              {proAccuracyForRole}%.
+              Free results range from 1–15%. Pro results range from 1–35%,
+              based on each paper's relevance.
             </p>
           </div>
 
@@ -12586,14 +13557,23 @@ function StudentSearchPage() {
               className="search-results-area"
               aria-label="Publication search results"
             >
+              {bookmarkMessage ? (
+                <p className="bookmark-save-message" role="status">
+                  {bookmarkMessage}{" "}
+                  <a
+                    href="/student-bookmarks"
+                    onClick={navTo("/student-bookmarks")}
+                  >
+                    Open bookmarks
+                  </a>
+                </p>
+              ) : null}
               <div className="search-results-toolbar">
-                <p>Found {searchResultsForUi.length} publications</p>
-                <button type="button" onClick={exportSearchMetadata}>
-                  Export Excel
-                </button>
-                <button type="button" onClick={downloadSearchPapersText}>
-                  Download Papers TXT
-                </button>
+                <p>
+                  {searchStatus === "loading"
+                    ? "Loading publications..."
+                    : `Found ${formatCount(totalSearchCount)} publications`}
+                </p>
                 <label>
                   <span>Sort by:</span>
                   <select
@@ -12608,39 +13588,90 @@ function StudentSearchPage() {
                   </select>
                 </label>
               </div>
-              {bookmarkMessage ? (
-                <p className="bookmark-save-message" role="status">
-                  {bookmarkMessage}{" "}
-                  <a href="/student-bookmarks" onClick={navTo("/student-bookmarks")}>
-                    Xem Bookmarks
-                  </a>
-                </p>
-              ) : null}
 
               <div className="search-results-list">
-                {searchResultsForUi.map((result) => (
-                  <SearchResultCard
-                    result={result}
-                    onToggleSave={handleToggleSearchSave}
-                    key={result.title}
-                  />
-                ))}
+                {searchResultsForUi.length ? (
+                  searchResultsForUi.map((result) => (
+                    <SearchResultCard
+                      result={result}
+                      onToggleSave={handleToggleSearchSave}
+                      onDownloadPaper={downloadStudentPaper}
+                      key={result.title}
+                    />
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <p>
+                      {searchStatus === "loading"
+                        ? "Loading publications..."
+                        : "No publications matched your filters."}
+                    </p>
+                    {searchStatus !== "loading" && emptySourceLinks.length ? (
+                      <div
+                        className="result-source-links"
+                        aria-label="Search external sources"
+                      >
+                        {emptySourceLinks.map((link) => (
+                          <a
+                            href={link.href}
+                            key={link.label}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open {link.label}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
 
               <div className="pagination-row">
-                <p>Showing 1-{searchResultsForUi.length} of {searchResultsForUi.length} results</p>
+                <p>
+                  Showing{" "}
+                  {searchResultsForUi.length
+                    ? (page - 1) * searchPageData.pageSize + 1
+                    : 0}
+                  -
+                  {(page - 1) * searchPageData.pageSize +
+                    searchResultsForUi.length}{" "}
+                  of {formatCount(totalSearchCount)} results
+                </p>
                 <nav className="pagination" aria-label="Search result pages">
-                  <button type="button" aria-label="Previous page">
+                  <button
+                    type="button"
+                    aria-label="Previous page"
+                    disabled={page <= 1}
+                    onClick={() =>
+                      setPage((current) => Math.max(1, current - 1))
+                    }
+                  >
                     &lt;
                   </button>
-                  <button className="active" type="button">
-                    1
-                  </button>
-                  <button type="button">2</button>
-                  <button type="button">3</button>
-                  <span>...</span>
-                  <button type="button">125</button>
-                  <button type="button" aria-label="Next page">
+                  {pageNumbers.map((number) => (
+                    <button
+                      className={number === page ? "active" : ""}
+                      type="button"
+                      onClick={() => setPage(number)}
+                      key={number}
+                    >
+                      {number}
+                    </button>
+                  ))}
+                  {totalSearchPages > pageNumbers[pageNumbers.length - 1] ? (
+                    <span>...</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label="Next page"
+                    disabled={page >= totalSearchPages}
+                    onClick={() =>
+                      setPage((current) =>
+                        Math.min(totalSearchPages, current + 1),
+                      )
+                    }
+                  >
                     &gt;
                   </button>
                 </nav>
@@ -12658,9 +13689,14 @@ function BookmarkPaperCard({
   detailPath = "/student-publication",
   onRemove,
 }) {
+  const paperDetailPath = getBookmarkDetailPath(detailPath, paper);
   return (
     <article className="bookmark-paper-card">
-      <a href={detailPath} onClick={navTo(detailPath)}>
+      <a
+        className="bookmark-title-link"
+        href={paperDetailPath}
+        onClick={navTo(paperDetailPath)}
+      >
         <h2>{paper.title}</h2>
       </a>
       <p>{paper.excerpt}</p>
@@ -12678,6 +13714,14 @@ function BookmarkPaperCard({
           Impact: {paper.impact}
         </span>
       </div>
+      <a
+        className="bookmark-open"
+        href={paperDetailPath}
+        onClick={navTo(paperDetailPath)}
+      >
+        Open detail
+        <MiniIcon path="M9 5l7 7-7 7" />
+      </a>
       {onRemove ? (
         <button
           type="button"
@@ -12693,11 +13737,10 @@ function BookmarkPaperCard({
 
 function FollowSuggestionsSection() {
   const [followedKeywordIds, setFollowedKeywordIds] = React.useState([]);
-  const { data: suggestions } = useApiResource(
-    "/api/follows/suggestions",
-    [],
-    { auth: true, select: (payload) => (Array.isArray(payload) ? payload : []) },
-  );
+  const { data: suggestions } = useApiResource("/api/follows/suggestions", [], {
+    auth: true,
+    select: (payload) => (Array.isArray(payload) ? payload : []),
+  });
 
   const followKeyword = (keyword) => {
     if (!isBackendNumericId(keyword.id)) return;
@@ -12715,7 +13758,10 @@ function FollowSuggestionsSection() {
   if (!suggestions.length) return null;
 
   return (
-    <div className="bookmark-keyword-suggestions" aria-label="Suggested keywords">
+    <div
+      className="bookmark-keyword-suggestions"
+      aria-label="Suggested keywords"
+    >
       {suggestions.slice(0, 6).map((keyword) => {
         const followed = followedKeywordIds.includes(keyword.id);
         return (
@@ -12745,7 +13791,10 @@ function FollowSuggestionsSection() {
   );
 }
 
-function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }) {
+function FollowJournalSuggestionsSection({
+  detailPath = "/student-publication",
+}) {
+  const { t } = useTranslation();
   const [followedJournalIds, setFollowedJournalIds] = React.useState([]);
   const { data: journals } = useApiResource("/api/journals", [], {
     select: unwrapList,
@@ -12767,7 +13816,10 @@ function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }
   if (!journals.length) return null;
 
   return (
-    <div className="bookmark-keyword-suggestions" aria-label="Suggested journals">
+    <div
+      className="bookmark-keyword-suggestions"
+      aria-label="Suggested journals"
+    >
       {journals.slice(0, 4).map((journal) => {
         const id = journal.id ?? journal.Id;
         const name = journal.name || journal.Name || "Indexed Journal";
@@ -12793,7 +13845,7 @@ function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }
               {followed ? "Followed" : "Follow journal"}
             </button>
             <a href={detailPath} onClick={navTo(detailPath)}>
-              View Journal -&gt;
+              {t("bookmarks.viewJournal")} -&gt;
             </a>
           </article>
         );
@@ -12803,6 +13855,7 @@ function FollowJournalSuggestionsSection({ detailPath = "/student-publication" }
 }
 
 function BookmarksPage({ role = "student" }) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = React.useState("Publications");
   const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
     getLocalBookmarks(),
@@ -12810,21 +13863,9 @@ function BookmarksPage({ role = "student" }) {
   const [removedBookmarkKeys, setRemovedBookmarkKeyState] = React.useState(() =>
     getRemovedBookmarkKeys(),
   );
-  React.useEffect(() => {
-    const refreshBookmarks = () => {
-      setLocalBookmarkState(getLocalBookmarks());
-      setRemovedBookmarkKeyState(getRemovedBookmarkKeys());
-    };
-    window.addEventListener("scholartrend:bookmarks-changed", refreshBookmarks);
-    window.addEventListener("storage", refreshBookmarks);
-    return () => {
-      window.removeEventListener("scholartrend:bookmarks-changed", refreshBookmarks);
-      window.removeEventListener("storage", refreshBookmarks);
-    };
-  }, []);
   const { data: backendBookmarkedPapers } = useApiResource(
     "/api/bookmarks",
-    bookmarkedPapers,
+    [],
     {
       auth: true,
       select: (payload) =>
@@ -12844,8 +13885,42 @@ function BookmarksPage({ role = "student" }) {
   const bookmarkPapersForUi = mergeBookmarkLists(
     backendBookmarkedPapers,
     localBookmarks,
-    bookmarkedPapers,
   ).filter((paper) => !removedBookmarkKeys.includes(getBookmarkKey(paper)));
+  const { data: followedItems } = useApiResource("/api/follows", [], {
+    auth: true,
+    select: unwrapList,
+  });
+  const followedKeywords = followedItems
+    .filter((item) =>
+      String(item.followType || item.FollowType).includes("Keyword"),
+    )
+    .map((item) => ({
+      id: item.id || item.Id || item.followTargetId || item.FollowTargetId,
+      name:
+        item.followTargetName ||
+        item.FollowTargetName ||
+        `Keyword ${item.followTargetId || item.FollowTargetId || ""}`.trim(),
+      count: "Followed keyword",
+      trend: "Tracked",
+    }));
+  const followedJournals = followedItems
+    .filter((item) =>
+      String(item.followType || item.FollowType).includes("Journal"),
+    )
+    .map((item) => ({
+      id: item.id || item.Id || item.followTargetId || item.FollowTargetId,
+      name:
+        item.followTargetName ||
+        item.FollowTargetName ||
+        `Journal ${item.followTargetId || item.FollowTargetId || ""}`.trim(),
+      impactFactor: "N/A",
+      status: "Active alerts",
+    }));
+  const bookmarkTopicsForUi = followedKeywords.map((keyword) => ({
+    name: keyword.name,
+    tracked: keyword.count,
+    activity: keyword.trend,
+  }));
   const handleRemoveBookmark = async (paper) => {
     setLocalBookmarkState(removeLocalBookmark(paper));
     setRemovedBookmarkKeyState(markBookmarkRemoved(paper));
@@ -12865,14 +13940,6 @@ function BookmarksPage({ role = "student" }) {
   const dashboardPath = isAcademic
     ? getAcademicPath("/researcher-dashboard", rolePrefix)
     : "/student-dashboard";
-  const exportBookmarkMetadata = () => {
-    downloadXlsxFile("scholartrend-bookmark-metadata.xlsx", {
-      Papers: getPapersMetadataRows(bookmarkPapersForUi),
-    });
-  };
-  const downloadBookmarkPapersText = () => {
-    downloadPapersTextBundle("scholartrend-bookmark-papers.txt", bookmarkPapersForUi);
-  };
 
   if (isAcademic) {
     return (
@@ -12884,14 +13951,6 @@ function BookmarksPage({ role = "student" }) {
       >
         <div className="researcher-bookmarks-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
-          <div className="paper-download-actions">
-            <button type="button" onClick={exportBookmarkMetadata}>
-              Export Excel
-            </button>
-            <button type="button" onClick={downloadBookmarkPapersText}>
-              Download Papers TXT
-            </button>
-          </div>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
             {bookmarkTabs.map((tab) => (
@@ -12911,14 +13970,18 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-paper-list"
               aria-label="Bookmarked publications"
             >
-              {bookmarkPapersForUi.map((paper) => (
-                <BookmarkPaperCard
-                  paper={paper}
-                  detailPath={detailPath}
-                  onRemove={handleRemoveBookmark}
-                  key={paper.title}
-                />
-              ))}
+              {bookmarkPapersForUi.length ? (
+                bookmarkPapersForUi.map((paper) => (
+                  <BookmarkPaperCard
+                    paper={paper}
+                    detailPath={detailPath}
+                    onRemove={handleRemoveBookmark}
+                    key={paper.title}
+                  />
+                ))
+              ) : (
+                <p className="empty-state">No bookmarked publications yet.</p>
+              )}
             </section>
           )}
 
@@ -12928,7 +13991,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked keywords"
             >
               <FollowSuggestionsSection />
-              {bookmarkedKeywords.map((keyword) => (
+              {followedKeywords.map((keyword) => (
                 <article className="bookmark-keyword-card" key={keyword.name}>
                   <div className="card-header">
                     <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
@@ -12954,7 +14017,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked journals"
             >
               <FollowJournalSuggestionsSection detailPath={detailPath} />
-              {bookmarkedJournals.map((journal) => (
+              {followedJournals.map((journal) => (
                 <article className="bookmark-journal-card" key={journal.name}>
                   <div className="card-header">
                     <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
@@ -12962,12 +14025,13 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Impact Factor: <strong>{journal.impactFactor}</strong>
+                      {t("bookmarks.impactFactor")}:{" "}
+                      <strong>{journal.impactFactor}</strong>
                     </span>
                     <span className="status-badge">{journal.status}</span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Journal -&gt;
+                    {t("bookmarks.viewJournal")} -&gt;
                   </a>
                 </article>
               ))}
@@ -12979,7 +14043,7 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-topic-list"
               aria-label="Bookmarked topics"
             >
-              {bookmarkedTopics.map((topic) => (
+              {bookmarkTopicsForUi.map((topic) => (
                 <article className="bookmark-topic-card" key={topic.name}>
                   <div className="card-header">
                     <MiniIcon path="M12 4.5a5 5 0 0 0-2.5 9.35v2.15h5v-2.15A5 5 0 0 0 12 4.5Z" />
@@ -12987,7 +14051,7 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Tracked: <strong>{topic.tracked}</strong>
+                      {t("bookmarks.tracked")}: <strong>{topic.tracked}</strong>
                     </span>
                     <span
                       className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}
@@ -12996,7 +14060,7 @@ function BookmarksPage({ role = "student" }) {
                     </span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Topic -&gt;
+                    {t("bookmarks.viewTopic")} -&gt;
                   </a>
                 </article>
               ))}
@@ -13014,7 +14078,10 @@ function BookmarksPage({ role = "student" }) {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+              <a
+                href="/student-dashboard"
+                onClick={navTo("/student-dashboard")}
+              >
                 Dashboard
               </a>
               <span>&gt;</span>
@@ -13027,14 +14094,6 @@ function BookmarksPage({ role = "student" }) {
 
         <div className="student-content bookmarks-content">
           <h1 className="bookmarks-title">Bookmarks &amp; Followed Items</h1>
-          <div className="paper-download-actions">
-            <button type="button" onClick={exportBookmarkMetadata}>
-              Export Excel
-            </button>
-            <button type="button" onClick={downloadBookmarkPapersText}>
-              Download Papers TXT
-            </button>
-          </div>
 
           <nav className="bookmark-tabs" aria-label="Bookmark categories">
             {bookmarkTabs.map((tab) => (
@@ -13054,14 +14113,18 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-paper-list"
               aria-label="Bookmarked publications"
             >
-              {bookmarkPapersForUi.map((paper) => (
-                <BookmarkPaperCard
-                  paper={paper}
-                  detailPath={detailPath}
-                  onRemove={handleRemoveBookmark}
-                  key={paper.title}
-                />
-              ))}
+              {bookmarkPapersForUi.length ? (
+                bookmarkPapersForUi.map((paper) => (
+                  <BookmarkPaperCard
+                    paper={paper}
+                    detailPath={detailPath}
+                    onRemove={handleRemoveBookmark}
+                    key={paper.title}
+                  />
+                ))
+              ) : (
+                <p className="empty-state">No bookmarked publications yet.</p>
+              )}
             </section>
           )}
 
@@ -13071,7 +14134,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked keywords"
             >
               <FollowSuggestionsSection />
-              {bookmarkedKeywords.map((keyword) => (
+              {followedKeywords.map((keyword) => (
                 <article className="bookmark-keyword-card" key={keyword.name}>
                   <div className="card-header">
                     <MiniIcon path="M5 7h14M5 12h14M5 17h14" />
@@ -13097,7 +14160,7 @@ function BookmarksPage({ role = "student" }) {
               aria-label="Bookmarked journals"
             >
               <FollowJournalSuggestionsSection detailPath={detailPath} />
-              {bookmarkedJournals.map((journal) => (
+              {followedJournals.map((journal) => (
                 <article className="bookmark-journal-card" key={journal.name}>
                   <div className="card-header">
                     <MiniIcon path="M4 5.5c2.8-.8 5.3-.4 8 1.3v12c-2.7-1.7-5.2-2.1-8-1.3v-12ZM12 6.8c2.7-1.7 5.2-2.1 8-1.3v12c-2.8-.8-5.3-.4-8 1.3" />
@@ -13105,12 +14168,13 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Impact Factor: <strong>{journal.impactFactor}</strong>
+                      {t("bookmarks.impactFactor")}:{" "}
+                      <strong>{journal.impactFactor}</strong>
                     </span>
                     <span className="status-badge">{journal.status}</span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Journal -&gt;
+                    {t("bookmarks.viewJournal")} -&gt;
                   </a>
                 </article>
               ))}
@@ -13122,7 +14186,7 @@ function BookmarksPage({ role = "student" }) {
               className="bookmark-topic-list"
               aria-label="Bookmarked topics"
             >
-              {bookmarkedTopics.map((topic) => (
+              {bookmarkTopicsForUi.map((topic) => (
                 <article className="bookmark-topic-card" key={topic.name}>
                   <div className="card-header">
                     <MiniIcon path="M12 4.5a5 5 0 0 0-2.5 9.35v2.15h5v-2.15A5 5 0 0 0 12 4.5Z" />
@@ -13130,7 +14194,7 @@ function BookmarksPage({ role = "student" }) {
                   </div>
                   <div className="card-body">
                     <span>
-                      Tracked: <strong>{topic.tracked}</strong>
+                      {t("bookmarks.tracked")}: <strong>{topic.tracked}</strong>
                     </span>
                     <span
                       className={`activity-badge ${topic.activity.includes("High") ? "high" : topic.activity.includes("Medium") ? "medium" : "low"}`}
@@ -13139,7 +14203,7 @@ function BookmarksPage({ role = "student" }) {
                     </span>
                   </div>
                   <a href={detailPath} onClick={navTo(detailPath)}>
-                    View Topic -&gt;
+                    {t("bookmarks.viewTopic")} -&gt;
                   </a>
                 </article>
               ))}
@@ -13362,52 +14426,79 @@ const extraNotificationItems = [
   },
 ];
 
+const getNotificationTypeLabel = (type) => {
+  const normalized = String(type || "SYSTEM").toUpperCase();
+  if (normalized === "NEW_PUBLICATION") return "PUBLICATION NOTICE";
+  if (normalized === "PAYMENT") return "PAYMENT NOTICE";
+  if (normalized === "PLAN_UPDATE") return "PLAN UPDATE";
+  if (normalized === "SYSTEM") return "SYSTEM ALERT";
+  return normalized.replaceAll("_", " ");
+};
+
+const mapBackendNotificationForUi = (item, role) => ({
+  id: item.id,
+  type: getNotificationTypeLabel(item.notificationType),
+  time: item.createdAt
+    ? new Date(item.createdAt).toLocaleString()
+    : "Just now",
+  title: item.title || "NOTICE:",
+  text: item.message || "",
+  icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+  tone: item.isRead ? "gray" : "green",
+  unread: !item.isRead,
+  route:
+    item.route ||
+    `/${
+      role === "lecturer"
+        ? "lecturer"
+        : role === "researcher"
+          ? "researcher"
+          : "student"
+    }-search?view=list`,
+});
+
 function NotificationsPage({ role = "student" }) {
+  const acknowledgedNotificationIds = React.useRef(new Set());
   const session = React.useMemo(() => {
     try {
-      return JSON.parse(window.localStorage.getItem("scholartrend.session") || "{}");
+      return JSON.parse(
+        window.localStorage.getItem("scholartrend.session") || "{}",
+      );
     } catch {
       return {};
     }
   }, []);
-  const { data: backendNotifications } = useApiResource(
+  const { data: loadedBackendNotifications } = useApiResource(
     "/api/notifications",
-    notificationItems,
+    [],
     {
       auth: true,
       select: (payload) =>
-        unwrapList(payload).map((item) => ({
-          id: item.id,
-          type: item.notificationType || "SYSTEM",
-          time: item.createdAt
-            ? new Date(item.createdAt).toLocaleString()
-            : "Just now",
-          title: item.title || item.notificationType || "",
-          text: item.message,
-          icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
-          tone: item.isRead ? "gray" : "green",
-          unread: !item.isRead,
-          route: item.route || `/${
-            role === "lecturer"
-              ? "lecturer"
-              : role === "researcher"
-                ? "researcher"
-                : "student"
-          }-search?view=list`,
-        })),
+        unwrapList(payload).map((item) =>
+          mapBackendNotificationForUi(item, role),
+        ),
     },
   );
+  const [backendNotifications, setBackendNotifications] = React.useState([]);
+  React.useEffect(() => {
+    setBackendNotifications(loadedBackendNotifications);
+  }, [loadedBackendNotifications]);
+  React.useEffect(() => {
+    backendNotifications.forEach((item) => {
+      const id = Number(item.id);
+      if (!Number.isInteger(id) || acknowledgedNotificationIds.current.has(id)) return;
+      acknowledgedNotificationIds.current.add(id);
+      apiFetch(`/api/notifications/${id}/ack`, { method: "POST", auth: true }).catch(
+        () => acknowledgedNotificationIds.current.delete(id),
+      );
+    });
+  }, [backendNotifications]);
   const mapReviewNotifications = React.useCallback(() => {
     const sessionEmail = String(session.email || "").toLowerCase();
     return getPublicationReviewNotifications()
+      .map(normalizeLocalNotification)
       .filter((item) => {
-        const recipientEmail = String(item.recipientEmail || "").toLowerCase();
-        const recipientRole = String(item.recipientRole || "").toLowerCase();
-        if (sessionEmail && recipientEmail) return recipientEmail === sessionEmail;
-        if (recipientRole === "all") return true;
-        return (
-          recipientRole === String(role).toLowerCase()
-        );
+        return notificationMatchesRecipient(item, role, sessionEmail);
       })
       .map((item) => ({
         id: item.id,
@@ -13426,9 +14517,8 @@ function NotificationsPage({ role = "student" }) {
   }, [role, session.email]);
   const [notifications, setNotifications] = React.useState(() => [
     ...mapReviewNotifications(),
-    ...notificationItems,
   ]);
-  const [hasMore, setHasMore] = React.useState(true);
+  const [hasMore, setHasMore] = React.useState(false);
   const [activeFilters, setActiveFilters] = React.useState({
     0: "All Notifications",
     1: "Any Time",
@@ -13437,21 +14527,97 @@ function NotificationsPage({ role = "student" }) {
   const isResearcher = role === "researcher" || role === "lecturer";
   const isAcademic = isResearcher;
   const rolePrefix =
-    role === "lecturer" ? "lecturer" : role === "researcher" ? "researcher" : "student";
+    role === "lecturer"
+      ? "lecturer"
+      : role === "researcher"
+        ? "researcher"
+        : "student";
   const roleNotificationsPath = `/${rolePrefix}-notifications`;
 
   React.useEffect(() => {
-    const reviewNotifications = mapReviewNotifications();
-    if (backendNotifications.length) {
-      setNotifications([...reviewNotifications, ...backendNotifications]);
+    let cancelled = false;
+    const applyNotifications = (
+      localItems = getPublicationReviewNotifications(),
+    ) => {
+      const scopedLocalItems = mergeNotificationsById(localItems).filter(
+        (item) => notificationMatchesRecipient(item, role, session.email || ""),
+      );
+      const mappedLocalItems = scopedLocalItems.map((item) => ({
+        id: item.id,
+        type: item.type,
+        time: item.createdAt
+          ? new Date(item.createdAt).toLocaleString()
+          : "Just now",
+        title: item.title,
+        text: item.text,
+        icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+        tone: "red",
+        unread: item.unread,
+        route: item.route,
+        localReview: true,
+      }));
+      setNotifications([...mappedLocalItems, ...backendNotifications]);
       setHasMore(false);
-      return;
-    }
-    setNotifications([...reviewNotifications, ...notificationItems]);
-  }, [backendNotifications, mapReviewNotifications]);
+    };
+    const loadHelperNotifications = () =>
+      fetchLocalNotificationsFromAuthHelper({
+        role,
+        email: session.email || "",
+      })
+        .then((helperNotifications) => {
+          if (cancelled) return;
+          const mergedLocal = persistLocalNotifications([
+            ...helperNotifications,
+            ...getPublicationReviewNotifications(),
+          ]);
+          applyNotifications(mergedLocal);
+        })
+        .catch(() => {});
+    const loadBackendNotifications = () =>
+      apiFetch("/api/notifications", { auth: true })
+        .then((payload) => {
+          if (cancelled) return;
+          setBackendNotifications(
+            unwrapList(payload).map((item) =>
+              mapBackendNotificationForUi(item, role),
+            ),
+          );
+        })
+        .catch(() => {});
+
+    applyNotifications();
+    loadHelperNotifications();
+
+    const refreshLocalNotifications = () => applyNotifications();
+    const refreshOnFocus = () => loadHelperNotifications();
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") loadHelperNotifications();
+    };
+    const intervalId = window.setInterval(() => {
+      loadHelperNotifications();
+      loadBackendNotifications();
+    }, 5000);
+    window.addEventListener(
+      "scholartrend:notifications",
+      refreshLocalNotifications,
+    );
+    window.addEventListener("storage", refreshLocalNotifications);
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener(
+        "scholartrend:notifications",
+        refreshLocalNotifications,
+      );
+      window.removeEventListener("storage", refreshLocalNotifications);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
+  }, [backendNotifications, role, session.email]);
 
   const handleLoadMore = () => {
-    setNotifications((prev) => [...prev, ...extraNotificationItems]);
     setHasMore(false);
   };
 
@@ -13465,6 +14631,7 @@ function NotificationsPage({ role = "student" }) {
         unread: false,
       })),
     );
+    markLocalNotificationsReadOnAuthHelper().catch(() => {});
     try {
       await apiFetch("/api/notifications/read-all", {
         method: "PUT",
@@ -13509,12 +14676,22 @@ function NotificationsPage({ role = "student" }) {
       ),
     );
     if (item.localReview) {
-      const next = getPublicationReviewNotifications().map((notification) =>
+      const existingLocalNotifications = getPublicationReviewNotifications();
+      const storedNotification = existingLocalNotifications.find(
+        (notification) => notification.id === item.id,
+      );
+      const next = existingLocalNotifications.map((notification) =>
         notification.id === item.id
           ? { ...notification, unread: false }
           : notification,
       );
       setPublicationReviewNotifications(next);
+      if (storedNotification) {
+        mirrorLocalNotificationToAuthHelper({
+          ...storedNotification,
+          unread: false,
+        }).catch(() => {});
+      }
     }
     apiFetch(`/api/notifications/${item.id}/read`, {
       method: "PUT",
@@ -13538,7 +14715,11 @@ function NotificationsPage({ role = "student" }) {
 
     const timeFilter = activeFilters[1];
     if (timeFilter === "Today") {
-      return item.time === "Just now" || item.time.includes("mins") || item.time.includes("hours");
+      return (
+        item.time === "Just now" ||
+        item.time.includes("mins") ||
+        item.time.includes("hours")
+      );
     }
     if (timeFilter === "This Week") {
       return !item.time.includes("week");
@@ -13550,7 +14731,9 @@ function NotificationsPage({ role = "student" }) {
     ? resolveNotificationRoute(selectedNotification)
     : "";
   const detailRoute =
-    selectedRoute && selectedRoute !== roleNotificationsPath ? selectedRoute : "";
+    selectedRoute && selectedRoute !== roleNotificationsPath
+      ? selectedRoute
+      : "";
 
   const pageContent = (
     <div
@@ -13581,14 +14764,18 @@ function NotificationsPage({ role = "student" }) {
           onChangeFilter={handleChangeFilter}
         />
         <section className="notification-list" aria-label="Notifications list">
-          {filteredNotifications.map((item, index) => (
-            <NotificationCard
-              item={item}
-              key={`${item.type}-${item.time}-${index}`}
-              onOpen={handleOpenNotification}
-              onToggleBookmark={handleToggleBookmark}
-            />
-          ))}
+          {filteredNotifications.length ? (
+            filteredNotifications.map((item, index) => (
+              <NotificationCard
+                item={item}
+                key={`${item.type}-${item.time}-${index}`}
+                onOpen={handleOpenNotification}
+                onToggleBookmark={handleToggleBookmark}
+              />
+            ))
+          ) : (
+            <p className="empty-state">No notifications yet.</p>
+          )}
           {hasMore ? (
             <button
               type="button"
@@ -13665,7 +14852,10 @@ function NotificationsPage({ role = "student" }) {
         <StudentTopbar
           crumb={
             <div className="topbar-breadcrumb">
-              <a href="/student-dashboard" onClick={navTo("/student-dashboard")}>
+              <a
+                href="/student-dashboard"
+                onClick={navTo("/student-dashboard")}
+              >
                 Dashboard
               </a>
               <span>&gt;</span>
@@ -13726,6 +14916,11 @@ function ProfileField({
 }
 
 function ProfilePage({ role = "student" }) {
+  const accountSession = getStoredSession();
+  const accountEmail = String(accountSession.email || "")
+    .trim()
+    .toLowerCase();
+  const accountRole = normalizeRoleForUi(accountSession.role || role);
   const [activeTab, setActiveTab] = React.useState("Personal Info");
   const [identityConnections, setIdentityConnections] = React.useState(() => {
     const saved = window.localStorage.getItem(
@@ -13764,15 +14959,21 @@ function ProfilePage({ role = "student" }) {
   const isAcademic = role === "researcher" || role === "lecturer";
   const academicRole = role === "lecturer" ? "lecturer" : "researcher";
   const avatarInputRef = React.useRef(null);
-  const storageKey = `scholartrend.${role}.profile`;
+  const storageKey = `scholartrend.profile.${encodeURIComponent(
+    accountEmail || role,
+  )}`;
   const defaultProfileData = {
     personal: {
-      fullName: "Dr. Alexander Scientist",
-      email: "alexander.s@scholartrend.edu",
-      institution: "Institute of Advanced Analytics",
-      department: "Computational Biology",
-      roleBadge: "Lead Researcher",
-      avatarUrl: "",
+      fullName:
+        accountSession.fullName ||
+        accountSession.name ||
+        accountEmail ||
+        "ScholarTrend User",
+      email: accountEmail,
+      institution: accountSession.institution || "",
+      department: accountSession.department || "",
+      roleBadge: accountRole,
+      avatarUrl: accountSession.avatarUrl || accountSession.picture || "",
     },
     interests: [
       "Deep Learning",
@@ -13814,7 +15015,12 @@ function ProfilePage({ role = "student" }) {
       return {
         ...defaultProfileData,
         ...parsed,
-        personal: { ...defaultProfileData.personal, ...(parsed.personal || {}) },
+        personal: {
+          ...defaultProfileData.personal,
+          ...(parsed.personal || {}),
+          email: accountEmail,
+          roleBadge: accountRole,
+        },
         preferences: {
           ...defaultProfileData.preferences,
           ...(parsed.preferences || {}),
@@ -13831,7 +15037,7 @@ function ProfilePage({ role = "student" }) {
     } catch {
       return defaultProfileData;
     }
-  }, [storageKey]);
+  }, [storageKey, accountEmail, accountRole]);
   const [profileData, setProfileData] = React.useState(loadProfileData);
   const [savedProfileData, setSavedProfileData] = React.useState(profileData);
   const [newInterest, setNewInterest] = React.useState("");
@@ -13843,10 +15049,12 @@ function ProfilePage({ role = "student" }) {
   });
 
   React.useEffect(() => {
-    if (!getStoredAuth().accessToken) return;
-
     let cancelled = false;
-    apiFetch("/api/auth/profile", { auth: true })
+    const profileRequest = getStoredAuth().accessToken
+      ? apiFetch("/api/auth/profile", { auth: true })
+      : authServerFetch("/api/auth/profile");
+
+    profileRequest
       .then((backendProfile) => {
         if (cancelled) return;
         setProfileData((current) => {
@@ -13856,6 +15064,11 @@ function ProfilePage({ role = "student" }) {
               ...current.personal,
               fullName: backendProfile.fullName || current.personal.fullName,
               email: backendProfile.email || current.personal.email,
+              institution:
+                backendProfile.institution ?? current.personal.institution,
+              department:
+                backendProfile.department ?? current.personal.department,
+              avatarUrl: backendProfile.avatarUrl ?? current.personal.avatarUrl,
               roleBadge: normalizeRoleForUi(backendProfile.role),
             },
           };
@@ -13938,8 +15151,14 @@ function ProfilePage({ role = "student" }) {
 
   const saveProfileChanges = async () => {
     if (passwords.next || passwords.confirm || passwords.current) {
-      if (!passwords.current || !passwords.next || passwords.next !== passwords.confirm) {
-        setProfileMessage("Check your current password and matching new password.");
+      if (
+        !passwords.current ||
+        !passwords.next ||
+        passwords.next !== passwords.confirm
+      ) {
+        setProfileMessage(
+          "Check your current password and matching new password.",
+        );
         return;
       }
     }
@@ -13971,17 +15190,45 @@ function ProfilePage({ role = "student" }) {
             roleBadge: normalizeRoleForUi(backendProfile.role),
           },
         };
+      } else {
+        const backendProfile = await authServerFetch("/api/auth/profile", {
+          method: "PUT",
+          body: {
+            fullName: profileData.personal.fullName,
+            institution: profileData.personal.institution,
+            department: profileData.personal.department,
+            avatarUrl: profileData.personal.avatarUrl,
+          },
+        });
+        nextProfileData = {
+          ...profileData,
+          personal: {
+            ...profileData.personal,
+            fullName: backendProfile.fullName,
+            email: backendProfile.email,
+            institution: backendProfile.institution || "",
+            department: backendProfile.department || "",
+            avatarUrl: backendProfile.avatarUrl || "",
+            roleBadge: normalizeRoleForUi(backendProfile.role),
+          },
+        };
       }
 
       window.localStorage.setItem(storageKey, JSON.stringify(nextProfileData));
+      persistSession({
+        ...getStoredSession(),
+        fullName: nextProfileData.personal.fullName,
+        name: nextProfileData.personal.fullName,
+        picture: nextProfileData.personal.avatarUrl,
+        avatarUrl: nextProfileData.personal.avatarUrl,
+        institution: nextProfileData.personal.institution,
+        department: nextProfileData.personal.department,
+        role: nextProfileData.personal.roleBadge,
+      });
       setProfileData(nextProfileData);
       setSavedProfileData(nextProfileData);
       setPasswords({ current: "", next: "", confirm: "" });
-      setProfileMessage(
-        getStoredAuth().accessToken
-          ? "Profile changes saved to backend."
-          : "Profile changes saved in this browser.",
-      );
+      setProfileMessage("Profile changes saved successfully.");
     } catch (error) {
       setProfileMessage(error.message);
     }
@@ -14325,7 +15572,10 @@ function ProfilePage({ role = "student" }) {
                   </button>
                 </span>
               ))}
-              <form className="profile-interest-form" onSubmit={addProfileInterest}>
+              <form
+                className="profile-interest-form"
+                onSubmit={addProfileInterest}
+              >
                 <input
                   value={newInterest}
                   onChange={(event) => setNewInterest(event.target.value)}
@@ -14587,7 +15837,10 @@ function ProfilePage({ role = "student" }) {
                       label: "Real-time publication alerts",
                     },
                     { key: "syncStatusUpdates", label: "Sync status updates" },
-                    { key: "systemAnnouncements", label: "System announcements" },
+                    {
+                      key: "systemAnnouncements",
+                      label: "System announcements",
+                    },
                   ].map((item, i) => (
                     <label
                       key={i}
@@ -14704,7 +15957,11 @@ function ProfilePage({ role = "student" }) {
                         name="visibility"
                         checked={profileData.privacy.visibility === value}
                         onChange={() =>
-                          updateNestedProfileField("privacy", "visibility", value)
+                          updateNestedProfileField(
+                            "privacy",
+                            "visibility",
+                            value,
+                          )
                         }
                         style={{ margin: 0, cursor: "pointer" }}
                       />
@@ -14907,7 +16164,9 @@ function ProfilePage({ role = "student" }) {
         )}
       </div>
 
-      {profileMessage && <p className="profile-status-message">{profileMessage}</p>}
+      {profileMessage && (
+        <p className="profile-status-message">{profileMessage}</p>
+      )}
       <div className="profile-action-bar">
         <button
           type="button"
@@ -14961,7 +16220,60 @@ function ProfilePage({ role = "student" }) {
   );
 }
 
-function ImpactAnalyticsCard() {
+function ImpactAnalyticsCard({ keywordId, topicName }) {
+  const [trackedKeywordId, setTrackedKeywordId] = React.useState(null);
+  const [trackStatus, setTrackStatus] = React.useState("idle");
+  const [trackMessage, setTrackMessage] = React.useState("");
+  const canTrack = isBackendNumericId(keywordId);
+  const isTracked = Number(trackedKeywordId) === Number(keywordId);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setTrackedKeywordId(null);
+    setTrackMessage("");
+    if (!canTrack) return () => {};
+
+    apiFetch("/api/follows", { auth: true })
+      .then((follows) => {
+        if (cancelled || !Array.isArray(follows)) return;
+        const matchingFollow = follows.find(
+          (follow) =>
+            String(follow.followType || "").toLowerCase() === "keyword" &&
+            Number(follow.followTargetId) === Number(keywordId),
+        );
+        setTrackedKeywordId(matchingFollow?.followTargetId || null);
+      })
+      .catch((error) => {
+        if (!cancelled) setTrackMessage(error.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canTrack, keywordId]);
+
+  const toggleTopicTracking = async () => {
+    if (!canTrack || trackStatus === "saving") return;
+    setTrackStatus("saving");
+    setTrackMessage("");
+    try {
+      await apiFetch(`/api/follows/keyword/${keywordId}`, {
+        method: isTracked ? "DELETE" : "POST",
+        auth: true,
+      });
+      setTrackedKeywordId(isTracked ? null : Number(keywordId));
+      setTrackMessage(
+        isTracked
+          ? `${topicName || "Topic"} is no longer tracked.`
+          : `${topicName || "Topic"} is now being tracked.`,
+      );
+      setTrackStatus("success");
+    } catch (error) {
+      setTrackMessage(error.message);
+      setTrackStatus("error");
+    }
+  };
+
   return (
     <aside className="impact-card">
       <h2>Impact Analytics</h2>
@@ -14981,10 +16293,26 @@ function ImpactAnalyticsCard() {
           Top 2% in Computational Biology
         </strong>
       </div>
-      <button type="button" className="track-topic">
+      <button
+        type="button"
+        className={`track-topic${isTracked ? " is-tracked" : ""}`}
+        onClick={toggleTopicTracking}
+        disabled={!canTrack || trackStatus === "saving"}
+        aria-pressed={isTracked}
+        title={!canTrack ? "This publication does not have a trackable keyword." : undefined}
+      >
         <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
-        Track this Topic
+        {trackStatus === "saving"
+          ? "Saving..."
+          : isTracked
+            ? "Topic Tracked"
+            : "Track this Topic"}
       </button>
+      {trackMessage ? (
+        <p className={`track-topic-status ${trackStatus}`} role="status">
+          {trackMessage}
+        </p>
+      ) : null}
       <div className="analytics-block similarity-match">
         <span>Similarity Match</span>
         <div>
@@ -15019,13 +16347,52 @@ function ExtractedTopicsCard() {
 
 function StudentPublicationDetailPage({ role = "student" }) {
   const [activeTab, setActiveTab] = React.useState("Abstract");
-  const [detailMessage, setDetailMessage] = React.useState("");
-  const [localBookmarks, setLocalBookmarkState] = React.useState(() =>
-    getLocalBookmarks(),
-  );
   const isAcademic = role === "researcher" || role === "lecturer";
   const rolePrefix = role === "lecturer" ? "lecturer" : "researcher";
   const publicationId = getSearchParam("id");
+  const localBookmarkDetail = React.useMemo(() => {
+    if (!publicationId) return null;
+    const normalizedPublicationId = String(publicationId).trim().toLowerCase();
+    const bookmark = getLocalBookmarks().find(
+      (paper) =>
+        getBookmarkKey(paper) === normalizedPublicationId ||
+        String(paper.detailId || "")
+          .trim()
+          .toLowerCase() === normalizedPublicationId ||
+        String(paper.title || "")
+          .trim()
+          .toLowerCase() === normalizedPublicationId,
+    );
+    if (!bookmark) return null;
+
+    const authorList = Array.isArray(bookmark.authors)
+      ? bookmark.authors
+      : String(bookmark.authors || "")
+          .split(",")
+          .map((author) => author.trim())
+          .filter(Boolean);
+    const citationCount =
+      Number(
+        String(bookmark.citationCount || bookmark.citations || 0).replaceAll(
+          ",",
+          "",
+        ),
+      ) || 0;
+
+    return mapPublicationDetailForUi({
+      id: bookmark.detailId || bookmark.id,
+      title: bookmark.title,
+      abstract: bookmark.abstract || bookmark.excerpt,
+      authors: authorList.length ? authorList : ["Unknown author"],
+      year: bookmark.year || bookmark.date,
+      doi: bookmark.doi,
+      journalName: bookmark.journalName || bookmark.source,
+      sourceApi: bookmark.sourceApi,
+      sourceUrl: bookmark.sourceUrl,
+      citationCount,
+      keywords: bookmark.keywords,
+    });
+  }, [publicationId]);
   const localPublishedDetail = React.useMemo(() => {
     if (!publicationId) return null;
     const published = getPublishedPublications().find(
@@ -15038,7 +16405,9 @@ function StudentPublicationDetailPage({ role = "student" }) {
     : "/api/publications/search?page=1&pageSize=1";
   const { data: publicationDetail } = useApiResource(
     publicationApiPath,
-    localPublishedDetail || mapPublicationDetailForUi({}),
+    localBookmarkDetail ||
+      localPublishedDetail ||
+      mapPublicationDetailForUi({}),
     {
       select: (payload) =>
         publicationId
@@ -15050,55 +16419,15 @@ function StudentPublicationDetailPage({ role = "student" }) {
     ? getAcademicPath("/researcher-publication", rolePrefix)
     : "/student-publication";
   const publicationRoute = `${publicationBaseRoute}${
-    publicationDetail.id ? `?id=${encodeURIComponent(publicationDetail.id)}` : ""
+    publicationDetail.id
+      ? `?id=${encodeURIComponent(publicationDetail.id)}`
+      : ""
   }`;
-  const detailBookmark = React.useMemo(
-    () => mapPublicationForBookmark(publicationDetail),
-    [publicationDetail],
-  );
-  const isBookmarked = hasLocalBookmark(detailBookmark, localBookmarks);
-  const toggleDetailBookmark = async () => {
-    const nextBookmarks = isBookmarked
-      ? removeLocalBookmark(detailBookmark)
-      : upsertLocalBookmark(detailBookmark);
-    setLocalBookmarkState(nextBookmarks);
-    setDetailMessage(isBookmarked ? "Bookmark removed." : "Publication bookmarked.");
-    if (isBackendNumericId(publicationDetail.id) && getStoredAuth().accessToken) {
-      apiFetch(`/api/bookmarks/${publicationDetail.id}`, {
-        method: isBookmarked ? "DELETE" : "POST",
-        auth: true,
-      }).catch(() => {});
-    }
-  };
-  const shareDetailPublication = async () => {
-    const message = await sharePublicationLink({
-      title: publicationDetail.title,
-      text: publicationDetail.abstract,
-      url: `${window.location.origin}${publicationRoute}`,
-    });
-    setDetailMessage(message);
-  };
-  const citeDetailPublication = async () => {
-    const citation = getPublicationCitation(publicationDetail);
-    await copyTextToClipboard(citation);
-    downloadBlobFile(
-      `citation-${String(publicationDetail.id || "publication")}.bib`,
-      new Blob(
-        [
-          `@article{scholartrend${publicationDetail.id || Date.now()},\n  title={${publicationDetail.title}},\n  author={${publicationDetail.authors.join(" and ")}},\n  journal={${publicationDetail.journalName}},\n  year={${publicationDetail.year}},\n  doi={${publicationDetail.doi}}\n}\n`,
-        ],
-        { type: "application/x-bibtex" },
-      ),
-    );
-    setDetailMessage("Citation copied and BibTeX downloaded.");
-  };
-  const downloadDetailPdf = () => {
-    setDetailMessage(downloadPaperPdf(publicationDetail));
-  };
-  const downloadDetailTxt = () => {
-    downloadPaperTxt(publicationDetail);
-    setDetailMessage("TXT downloaded.");
-  };
+  const publicationSourceUrl =
+    publicationDetail.sourceUrl ||
+    (publicationDetail.doi
+      ? `https://doi.org/${encodeURIComponent(publicationDetail.doi)}`
+      : "");
   const relatedForUi = publicationDetail.relatedPublications.length
     ? publicationDetail.relatedPublications.map((paper) => ({
         title: paper.title,
@@ -15120,29 +16449,23 @@ function StudentPublicationDetailPage({ role = "student" }) {
             <div className="detail-hero-actions">
               <span className="article-type">Journal Article</span>
               <div>
-                <button
-                  type="button"
-                  aria-label={isBookmarked ? "Remove bookmark" : "Bookmark article"}
-                  className={isBookmarked ? "saved" : ""}
-                  onClick={toggleDetailBookmark}
-                >
+                <button type="button" aria-label="Bookmark article">
                   <MiniIcon path="M6 4.5h12v15L12 16l-6 3.5v-15Z" />
                 </button>
-                <button type="button" aria-label="Share article" onClick={shareDetailPublication}>
+                <button type="button" aria-label="Share article">
                   <MiniIcon path="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM15.3 6.8 8.7 15.2M8.7 8.8l6.6 3.7" />
                 </button>
-                <button type="button" className="cite-button" onClick={citeDetailPublication}>
+                <button type="button" className="cite-button">
                   {formatCount(publicationDetail.citationCount)} Cite
                 </button>
               </div>
             </div>
 
             <h1>{publicationDetail.title}</h1>
-            {detailMessage ? (
-              <p className="publication-action-message">{detailMessage}</p>
-            ) : null}
             <p className="detail-authors">
-              <strong>{publicationDetail.authors[0] || "Unknown author"}</strong>
+              <strong>
+                {publicationDetail.authors[0] || "Unknown author"}
+              </strong>
               {publicationDetail.authors.length > 1
                 ? `, ${publicationDetail.authors.slice(1).join(", ")}`
                 : ""}
@@ -15158,22 +16481,13 @@ function StudentPublicationDetailPage({ role = "student" }) {
                 {formatCount(publicationDetail.citationCount)}
                 Citations
               </span>
-              <a
-                href={publicationRoute}
-                onClick={navTo(publicationRoute)}
-              >
-                DOI: {publicationDetail.doi || "Not available"} -&gt;
-              </a>
-            </div>
-            <div className="paper-download-actions">
-              <button type="button" onClick={downloadDetailPdf}>
-                <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
-                Download PDF
-              </button>
-              <button type="button" onClick={downloadDetailTxt}>
-                <MiniIcon path="M5 5h14v14H5zM8 9h8M8 13h8M8 17h5" />
-                Download TXT
-              </button>
+              {publicationSourceUrl ? (
+                <a href={publicationSourceUrl} target="_blank" rel="noreferrer">
+                  Source: {publicationDetail.sourceApi || "Original"} -&gt;
+                </a>
+              ) : (
+                <span>Source: Not available</span>
+              )}
             </div>
           </article>
 
@@ -15200,12 +16514,8 @@ function StudentPublicationDetailPage({ role = "student" }) {
 
                 <h3>Key Findings</h3>
                 <ul>
-                  <li>
-                    Indexed in {publicationDetail.journalName}.
-                  </li>
-                  <li>
-                    Published in {publicationDetail.year}.
-                  </li>
+                  <li>Indexed in {publicationDetail.journalName}.</li>
+                  <li>Published in {publicationDetail.year}.</li>
                   <li>
                     Cited {formatCount(publicationDetail.citationCount)} times.
                   </li>
@@ -15485,7 +16795,10 @@ function StudentPublicationDetailPage({ role = "student" }) {
         </section>
 
         <section className="detail-side-column">
-          <ImpactAnalyticsCard />
+          <ImpactAnalyticsCard
+            keywordId={publicationDetail.keywordIds[0]}
+            topicName={publicationDetail.keywords[0]}
+          />
           <ExtractedTopicsCard />
         </section>
       </div>
@@ -15522,12 +16835,19 @@ function StudentPublicationDetailPage({ role = "student" }) {
 function PublicationSubmissionPage({ role = "Student" }) {
   const session = React.useMemo(() => {
     try {
-      return JSON.parse(window.localStorage.getItem("scholartrend.session") || "{}");
+      return JSON.parse(
+        window.localStorage.getItem("scholartrend.session") || "{}",
+      );
     } catch {
       return {};
     }
   }, []);
-  const roleLabel = role === "Lecturer" ? "Lecturer" : role === "Researcher" ? "Researcher" : "Student";
+  const roleLabel =
+    role === "Lecturer"
+      ? "Lecturer"
+      : role === "Researcher"
+        ? "Researcher"
+        : "Student";
   const [form, setForm] = React.useState({
     title: "",
     authors: session.name || "",
@@ -15590,6 +16910,7 @@ function PublicationSubmissionPage({ role = "Student" }) {
     setIsChecking(true);
     setSubmissionError("");
     const abstractForReview = (form.abstract || form.fileText).trim();
+    let nextSubmission = null;
     try {
       const analysis = await checkPublicationSimilarityWithScholar({
         ...form,
@@ -15598,7 +16919,7 @@ function PublicationSubmissionPage({ role = "Student" }) {
       const isOverLimit =
         analysis.overLimit ??
         analysis.similarityPercent > SIMILARITY_LIMIT_PERCENT;
-      const nextSubmission = {
+      nextSubmission = {
         title: form.title.trim(),
         authors: form.authors.trim(),
         submitter: session.email || `${roleLabel.toLowerCase()}@university.edu`,
@@ -15614,14 +16935,41 @@ function PublicationSubmissionPage({ role = "Student" }) {
         ...analysis,
         status: isOverLimit ? "cancelled" : "pending",
         decision: isOverLimit
-          ? "Auto cancelled: over 50% similarity rule."
+          ? "Blocked automatically: over 50% similarity rule. Not sent to Admin."
           : "Waiting for admin approval.",
       };
 
+      if (isOverLimit) {
+        setResult(nextSubmission);
+        return;
+      }
+
       const savedSubmission = await submitPublicationToBackend(nextSubmission);
-      setResult(savedSubmission);
+      const reviewSubmission =
+        upsertPublicationSubmissionForAdminReview(savedSubmission);
+      mirrorPublicationSubmissionToAuthHelper(reviewSubmission).catch(() => {});
+      setResult(reviewSubmission);
     } catch (error) {
-      setSubmissionError(error.message);
+      if (!nextSubmission) {
+        setSubmissionError(error.message);
+        return;
+      }
+      const isOverLimit =
+        nextSubmission.similarityPercent > SIMILARITY_LIMIT_PERCENT;
+      const localSubmission = upsertPublicationSubmissionForAdminReview({
+        ...nextSubmission,
+        id: `local-submission-${Date.now()}`,
+        status: isOverLimit ? "cancelled" : "pending",
+        decision: isOverLimit
+          ? "Auto cancelled locally: over 50% similarity rule."
+          : "Waiting for admin approval. Backend save was unavailable.",
+        matchedSource: `${nextSubmission.matchedSource} (local save: ${error.message})`,
+      });
+      mirrorPublicationSubmissionToAuthHelper(localSubmission).catch(() => {});
+      setResult(localSubmission);
+      setSubmissionError(
+        `Backend save unavailable, but this paper was saved to the local Admin review queue: ${error.message}`,
+      );
     } finally {
       setIsChecking(false);
     }
@@ -15630,7 +16978,10 @@ function PublicationSubmissionPage({ role = "Student" }) {
   const isStudent = roleLabel === "Student";
   const activeRoute = isStudent
     ? "/student-submit-publication"
-    : getAcademicPath("/researcher-submit-publication", roleLabel.toLowerCase());
+    : getAcademicPath(
+        "/researcher-submit-publication",
+        roleLabel.toLowerCase(),
+      );
   const formContent = (
     <div className="submission-page-content">
       <header className="submission-heading">
@@ -15711,9 +17062,15 @@ function PublicationSubmissionPage({ role = "Student" }) {
               : "PDF, DOCX, or TXT accepted"}
           </small>
         </label>
-        <button type="submit" className="submission-submit" disabled={isChecking}>
+        <button
+          type="submit"
+          className="submission-submit"
+          disabled={isChecking}
+        >
           <MiniIcon path="M4.5 17.5 9 13l3.2 2.6 6.3-7.1M15.5 8.5h3v3M5 20h14" />
-          {isChecking ? "Checking Google Scholar..." : "Check Similarity and Submit"}
+          {isChecking
+            ? "Checking Google Scholar..."
+            : "Check Similarity and Submit"}
         </button>
       </form>
 
@@ -15741,7 +17098,7 @@ function PublicationSubmissionPage({ role = "Student" }) {
           </p>
           <p>
             {result.similarityPercent > SIMILARITY_LIMIT_PERCENT
-              ? "Over 50%: this paper was cancelled automatically and sent to Admin as a violation."
+              ? "Over 50%: this paper was blocked automatically and was not sent to Admin."
               : "Within rule: this paper is waiting for Admin approval."}
           </p>
         </section>
@@ -15774,42 +17131,42 @@ function PublicationSubmissionPage({ role = "Student" }) {
 
 const adminNavItems = [
   {
-    label: "Admin Dashboard",
+    label: "admin.dashboard",
     route: "/admin-dashboard",
     icon: "M4.5 11.2 12 5l7.5 6.2v8.3a1 1 0 0 1-1 1h-4.2v-5.2H9.7v5.2H5.5a1 1 0 0 1-1-1v-8.3ZM7.5 11.8v5.7M16.5 11.8v5.7",
   },
   {
-    label: "Sync Management",
+    label: "admin.syncManagement",
     route: "/admin-sync-management",
     icon: "M5 7.5h9.5a4.5 4.5 0 0 1 4.2 6.1M18.8 7.5h-4.3V3.2M19 16.5H9.5a4.5 4.5 0 0 1-4.2-6.1M5.2 16.5h4.3v4.3M12 9.2v3.1l2.2 1.3",
   },
   {
-    label: "User Management",
+    label: "admin.userManagement",
     route: "/admin-user-management",
     icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
   },
   {
-    label: "Payment Management",
+    label: "admin.paymentManagement",
     route: "/admin-payments",
     icon: "M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9",
   },
   {
-    label: "Plan Management",
+    label: "admin.planManagement",
     route: "/admin-plans",
     icon: "M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2",
   },
   {
-    label: "Notification Management",
+    label: "admin.notificationManagement",
     route: "/admin-notifications",
     icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M18.5 5.5l1.7-1.7",
   },
   {
-    label: "Publication Management",
+    label: "admin.publicationManagement",
     route: "/admin-publications",
     icon: "M6 4.5h8.2L18 8.3v11.2H6zM13.8 4.8v4h4M8.8 12h6.4M8.8 15h6.4M8.8 18h3.8",
   },
   {
-    label: "System Logs",
+    label: "admin.systemLogs",
     route: "/admin-system-logs",
     icon: "M6 4.5h12v15H6zM9 8h6M9 11.5h6M9 15h3.5M16.5 15h.01",
   },
@@ -15817,71 +17174,36 @@ const adminNavItems = [
 
 const adminStats = [
   {
-    label: "Total Users",
-    value: "24,592",
-    note: "+12% from last month",
+    label: "admin.totalUsers",
+    value: "",
+    note: "",
     tone: "users",
     icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0 0-6M16 15a5 5 0 0 1 5 5",
   },
   {
-    label: "Total Publications",
-    value: "14.2M+",
-    note: "Indexed across repositories",
+    label: "admin.totalPublications",
+    value: "",
+    note: "",
     tone: "publications",
     icon: "M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4M4 7v14h11",
   },
   {
-    label: "Last Sync Status",
-    value: "Success",
-    note: "2 hours ago",
+    label: "admin.lastSyncStatusLabel",
+    value: "",
+    note: "",
     tone: "sync",
     icon: "M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9",
   },
   {
-    label: "API Health",
+    label: "admin.apiHealth",
     tone: "api",
     icon: "M4 8h5l2 4 2-7 2 7 2-4h3M4 17h16",
-    values: [
-      ["Semantic Scholar", "99.9%"],
-      ["OpenAlex", "98.5%"],
-    ],
-  },
-];
-
-const adminActivity = [
-  {
-    text: "New user Dr. A. Smith registered.",
-    time: "10 mins ago",
-    tone: "purple",
-    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 7v6M14 10h6",
-  },
-  {
-    text: "OpenAlex delta sync completed.",
-    time: "45 mins ago",
-    tone: "green",
-    icon: "M4 7h4l3 10h4l3-10h2M7 7.5a6 6 0 0 1 10.2-2.8M17 16.5a6 6 0 0 1-10.2 2.8",
-  },
-  {
-    text: "Role changed for J. Doe to Lecturer.",
-    time: "2 hours ago",
-    tone: "blue",
-    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M18 8v7M15 12h6",
-  },
-  {
-    text: "Batch import of 50 students completed.",
-    time: "3 hours ago",
-    tone: "purple",
-    icon: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 20a6 6 0 0 1 12 0M17 7v6M14 10h6",
-  },
-  {
-    text: "Semantic Scholar API rate limit approaching.",
-    time: "5 hours ago",
-    tone: "red",
-    icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
+    values: [],
   },
 ];
 
 const mapAdminLogForUi = (log) => ({
+  id: log.id || "",
   time: log.time ? new Date(log.time).toLocaleString() : "Just now",
   event: log.eventName || log.event || "System event",
   detail: log.detail || "",
@@ -15889,6 +17211,11 @@ const mapAdminLogForUi = (log) => ({
   severity: log.severity || "Info",
   actor: log.actor || "system",
   code: log.code || `LOG-${Date.now()}`,
+  correlationId: log.correlationId || "",
+  ipAddress: log.ipAddress || "",
+  userId: log.userId || "",
+  path: log.path || "",
+  statusCode: log.statusCode || "",
 });
 
 const mapAdminUserForUi = (user) => ({
@@ -15896,7 +17223,9 @@ const mapAdminUserForUi = (user) => ({
   email: user.email || "",
   role: normalizeRoleForUi(user.role),
   status: user.status || "Active",
-  lastLogin: user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Created",
+  lastLogin: user.lastLogin
+    ? new Date(user.lastLogin).toLocaleDateString()
+    : "Created",
   avatar:
     user.avatar ||
     String(user.name || user.fullName || "ST")
@@ -15906,6 +17235,7 @@ const mapAdminUserForUi = (user) => ({
 });
 
 function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
+  const { t } = useTranslation();
   return (
     <aside className={`admin-sidebar ${mobileOpen ? "mobile-open" : ""}`}>
       <div
@@ -16025,7 +17355,7 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
             key={item.route}
           >
             <MiniIcon path={item.icon} />
-            <span>{item.label}</span>
+            <span>{t(item.label)}</span>
           </a>
         ))}
       </nav>
@@ -16036,7 +17366,7 @@ function AdminSidebar({ activeRoute, mobileOpen, onClose, onOpenPanel }) {
           className="admin-status-button"
           onClick={() => onOpenPanel("status")}
         >
-          <i></i> System Status: Healthy
+          <i></i> {t("admin.systemStatusHealthy")}
         </button>
         <button type="button" onClick={() => onOpenPanel("settings")}>
           <MiniIcon path="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-1.9 3.2-.2-.1a1.8 1.8 0 0 0-2 .2 1.8 1.8 0 0 0-.7 1.7v.2H9v-.2a1.8 1.8 0 0 0-.7-1.7 1.8 1.8 0 0 0-2-.2l-.2.1-1.9-3.2.1-.1a1.8 1.8 0 0 0 .4-2 1.8 1.8 0 0 0-1.5-1.1H3v-3.8h.2A1.8 1.8 0 0 0 4.7 9a1.8 1.8 0 0 0-.4-2l-.1-.1 1.9-3.2.2.1a1.8 1.8 0 0 0 2-.2A1.8 1.8 0 0 0 9 1.9v-.2h6v.2a1.8 1.8 0 0 0 .7 1.7 1.8 1.8 0 0 0 2 .2l.2-.1 1.9 3.2-.1.1a1.8 1.8 0 0 0-.4 2 1.8 1.8 0 0 0 1.5 1.1h.2v3.8h-.2A1.8 1.8 0 0 0 19.4 15Z" />
@@ -16065,6 +17395,7 @@ function AdminTopbar({
   sectionPage = false,
   onOpenPanel,
 }) {
+  const { t } = useTranslation();
   return (
     <header
       className={`admin-topbar ${sectionPage ? "admin-section-topbar" : ""}`}
@@ -16134,34 +17465,21 @@ function AdminTopbar({
   );
 }
 
-const adminPanelNotifications = [
-  {
-    id: "api-rate-limit",
-    title: "API rate usage is near limit",
-    detail: "Semantic Scholar usage reached 82% of the daily quota.",
-    time: "5 mins ago",
-    route: "/admin-system-logs",
-    icon: "M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01",
-  },
-  {
-    id: "admin-sign-in",
-    title: "New administrator sign-in",
-    detail: "Admin workspace was opened from the local development server.",
-    time: "18 mins ago",
-    route: "/admin-user-management",
-    icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.5 20a7.5 7.5 0 0 1 15 0",
-  },
-  {
-    id: "openalex-sync",
-    title: "OpenAlex sync completed",
-    detail: "Publication and author indexes are available for review.",
-    time: "45 mins ago",
-    route: "/admin-sync-management",
-    icon: "M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5",
-  },
-];
+const normalizeUtilityNotification = (notification) => ({
+  id: notification.id || `utility-${Date.now()}-${Math.random()}`,
+  title: notification.title || "Notification",
+  detail: notification.text || notification.message || "",
+  time: notification.createdAt
+    ? new Date(notification.createdAt).toLocaleString()
+    : "Just now",
+  route: notification.route || "/admin-notifications",
+  icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
+  unread: notification.unread !== false,
+});
 
 function AdminUtilityPanel({ panel, onClose }) {
+  const { t } = useTranslation();
+  const canUseAdminApi = hasAdminBackendAccess();
   const avatarInputRef = React.useRef(null);
   const defaultHealthRows = [
     {
@@ -16176,8 +17494,7 @@ function AdminUtilityPanel({ panel, onClose }) {
       name: "Auth Service",
       state: "Operational",
       value: "OAuth2 ready",
-      icon:
-        "M12 3.5 18.5 7v5c0 3.8-2.6 6.7-6.5 8-3.9-1.3-6.5-4.2-6.5-8V7L12 3.5ZM9.5 12l1.6 1.6 3.5-4",
+      icon: "M12 3.5 18.5 7v5c0 3.8-2.6 6.7-6.5 8-3.9-1.3-6.5-4.2-6.5-8V7L12 3.5ZM9.5 12l1.6 1.6 3.5-4",
       tone: "blue",
       route: "/admin-user-management",
     },
@@ -16185,8 +17502,7 @@ function AdminUtilityPanel({ panel, onClose }) {
       name: "Search Index",
       state: "Operational",
       value: "99.9% uptime",
-      icon:
-        "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8 10.5h5M10.5 8v5",
+      icon: "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8 10.5h5M10.5 8v5",
       tone: "violet",
       route: "/admin-sync-management",
     },
@@ -16208,13 +17524,17 @@ function AdminUtilityPanel({ panel, onClose }) {
   const [settings, setSettings] = React.useState(defaultAdminSettings);
   const [supportMessage, setSupportMessage] = React.useState("");
   const [supportTickets, setSupportTickets] = React.useState([]);
+  const [editingTicketId, setEditingTicketId] = React.useState(null);
+  const [editingTicketMessage, setEditingTicketMessage] = React.useState("");
   const [statusMessage, setStatusMessage] = React.useState("");
   const [healthRows, setHealthRows] = React.useState(defaultHealthRows);
   const [healthCheckedAt, setHealthCheckedAt] = React.useState("just now");
   const [checkingHealth, setCheckingHealth] = React.useState(false);
   const [ticketMessage, setTicketMessage] = React.useState("");
   const [readNotificationIds, setReadNotificationIds] = React.useState(() => {
-    const saved = window.localStorage.getItem("scholartrend.admin.readNotifications");
+    const saved = window.localStorage.getItem(
+      "scholartrend.admin.readNotifications",
+    );
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -16225,13 +17545,14 @@ function AdminUtilityPanel({ panel, onClose }) {
 
     return [];
   });
+  const [utilityNotifications, setUtilityNotifications] = React.useState([]);
   const [isEditingProfile, setIsEditingProfile] = React.useState(false);
   const [editingProfileField, setEditingProfileField] = React.useState(null);
   const [profileMessage, setProfileMessage] = React.useState("");
   const defaultAdminProfile = {
     name: "Admin User",
     email: "admin@university.edu",
-    role: "Administrator",
+    role: "Researcher",
     session: "Local development",
     phone: "+84 901 234 567",
     department: "System Administration",
@@ -16239,10 +17560,26 @@ function AdminUtilityPanel({ panel, onClose }) {
     bio: "Manages ScholarTrend access, sync operations, and platform health.",
     avatarUrl: "",
   };
-  const [adminProfile, setAdminProfile] = React.useState(defaultAdminProfile);
+  const [adminProfile, setAdminProfile] = React.useState(() => {
+    const session = getStoredSession();
+    return {
+      ...defaultAdminProfile,
+      name: session.fullName || session.name || defaultAdminProfile.name,
+      email: session.email || defaultAdminProfile.email,
+      role: session.role || defaultAdminProfile.role,
+    };
+  });
 
   React.useEffect(() => {
     if (!panel) return;
+    if (!canUseAdminApi) {
+      const message =
+        "Administrator backend access is required. Changes cannot be saved.";
+      setStatusMessage(message);
+      setProfileMessage(message);
+      setTicketMessage(message);
+      return;
+    }
 
     if (panel === "settings") {
       apiFetch("/api/admin/settings", { auth: true })
@@ -16255,41 +17592,77 @@ function AdminUtilityPanel({ panel, onClose }) {
     if (panel === "profile") {
       apiFetch("/api/admin/profile", { auth: true })
         .then((payload) =>
-          setAdminProfile({ ...defaultAdminProfile, ...(payload.value || {}) }),
+          setAdminProfile({
+            ...defaultAdminProfile,
+            ...(payload.value || {}),
+          }),
         )
         .catch((error) => setProfileMessage(error.message));
     }
 
-    if (panel === "support") {
-      apiFetch("/api/admin/support-tickets", { auth: true })
-        .then((payload) => setSupportTickets(unwrapList(payload)))
-        .catch((error) => setTicketMessage(error.message));
-    }
-
     if (panel === "status") {
-      apiFetch("/api/admin/status-state", { auth: true })
+      apiFetch("/api/admin/health", { auth: true })
         .then((payload) => {
-          if (payload.value?.healthCheckedAt) {
-            setHealthCheckedAt(payload.value.healthCheckedAt);
+          const services = Array.isArray(payload.services)
+            ? payload.services
+            : [];
+          if (services.length) {
+            setHealthRows((current) =>
+              services.map((service, index) => ({
+                ...current[index % current.length],
+                name: service.name,
+                state: service.state,
+                value: service.value,
+              })),
+            );
           }
-          if (payload.value?.message) {
-            setStatusMessage(payload.value.message);
+          if (payload.checkedAt) {
+            setHealthCheckedAt(new Date(payload.checkedAt).toLocaleString());
           }
         })
-        .catch(() => {});
+        .catch((error) => setStatusMessage(error.message));
     }
-  }, [panel]);
+
+    if (panel === "notifications") {
+      apiFetch("/api/admin/notifications?page=1&pageSize=20", { auth: true })
+        .then((payload) => {
+          const items = Array.isArray(payload.items)
+            ? payload.items
+            : Array.isArray(payload)
+              ? payload
+              : [];
+          setUtilityNotifications(items.map(normalizeUtilityNotification));
+        })
+        .catch(() => setUtilityNotifications([]));
+    }
+
+    if (panel === "support") {
+      apiFetch("/api/admin/support-tickets", { auth: true })
+        .then((payload) =>
+          setSupportTickets(Array.isArray(payload.items) ? payload.items : []),
+        )
+        .catch((error) => setTicketMessage(error.message));
+    }
+  }, [panel, canUseAdminApi]);
 
   if (!panel) return null;
 
   const saveSettings = async () => {
+    if (!canUseAdminApi) {
+      setStatusMessage(
+        "Administrator backend access is required to save settings.",
+      );
+      return;
+    }
+
     try {
-      await apiFetch("/api/admin/settings", {
+      const payload = await apiFetch("/api/admin/settings", {
         method: "PUT",
         auth: true,
         body: { value: settings },
       });
-      setStatusMessage("Settings saved to admin API.");
+      setSettings({ ...defaultAdminSettings, ...(payload.value || settings) });
+      setStatusMessage("Settings saved to backend.");
     } catch (error) {
       setStatusMessage(error.message);
     }
@@ -16297,44 +17670,86 @@ function AdminUtilityPanel({ panel, onClose }) {
 
   const submitTicket = async (event) => {
     event.preventDefault();
+    if (!supportMessage.trim()) {
+      setTicketMessage("Please describe the issue before creating a ticket.");
+      return;
+    }
+
+    if (!canUseAdminApi) {
+      setTicketMessage("Support tickets require an Administrator session.");
+      return;
+    }
+
     try {
       const payload = await apiFetch("/api/admin/support-tickets", {
         method: "POST",
         auth: true,
-        body: { message: supportMessage },
+        body: { message: supportMessage.trim() },
       });
-      setSupportTickets((current) => [payload.ticket, ...current]);
-      setTicketMessage("Support ticket created.");
+      setTicketMessage("Support ticket created in backend.");
       setSupportMessage("");
+      if (payload.ticket) {
+        setSupportTickets((current) => [payload.ticket, ...current]);
+      }
     } catch (error) {
       setTicketMessage(error.message);
     }
   };
 
-  const updateSupportTicket = async (id, patch) => {
+  const updateSupportTicketStatus = async (ticket, status) => {
     try {
-      const payload = await apiFetch(`/api/admin/support-tickets/${id}`, {
+      const payload = await apiFetch(`/api/admin/support-tickets/${ticket.id}`, {
         method: "PUT",
         auth: true,
-        body: patch,
+        body: { status },
       });
       setSupportTickets((current) =>
-        current.map((ticket) => (ticket.id === id ? payload.ticket : ticket)),
+        current.map((item) =>
+          item.id === ticket.id ? payload.ticket || { ...item, status } : item,
+        ),
       );
-      setTicketMessage("Support ticket updated.");
+      setTicketMessage(`Ticket ${ticket.ticketNumber} updated to ${status}.`);
     } catch (error) {
       setTicketMessage(error.message);
     }
   };
 
-  const deleteSupportTicket = async (id) => {
+  const deleteSupportTicket = async (ticket) => {
     try {
-      await apiFetch(`/api/admin/support-tickets/${id}`, {
+      await apiFetch(`/api/admin/support-tickets/${ticket.id}`, {
         method: "DELETE",
         auth: true,
       });
-      setSupportTickets((current) => current.filter((ticket) => ticket.id !== id));
-      setTicketMessage("Support ticket deleted.");
+      setSupportTickets((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
+      setTicketMessage(`Ticket ${ticket.ticketNumber} deleted.`);
+    } catch (error) {
+      setTicketMessage(error.message);
+    }
+  };
+
+  const editSupportTicket = (ticket) => {
+    setEditingTicketId(ticket.id);
+    setEditingTicketMessage(ticket.message || "");
+  };
+
+  const saveSupportTicketEdit = async (ticket) => {
+    if (!editingTicketMessage.trim()) return;
+    try {
+      const payload = await apiFetch(`/api/admin/support-tickets/${ticket.id}`, {
+        method: "PUT",
+        auth: true,
+        body: { message: editingTicketMessage.trim(), status: ticket.status },
+      });
+      setSupportTickets((current) =>
+        current.map((item) =>
+          item.id === ticket.id ? payload.ticket || item : item,
+        ),
+      );
+      setEditingTicketId(null);
+      setEditingTicketMessage("");
+      setTicketMessage(`Ticket ${ticket.ticketNumber} updated.`);
     } catch (error) {
       setTicketMessage(error.message);
     }
@@ -16342,15 +17757,31 @@ function AdminUtilityPanel({ panel, onClose }) {
 
   const saveAdminProfile = async (event) => {
     event.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminProfile.email || "")) {
+      setProfileMessage("Please enter a valid email address.");
+      return;
+    }
+
+    if (!canUseAdminApi) {
+      setProfileMessage(
+        "Administrator backend access is required to save the profile.",
+      );
+      return;
+    }
+
     try {
-      await apiFetch("/api/admin/profile", {
+      const payload = await apiFetch("/api/admin/profile", {
         method: "PUT",
         auth: true,
         body: { value: adminProfile },
       });
+      setAdminProfile({
+        ...defaultAdminProfile,
+        ...(payload.value || adminProfile),
+      });
       setIsEditingProfile(false);
       setEditingProfileField(null);
-      setProfileMessage("Admin account updated.");
+      setProfileMessage("Admin account saved to backend.");
     } catch (error) {
       setProfileMessage(error.message);
     }
@@ -16382,8 +17813,14 @@ function AdminUtilityPanel({ panel, onClose }) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      setProfileMessage("Please choose an image file for the avatar.");
+    const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      setProfileMessage("Please choose a PNG, JPG, WebP, or GIF avatar.");
+      return;
+    }
+
+    if (file.size > 1024 * 1024) {
+      setProfileMessage("Avatar must be 1 MB or smaller.");
       return;
     }
 
@@ -16405,13 +17842,7 @@ function AdminUtilityPanel({ panel, onClose }) {
       return;
     }
 
-    const avatarWindow = window.open();
-    if (avatarWindow) {
-      avatarWindow.document.write(
-        `<title>${adminProfile.name} Avatar</title><img src="${adminProfile.avatarUrl}" alt="${adminProfile.name}" style="max-width:100%;height:auto;display:block;margin:24px auto;border-radius:16px;" />`,
-      );
-      avatarWindow.document.close();
-    }
+    window.open(adminProfile.avatarUrl, "_blank", "noopener,noreferrer");
   };
 
   const removeAdminAvatar = () => {
@@ -16419,7 +17850,9 @@ function AdminUtilityPanel({ panel, onClose }) {
       ...current,
       avatarUrl: "",
     }));
-    setProfileMessage("Avatar removed. Press Save Account to keep this change.");
+    setProfileMessage(
+      "Avatar removed. Press Save Account to keep this change.",
+    );
   };
 
   const openAdminRoute = (route) => {
@@ -16428,36 +17861,33 @@ function AdminUtilityPanel({ panel, onClose }) {
   };
 
   const runHealthCheck = async () => {
+    if (!canUseAdminApi) {
+      setStatusMessage(
+        "Backend health checks require an Administrator session.",
+      );
+      return;
+    }
+
     setCheckingHealth(true);
     setStatusMessage("Running service checks...");
     try {
       const payload = await apiFetch("/api/admin/health", { auth: true });
-      const checkedAt = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      if (Array.isArray(payload.services)) {
+      const checkedAt = payload.checkedAt
+        ? new Date(payload.checkedAt).toLocaleString()
+        : new Date().toLocaleString();
+      const services = Array.isArray(payload.services) ? payload.services : [];
+      if (services.length) {
         setHealthRows((current) =>
-          current.map((row) => {
-            const service = payload.services.find((item) => item.name === row.name);
-            return service
-              ? { ...row, state: service.state, value: service.value }
-              : row;
-          }),
+          services.map((service, index) => ({
+            ...current[index % current.length],
+            name: service.name,
+            state: service.state,
+            value: service.value,
+          })),
         );
       }
       setHealthCheckedAt(checkedAt);
       setStatusMessage(`Health check completed at ${checkedAt}.`);
-      await apiFetch("/api/admin/status-state", {
-        method: "PUT",
-        auth: true,
-        body: {
-          value: {
-            healthCheckedAt: checkedAt,
-            message: `Health check completed at ${checkedAt}.`,
-          },
-        },
-      });
     } catch (error) {
       setStatusMessage(error.message);
     } finally {
@@ -16474,7 +17904,7 @@ function AdminUtilityPanel({ panel, onClose }) {
   };
 
   const markAllNotificationsRead = () => {
-    saveReadNotifications(adminPanelNotifications.map((item) => item.id));
+    saveReadNotifications(utilityNotifications.map((item) => item.id));
   };
 
   const openNotification = (item) => {
@@ -16485,7 +17915,7 @@ function AdminUtilityPanel({ panel, onClose }) {
     openAdminRoute(item.route);
   };
 
-  const unreadNotificationCount = adminPanelNotifications.filter(
+  const unreadNotificationCount = utilityNotifications.filter(
     (item) => !readNotificationIds.includes(item.id),
   ).length;
 
@@ -16536,11 +17966,11 @@ function AdminUtilityPanel({ panel, onClose }) {
   };
 
   const panelTitles = {
-    status: "System Status",
-    settings: "Admin Settings",
-    support: "Support Center",
-    notifications: "Notifications",
-    profile: "Admin Account",
+    status: t("admin.systemStatus"),
+    settings: t("admin.adminSettings"),
+    support: t("admin.supportCenter"),
+    notifications: t("admin.notifications"),
+    profile: t("admin.adminAccount"),
   };
   const panelMeta = {
     status: {
@@ -16584,7 +18014,9 @@ function AdminUtilityPanel({ panel, onClose }) {
       >
         <header className="admin-utility-header">
           <div className="admin-utility-title-row">
-            <span className={`admin-utility-title-icon ${panelMeta[panel].tone}`}>
+            <span
+              className={`admin-utility-title-icon ${panelMeta[panel].tone}`}
+            >
               <MiniIcon path={panelMeta[panel].icon} />
             </span>
             <div>
@@ -16629,7 +18061,9 @@ function AdminUtilityPanel({ panel, onClose }) {
             >
               {checkingHealth ? "Checking..." : "Run Health Check"}
             </button>
-            {statusMessage && <p className="admin-panel-note">{statusMessage}</p>}
+            {statusMessage && (
+              <p className="admin-panel-note">{statusMessage}</p>
+            )}
           </div>
         )}
 
@@ -16701,7 +18135,9 @@ function AdminUtilityPanel({ panel, onClose }) {
             >
               Save Settings
             </button>
-            {statusMessage && <p className="admin-panel-note">{statusMessage}</p>}
+            {statusMessage && (
+              <p className="admin-panel-note">{statusMessage}</p>
+            )}
           </div>
         )}
 
@@ -16729,21 +18165,48 @@ function AdminUtilityPanel({ panel, onClose }) {
             </button>
             <div className="admin-support-ticket-list">
               {supportTickets.map((ticket) => (
-                <article key={ticket.id}>
-                  <span>{ticket.ticketNumber || ticket.id}</span>
-                  <strong>{ticket.message}</strong>
-                  <small>{ticket.status} - {new Date(ticket.createdAt).toLocaleString()}</small>
+                <article key={ticket.id} className="admin-support-ticket-item">
                   <div>
+                    <strong>{ticket.ticketNumber}</strong>
+                    <span>{ticket.status}</span>
+                  </div>
+                  {editingTicketId === ticket.id ? (
+                    <label className="admin-support-inline-editor">
+                      <span>Edit ticket content</span>
+                      <textarea value={editingTicketMessage} onChange={(event) => setEditingTicketMessage(event.target.value)} rows={4} />
+                      <span className="admin-notification-actions">
+                        <button type="button" onClick={() => saveSupportTicketEdit(ticket)}>Save</button>
+                        <button type="button" onClick={() => { setEditingTicketId(null); setEditingTicketMessage(""); }}>Cancel</button>
+                      </span>
+                    </label>
+                  ) : <p>{ticket.message}</p>}
+                  <small>
+                    {ticket.createdAt
+                      ? new Date(ticket.createdAt).toLocaleString()
+                      : ""}
+                  </small>
+                  <div className="admin-notification-actions">
                     <button
                       type="button"
-                      onClick={() => updateSupportTicket(ticket.id, { status: "Closed" })}
+                      onClick={() => editSupportTicket(ticket)}
                     >
-                      Close
+                      Edit
                     </button>
-                    <button type="button" onClick={() => openAdminRoute("/admin-system-logs")}>
-                      Logs
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateSupportTicketStatus(
+                          ticket,
+                          ticket.status === "Resolved" ? "Open" : "Resolved",
+                        )
+                      }
+                    >
+                      {ticket.status === "Resolved" ? "Reopen" : "Resolve"}
                     </button>
-                    <button type="button" onClick={() => deleteSupportTicket(ticket.id)}>
+                    <button
+                      type="button"
+                      onClick={() => deleteSupportTicket(ticket)}
+                    >
                       Delete
                     </button>
                   </div>
@@ -16751,7 +18214,9 @@ function AdminUtilityPanel({ panel, onClose }) {
               ))}
               {!supportTickets.length ? <p>No support tickets yet.</p> : null}
             </div>
-            {ticketMessage && <p className="admin-panel-note">{ticketMessage}</p>}
+            {ticketMessage && (
+              <p className="admin-panel-note">{ticketMessage}</p>
+            )}
           </form>
         )}
 
@@ -16763,7 +18228,7 @@ function AdminUtilityPanel({ panel, onClose }) {
                 Mark All Read
               </button>
             </div>
-            {adminPanelNotifications.map((item) => (
+            {utilityNotifications.map((item) => (
               <button
                 type="button"
                 className={`admin-notification-item ${
@@ -16956,10 +18421,12 @@ function AdminShell({
 }
 
 function AdminStatCard({ stat }) {
+  const { t } = useTranslation();
+
   return (
     <article className={`admin-stat-card ${stat.tone}`}>
       <div className="admin-stat-heading">
-        <span>{stat.label}</span>
+        <span>{t(stat.label)}</span>
         <MiniIcon path={stat.icon} />
       </div>
       {stat.values ? (
@@ -16982,8 +18449,23 @@ function AdminStatCard({ stat }) {
   );
 }
 
-function AdminUserGrowthChart() {
+function AdminUserGrowthChart({ rows = [] }) {
   const canvasRef = React.useRef(null);
+  const chartRows =
+    Array.isArray(rows) && rows.length
+      ? rows
+      : [{ label: "No data", count: 0 }];
+  const labels = chartRows.map((row) => {
+    if (row.label) return row.label;
+    const month = Number(row.month || row.Month || 1);
+    const year = Number(row.year || row.Year || new Date().getFullYear());
+    return new Date(year, month - 1, 1).toLocaleString("en-US", {
+      month: "short",
+      year: "2-digit",
+    });
+  });
+  const values = chartRows.map((row) => Number(row.count ?? row.Count ?? 0));
+  const suggestedMax = Math.max(4, Math.ceil(Math.max(...values, 1) * 1.2));
 
   React.useEffect(() => {
     if (!canvasRef.current) return undefined;
@@ -16995,11 +18477,11 @@ function AdminUserGrowthChart() {
     const chart = new Chart(context, {
       type: "bar",
       data: {
-        labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+        labels,
         datasets: [
           {
             label: "Users",
-            data: [9800, 13600, 12400, 17200, 20800, 24592],
+            data: values,
             backgroundColor: gradient,
             borderColor: "#6c63e7",
             borderWidth: 1,
@@ -17035,14 +18517,14 @@ function AdminUserGrowthChart() {
           },
           y: {
             beginAtZero: true,
-            suggestedMax: 26000,
+            suggestedMax,
             border: { display: false },
             grid: { color: "rgba(148, 163, 184, 0.2)" },
             ticks: {
-              stepSize: 5000,
+              stepSize: Math.max(1, Math.ceil(suggestedMax / 5)),
               color: "#667085",
               font: { size: 10 },
-              callback: (value) => (value === 0 ? "0" : `${value / 1000}k`),
+              callback: (value) => (value >= 1000 ? `${value / 1000}k` : value),
             },
           },
         },
@@ -17050,7 +18532,7 @@ function AdminUserGrowthChart() {
     });
 
     return () => chart.destroy();
-  }, []);
+  }, [labels.join("|"), suggestedMax, values.join("|")]);
 
   return (
     <canvas
@@ -17061,8 +18543,15 @@ function AdminUserGrowthChart() {
   );
 }
 
-function AdminRoleDistributionChart() {
+function AdminRoleDistributionChart({ rows = [], totalUsers = 0 }) {
   const canvasRef = React.useRef(null);
+  const chartRows =
+    Array.isArray(rows) && rows.length
+      ? rows
+      : [{ role: "No users", count: 0 }];
+  const labels = chartRows.map((row) => row.role || row.Role || "Unknown");
+  const values = chartRows.map((row) => Number(row.count ?? row.Count ?? 0));
+  const total = totalUsers || values.reduce((sum, value) => sum + value, 0);
 
   React.useEffect(() => {
     if (!canvasRef.current) return undefined;
@@ -17080,7 +18569,7 @@ function AdminRoleDistributionChart() {
         ctx.font = "700 17px Inter, sans-serif";
         ctx.fillText("Total", centerX, centerY - 8);
         ctx.font = "800 13px Inter, sans-serif";
-        ctx.fillText("24,592", centerX, centerY + 14);
+        ctx.fillText(formatCount(total), centerX, centerY + 14);
         ctx.restore();
       },
     };
@@ -17088,10 +18577,10 @@ function AdminRoleDistributionChart() {
     const chart = new Chart(canvasRef.current, {
       type: "doughnut",
       data: {
-        labels: ["Researcher", "Student", "Lecturer", "Admin"],
+        labels,
         datasets: [
           {
-            data: [45, 30, 20, 5],
+            data: values,
             backgroundColor: ["#5145e5", "#45d6aa", "#cfe1fb", "#101827"],
             borderColor: "#ffffff",
             borderWidth: 3,
@@ -17107,7 +18596,7 @@ function AdminRoleDistributionChart() {
         plugins: {
           legend: { display: false },
           tooltip: {
-            callbacks: { label: (item) => `${item.label}: ${item.raw}%` },
+            callbacks: { label: (item) => `${item.label}: ${item.raw}` },
           },
         },
       },
@@ -17115,29 +18604,30 @@ function AdminRoleDistributionChart() {
     });
 
     return () => chart.destroy();
-  }, []);
+  }, [labels.join("|"), total, values.join("|")]);
 
   return (
     <canvas ref={canvasRef} aria-label="Role distribution" role="img"></canvas>
   );
 }
 
-function AdminActivityPanel() {
+function AdminActivityPanel({ rows = [] }) {
   return (
     <section className="admin-activity-card">
       <h2>Recent System Activity</h2>
       <div>
-        {adminActivity.map((activity) => (
-          <article key={`${activity.text}-${activity.time}`}>
-            <span className={activity.tone}>
-              <MiniIcon path={activity.icon} />
+        {rows.map((activity, index) => (
+          <article key={activity.id || `${activity.text}-${activity.time}-${index}`}>
+            <span className={activity.severity === "Error" ? "red" : "green"}>
+              <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
             </span>
             <p>
               <strong>{activity.text}</strong>
-              <small>{activity.time}</small>
+              <small>{new Date(activity.time).toLocaleString()}</small>
             </p>
           </article>
         ))}
+        {!rows.length ? <p>No recent backend activity.</p> : null}
       </div>
       <button type="button" onClick={navTo("/admin-system-logs")}>
         View All Logs
@@ -17146,38 +18636,28 @@ function AdminActivityPanel() {
   );
 }
 
-const adminSyncHistory = [
-  {
-    source: "Google Scholar",
-    status: "Failed",
-    records: "4,102",
-    time: "Today, 11:30 AM",
-    error: "429 Rate Limit Exceeded",
-    detail:
-      "The API rejected requests due to high volume. Retry scheduled at next run.",
-  },
-  {
-    source: "Google Scholar",
-    status: "Completed",
-    records: "12,450",
-    time: "Today, 10:00 AM",
-  },
-  {
-    source: "OpenAlex",
-    status: "Completed",
-    records: "3,201",
-    time: "Yesterday, 10:00 AM",
-  },
-  {
-    source: "Google Scholar",
-    status: "Completed",
-    records: "11,890",
-    time: "Yesterday, 10:00 AM",
-  },
-];
-
 const ADMIN_SYNC_CONFIG_KEY = "scholartrend.adminSyncConfig";
-const ADMIN_SYNC_HISTORY_KEY = "scholartrend.adminSyncHistory";
+
+const isLegacyOpenAlexSeedHistoryRow = (row = {}) => {
+  const source = String(row.source || row.sourceApi || row.SourceApi || "");
+  const status = String(row.status || row.Status || "");
+  const records = String(
+    row.records ?? row.recordsSynced ?? row.RecordsSynced ?? "0",
+  ).replace(/,/g, "");
+  const time = String(row.time || row.startedAt || row.StartedAt || "");
+  return (
+    source === "OpenAlex" &&
+    status === "Failed" &&
+    Number(records || 0) === 0 &&
+    !row.error &&
+    !row.errorMessage &&
+    !row.ErrorMessage &&
+    (time.includes("12/2/2024") || time.includes("2024-12-02"))
+  );
+};
+
+const sanitizeAdminSyncHistory = (history = []) =>
+  history.filter((row) => !isLegacyOpenAlexSeedHistoryRow(row));
 
 const getAdminSyncConfig = () => {
   try {
@@ -17185,7 +18665,13 @@ const getAdminSyncConfig = () => {
       window.localStorage.getItem(ADMIN_SYNC_CONFIG_KEY) || "null",
     );
     return {
-      sources: { semantic: true, openAlex: false, ...(saved?.sources || {}) },
+      sources: {
+        semantic: false,
+        openAlex: true,
+        googleScholar: true,
+        researchGate: true,
+        ...(saved?.sources || {}),
+      },
       keywords: Array.isArray(saved?.keywords)
         ? saved.keywords
         : ["Machine Learning", "NLP"],
@@ -17194,7 +18680,12 @@ const getAdminSyncConfig = () => {
     };
   } catch {
     return {
-      sources: { semantic: true, openAlex: false },
+      sources: {
+        semantic: false,
+        openAlex: true,
+        googleScholar: true,
+        researchGate: true,
+      },
       keywords: ["Machine Learning", "NLP"],
       cron: "0 0 * * *",
       rateLimit: 120,
@@ -17203,22 +18694,40 @@ const getAdminSyncConfig = () => {
 };
 
 const getAdminSyncHistory = () => {
-  try {
-    const saved = JSON.parse(
-      window.localStorage.getItem(ADMIN_SYNC_HISTORY_KEY) || "null",
-    );
-    return Array.isArray(saved) && saved.length ? saved : adminSyncHistory;
-  } catch {
-    return adminSyncHistory;
-  }
+  return [];
 };
 
 const setAdminSyncConfig = (config) => {
   window.localStorage.setItem(ADMIN_SYNC_CONFIG_KEY, JSON.stringify(config));
 };
 
-const setAdminSyncHistory = (history) => {
-  window.localStorage.setItem(ADMIN_SYNC_HISTORY_KEY, JSON.stringify(history));
+const setAdminSyncHistory = () => {};
+
+const normalizeSyncLogForUi = (log) => ({
+  source: log.sourceApi || log.SourceApi || log.source || "Unknown source",
+  status: log.status || log.Status || "Unknown",
+  records: formatCount(log.recordsSynced ?? log.RecordsSynced ?? 0),
+  time:
+    log.finishedAt || log.FinishedAt || log.startedAt || log.StartedAt
+      ? new Date(
+          log.finishedAt || log.FinishedAt || log.startedAt || log.StartedAt,
+        ).toLocaleString()
+      : "N/A",
+  timestamp:
+    log.finishedAt || log.FinishedAt || log.startedAt || log.StartedAt || null,
+  error: log.errorMessage || log.ErrorMessage || "",
+  detail:
+    log.errorMessage ||
+    log.ErrorMessage ||
+    `${log.status || log.Status || "Sync"} run from backend log.`,
+});
+
+const isRealSyncLog = (log) => {
+  const source = log.sourceApi || log.SourceApi || log.source || "";
+  return (
+    !String(source).startsWith("Admin Audit:") &&
+    !isLegacyOpenAlexSeedHistoryRow(log)
+  );
 };
 
 function AdminSourceToggle({ enabled, onToggle, label, detail }) {
@@ -17250,6 +18759,13 @@ function AdminSyncConfiguration({ config, onChange }) {
   const [cron, setCron] = React.useState(config.cron);
   const [rateLimit, setRateLimit] = React.useState(config.rateLimit);
   const [saved, setSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    setSources(config.sources);
+    setKeywords(config.keywords);
+    setCron(config.cron);
+    setRateLimit(config.rateLimit);
+  }, [config]);
 
   const emitConfig = (next = {}) => {
     const merged = {
@@ -17283,16 +18799,6 @@ function AdminSyncConfiguration({ config, onChange }) {
       </h2>
       <div className="admin-config-body">
         <AdminSourceToggle
-          enabled={sources.semantic}
-          onToggle={() => {
-            const nextSources = { ...sources, semantic: !sources.semantic };
-            setSources(nextSources);
-            emitConfig({ sources: nextSources });
-          }}
-          label="Semantic Scholar"
-          detail="Primary Source via Graph API"
-        />
-        <AdminSourceToggle
           enabled={sources.openAlex}
           onToggle={() => {
             const nextSources = { ...sources, openAlex: !sources.openAlex };
@@ -17300,7 +18806,43 @@ function AdminSyncConfiguration({ config, onChange }) {
             emitConfig({ sources: nextSources });
           }}
           label="OpenAlex"
-          detail="Secondary Source"
+          detail="Open scholarly metadata API"
+        />
+        <AdminSourceToggle
+          enabled={sources.googleScholar}
+          onToggle={() => {
+            const nextSources = {
+              ...sources,
+              googleScholar: !sources.googleScholar,
+            };
+            setSources(nextSources);
+            emitConfig({ sources: nextSources });
+          }}
+          label="Google Scholar"
+          detail="Scholar results through SerpApi"
+        />
+        <AdminSourceToggle
+          enabled={sources.researchGate}
+          onToggle={() => {
+            const nextSources = {
+              ...sources,
+              researchGate: !sources.researchGate,
+            };
+            setSources(nextSources);
+            emitConfig({ sources: nextSources });
+          }}
+          label="ResearchGate"
+          detail="ResearchGate publication pages via Scholar lookup"
+        />
+        <AdminSourceToggle
+          enabled={sources.semantic}
+          onToggle={() => {
+            const nextSources = { ...sources, semantic: !sources.semantic };
+            setSources(nextSources);
+            emitConfig({ sources: nextSources });
+          }}
+          label="Semantic Scholar"
+          detail="Optional Graph API source"
         />
 
         <div className="admin-config-field admin-keyword-field">
@@ -17467,8 +19009,8 @@ function AdminSyncHistory({ history }) {
             </tr>
           </thead>
           <tbody>
-            {pagedRows.map((row) => (
-              <React.Fragment key={`${row.source}-${row.time}`}>
+            {pagedRows.map((row, rowIndex) => (
+              <React.Fragment key={`${row.source}-${row.time}-${rowIndex}`}>
                 <tr className={row.status.toLowerCase()}>
                   <td>
                     <i></i>
@@ -17507,7 +19049,9 @@ function AdminSyncHistory({ history }) {
         </table>
       </div>
       <footer className="admin-sync-pagination">
-        <span>Showing {pagedRows.length} of {rows.length} runs</span>
+        <span>
+          Showing {pagedRows.length} of {rows.length} runs
+        </span>
         <div>
           <button
             type="button"
@@ -17516,16 +19060,18 @@ function AdminSyncHistory({ history }) {
           >
             <MiniIcon path="M15 18l-6-6 6-6" />
           </button>
-          {Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => (
-            <button
-              type="button"
-              className={safePage === number ? "active" : ""}
-              onClick={() => setPage(number)}
-              key={number}
-            >
-              {number}
-            </button>
-          ))}
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+            (number) => (
+              <button
+                type="button"
+                className={safePage === number ? "active" : ""}
+                onClick={() => setPage(number)}
+                key={number}
+              >
+                {number}
+              </button>
+            ),
+          )}
           <button
             type="button"
             disabled={safePage === totalPages}
@@ -17540,10 +19086,54 @@ function AdminSyncHistory({ history }) {
 }
 
 function AdminSyncManagementPage() {
+  const canUseAdminApi = hasAdminBackendAccess();
   const [config, setConfig] = React.useState(getAdminSyncConfig);
   const [history, setHistory] = React.useState(getAdminSyncHistory);
   const [running, setRunning] = React.useState(false);
   const [syncMessage, setSyncMessage] = React.useState("");
+
+  React.useEffect(() => {
+    if (!canUseAdminApi) {
+      setSyncMessage(
+        "Admin backend access required. Log out, choose Administrator, then sign in with an admin account.",
+      );
+      return;
+    }
+
+    apiFetch("/api/admin/sync-config", { auth: true })
+      .then((payload) => {
+        if (payload.value) {
+          setConfig({
+            sources: {
+              openAlex: true,
+              googleScholar: true,
+              researchGate: true,
+              semantic: false,
+              ...(payload.value.sources || {}),
+            },
+            keywords: Array.isArray(payload.value.keywords)
+              ? payload.value.keywords
+              : ["Machine Learning", "NLP"],
+            cron: payload.value.cron || "0 0 * * *",
+            rateLimit: Number(payload.value.rateLimit || 120),
+          });
+        }
+      })
+      .catch((error) => {
+        setSyncMessage(error.message);
+      });
+
+    apiFetch("/api/admin/sync-logs?page=1&pageSize=20", { auth: true })
+      .then((payload) => {
+        const rows = unwrapList(payload)
+          .filter(isRealSyncLog)
+          .map(normalizeSyncLogForUi);
+        setHistory(rows);
+      })
+      .catch((error) => {
+        setSyncMessage(error.message);
+      });
+  }, [canUseAdminApi]);
 
   const persistHistory = (nextHistory) => {
     setHistory(nextHistory);
@@ -17551,8 +19141,23 @@ function AdminSyncManagementPage() {
   };
 
   const saveConfig = (nextConfig) => {
+    if (!canUseAdminApi) {
+      setSyncMessage("Administrator backend access is required to save sync configuration.");
+      return;
+    }
+
+    const previousConfig = config;
     setConfig(nextConfig);
-    setAdminSyncConfig(nextConfig);
+    apiFetch("/api/admin/sync-config", {
+      method: "PUT",
+      auth: true,
+      body: { value: nextConfig },
+    })
+      .then(() => setSyncMessage("Sync configuration saved to backend."))
+      .catch((error) => {
+        setConfig(previousConfig);
+        setSyncMessage(`Could not save sync configuration: ${error.message}`);
+      });
   };
 
   const formatSyncRunTime = () =>
@@ -17565,80 +19170,104 @@ function AdminSyncManagementPage() {
 
   const handleManualSync = async () => {
     if (running) return;
+    if (!canUseAdminApi) {
+      setSyncMessage("Manual sync requires an Administrator session.");
+      return;
+    }
+
     setRunning(true);
     setSyncMessage("Manual sync is running...");
 
-    const enabledSources = [
-      config.sources.semantic ? "Semantic Scholar" : null,
-      config.sources.openAlex ? "OpenAlex" : null,
-    ].filter(Boolean);
-
-    const backendCalls = [
-      config.sources.semantic
-        ? apiFetch("/api/admin/sync/semantic-scholar", {
-            method: "POST",
-            auth: true,
-          }).then((payload) => ({ source: "Semantic Scholar", payload }))
-        : null,
-      config.sources.openAlex
-        ? apiFetch("/api/admin/sync/openalex", {
-            method: "POST",
-            auth: true,
-          }).then((payload) => ({ source: "OpenAlex", payload }))
-        : null,
-    ].filter(Boolean);
-
-    const settledResults = await Promise.allSettled(backendCalls);
     const runTime = formatSyncRunTime();
-    const nextRows = enabledSources.length
-      ? settledResults.map((result, index) => {
-          const source = result.status === "fulfilled"
-            ? result.value.source
-            : enabledSources[index];
-          if (result.status !== "fulfilled") {
-            return {
-              source,
-              status: "Failed",
-              records: "0",
-              time: runTime,
-              error: "Sync request failed",
-              detail: result.reason?.message || "Backend sync endpoint did not complete.",
-            };
-          }
-
-          return {
-            source,
-            status: "Completed",
-            records: formatCount(result.value.payload?.recordsSynced ?? 0),
-            time: runTime,
-            detail:
-              result.value.payload?.message ||
-              `Manual sync completed for ${config.keywords.join(", ") || "all keywords"}.`,
-          };
-        })
-      : [
-          {
-            source: "No Source Enabled",
-            status: "Failed",
-            records: "0",
-            time: runTime,
-            error: "No source selected",
-            detail:
-              "Enable Semantic Scholar or OpenAlex in Configuration before running sync.",
+    try {
+      const payload = await apiFetch("/api/admin/sync/manual", {
+        method: "POST",
+        auth: true,
+        body: {
+          sources: {
+            semantic: Boolean(config.sources.semantic),
+            openAlex: Boolean(config.sources.openAlex),
+            googleScholar: Boolean(config.sources.googleScholar),
+            researchGate: Boolean(config.sources.researchGate),
           },
-        ];
+          keywords: config.keywords,
+          maxResults: 20,
+        },
+      });
 
-    persistHistory([...nextRows, ...history]);
-    setRunning(false);
-    setSyncMessage(
-      enabledSources.length
-        ? "Manual sync completed and added to history."
-        : "Manual sync failed because no source is enabled.",
-    );
+      const nextRows = Array.isArray(payload.results)
+        ? payload.results.map((result) => ({
+            source: result.source || "Manual Sync",
+            status: result.status || "Completed",
+            records: formatCount(result.recordsSynced ?? 0),
+            time: runTime,
+            error: result.error || "",
+            detail:
+              result.error ||
+              payload.message ||
+              `Imported abstract metadata for ${config.keywords.join(", ") || "all keywords"}.`,
+          }))
+        : [
+            {
+              source: "Manual Sync",
+              status: "Completed",
+              records: formatCount(payload.recordsSynced ?? 0),
+              time: runTime,
+              detail: payload.message || "Manual sync completed.",
+            },
+          ];
+
+      persistHistory([...nextRows, ...history]);
+      apiFetch("/api/admin/sync-logs?page=1&pageSize=20", { auth: true })
+        .then((latestLogs) => {
+          const rows = unwrapList(latestLogs)
+            .filter(isRealSyncLog)
+            .map(normalizeSyncLogForUi);
+          setHistory(rows);
+          setAdminSyncHistory(rows);
+        })
+        .catch(() => {});
+      setSyncMessage(
+        payload.message || "Manual sync completed and added to history.",
+      );
+    } catch (error) {
+      const failedRow = {
+        source: "Manual Sync",
+        status: "Failed",
+        records: "0",
+        time: runTime,
+        error: "Sync request failed",
+        detail: error.message || "Backend sync endpoint did not complete.",
+      };
+      persistHistory([failedRow, ...history]);
+      setSyncMessage(error.message);
+    } finally {
+      setRunning(false);
+    }
   };
 
   const lastSuccess = history.find((row) => row.status === "Completed");
-  const failedCount = history.filter((row) => row.status === "Failed").length;
+  const failedCount = history.filter((row) => {
+    if (row.status !== "Failed") return false;
+    const timestamp = new Date(row.timestamp || row.time).getTime();
+    if (
+      !Number.isFinite(timestamp) ||
+      timestamp < Date.now() - 24 * 60 * 60 * 1000
+    ) {
+      return false;
+    }
+
+    // A later successful run for the same source resolves the earlier failure.
+    return !history.some((later) => {
+      if (later.status !== "Completed" || later.source !== row.source) {
+        return false;
+      }
+      const laterTimestamp = new Date(
+        later.timestamp || later.time,
+      ).getTime();
+      return Number.isFinite(laterTimestamp) && laterTimestamp > timestamp;
+    });
+  }).length;
 
   const reviewLogs = () =>
     document
@@ -17688,7 +19317,7 @@ function AdminSyncManagementPage() {
           <article className="success-card">
             <div>
               <span>Last Successful Sync</span>
-                <MiniIcon path="M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5" />
+              <MiniIcon path="M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5" />
             </div>
             <strong>{lastSuccess?.time || "No sync yet"}</strong>
             <p>{lastSuccess?.records || "0"} records</p>
@@ -17700,14 +19329,17 @@ function AdminSyncManagementPage() {
               <MiniIcon path="M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM12 8.2v5.2M12 16.5h.01" />
             </div>
             <strong>
-              {failedCount}<small>events</small>
+              {failedCount}
+              <small>events</small>
             </strong>
             <button type="button" onClick={reviewLogs}>
               Review Logs
             </button>
           </article>
         </section>
-        {syncMessage ? <p className="admin-sync-message">{syncMessage}</p> : null}
+        {syncMessage ? (
+          <p className="admin-sync-message">{syncMessage}</p>
+        ) : null}
 
         <div className="admin-sync-layout">
           <AdminSyncConfiguration config={config} onChange={saveConfig} />
@@ -17719,29 +19351,45 @@ function AdminSyncManagementPage() {
 }
 
 function AdminDashboard() {
-  const { data: adminOverview } = useApiResource(
-    "/api/admin/overview",
-    null,
-    { auth: true },
-  );
+  const { t } = useTranslation();
+  const canUseAdminApi = hasAdminBackendAccess();
+  const {
+    data: adminOverview,
+    status: overviewStatus,
+    error: overviewError,
+  } = useApiResource(canUseAdminApi ? "/api/admin/overview" : null, null, {
+    auth: true,
+  });
   const overviewStats = React.useMemo(() => {
-    if (!adminOverview) return adminStats;
+    if (!adminOverview) {
+      const note = !canUseAdminApi
+        ? "Admin backend access required"
+        : overviewStatus === "error"
+          ? `Backend unavailable: ${overviewError?.message || "unknown error"}`
+          : "Loading from backend...";
+      return adminStats.map((stat) => ({
+        ...stat,
+        value: stat.value ? "\u26A0" : stat.value,
+        note,
+        values: stat.values?.map(([label]) => [label, "\u26A0"]),
+      }));
+    }
     return adminStats.map((stat) => {
-      if (stat.label === "Total Users") {
+      if (stat.label === "admin.totalUsers") {
         return {
           ...stat,
           value: formatCount(adminOverview.totalUsers),
           note: "Registered backend users",
         };
       }
-      if (stat.label === "Total Publications") {
+      if (stat.label === "admin.totalPublications") {
         return {
           ...stat,
           value: formatCount(adminOverview.totalPublications),
           note: `${formatCount(adminOverview.totalKeywords)} tracked keywords`,
         };
       }
-      if (stat.label === "Last Sync Status") {
+      if (stat.label === "admin.lastSyncStatusLabel") {
         return {
           ...stat,
           value: adminOverview.lastSync?.status || "Idle",
@@ -17750,7 +19398,7 @@ function AdminDashboard() {
             : "No completed sync yet",
         };
       }
-      if (stat.label === "API Health") {
+      if (stat.label === "admin.apiHealth") {
         return {
           ...stat,
           values: (adminOverview.apiHealth || stat.values).map((item) => [
@@ -17764,8 +19412,19 @@ function AdminDashboard() {
   }, [adminOverview]);
 
   const exportUserData = () => {
-    const csv =
-      "Month,Users\nJan,9800\nFeb,13600\nMar,12400\nApr,17200\nMay,20800\nJun,24592";
+    const rows = adminOverview?.userGrowth || [];
+    const csv = [
+      "Month,Users",
+      ...rows.map((row) => {
+        const month = Number(row.month || row.Month || 1);
+        const year = Number(row.year || row.Year || new Date().getFullYear());
+        const label = new Date(year, month - 1, 1).toLocaleString("en-US", {
+          month: "short",
+          year: "numeric",
+        });
+        return `${label},${Number(row.count ?? row.Count ?? 0)}`;
+      }),
+    ].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -17773,44 +19432,59 @@ function AdminDashboard() {
     anchor.click();
     URL.revokeObjectURL(url);
   };
-  const managedUserCount = getAdminManagedUsers().length;
-  const publicationSubmissions = getPublicationSubmissions();
-  const pendingPublicationCount = publicationSubmissions.filter(
-    (item) => item.status === "pending",
-  ).length;
-  const blockedPublicationCount = publicationSubmissions.filter(
-    (item) =>
-      item.status === "cancelled" ||
-      item.status === "rejected" ||
-      item.similarityPercent > SIMILARITY_LIMIT_PERCENT,
-  ).length;
+  const managedUserCount = Number(adminOverview?.totalUsers || 0);
+  const pendingPublicationCount = Number(
+    adminOverview?.pendingPublicationCount || 0,
+  );
+  const blockedPublicationCount = Number(
+    adminOverview?.blockedPublicationCount || 0,
+  );
+  const managedRoleDistribution = (adminOverview?.roleDistribution || []).filter(
+    (row) => normalizeRoleForUi(row.role || row.Role) !== "Administrator",
+  );
+  const managedRoleTotal = managedRoleDistribution.reduce(
+    (total, row) => total + Number(row.count ?? row.Count ?? 0),
+    0,
+  );
+  const roleLegend = managedRoleDistribution.map(
+    (row, index) => {
+      const count = Number(row.count ?? row.Count ?? 0);
+      return [
+        row.role || row.Role || "Unknown",
+        managedRoleTotal
+          ? `${Math.round((count / managedRoleTotal) * 100)}%`
+          : "0%",
+        ["#5145e5", "#45d6aa", "#cfe1fb", "#101827"][index % 4],
+      ];
+    },
+  );
   const adminControlCards = [
     {
       title: "Users & Roles",
-      detail: "Invite, edit, deactivate, delete, and assign roles.",
+      detail: "Create, edit, deactivate, delete, and assign roles.",
       value: `${managedUserCount} accounts`,
       route: "/admin-user-management",
-      icon:
-        "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
+      icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
     },
     {
       title: "Payments",
       detail: "Review PayOS checkouts and Pro upgrade activation.",
-      value: "PayOS",
+      value: `${Number(adminOverview?.totalPaymentCount || 0)} payments`,
       route: "/admin-payments",
       icon: "M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9",
     },
     {
       title: "Plans",
       detail: "Manage Pro pricing, accuracy policy, and checkout expiry.",
-      value: "Pro policy",
+      value: adminOverview?.payosConfigured ? "PayOS configured" : "Setup required",
       route: "/admin-plans",
       icon: "M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2",
     },
     {
       title: "Notifications",
-      detail: "Publish system notices for students, lecturers, and researchers.",
-      value: "Broadcast",
+      detail:
+        "Publish system notices for students, lecturers, and researchers.",
+      value: `${Number(adminOverview?.unreadNotificationCount || 0)} unread`,
       route: "/admin-notifications",
       icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
     },
@@ -17831,7 +19505,7 @@ function AdminDashboard() {
     {
       title: "Sync & Logs",
       detail: "Run Scholar sync, monitor API health, and audit events.",
-      value: "Operational",
+      value: adminOverview?.lastSync?.status || "Idle",
       route: "/admin-sync-management",
       icon: "M5 7.5h9.5a4.5 4.5 0 0 1 4.2 6.1M18.8 7.5h-4.3V3.2M19 16.5H9.5a4.5 4.5 0 0 1-4.2-6.1M5.2 16.5h4.3v4.3",
     },
@@ -17840,13 +19514,44 @@ function AdminDashboard() {
   return (
     <AdminShell activeRoute="/admin-dashboard" current="Overview">
       <div className="admin-dashboard-content">
+        {!canUseAdminApi ? (
+          <p
+            className="admin-sync-message"
+            style={{
+              background: "#fef3c7",
+              color: "#92400e",
+              borderColor: "#fcd34d",
+            }}
+          >
+            Admin backend access required. Log out, choose Administrator, then
+            sign in with an admin account.
+          </p>
+        ) : overviewStatus === "error" ? (
+          <p
+            className="admin-sync-message"
+            style={{
+              background: "#fee2e2",
+              color: "#991b1b",
+              borderColor: "#fca5a5",
+            }}
+          >
+            Could not load dashboard data from backend:{" "}
+            {overviewError?.message || "Server connection failed"}. The stats
+            shown below are placeholder values. Check that the .NET backend is
+            running.
+          </p>
+        ) : null}
+
         <section className="admin-stat-grid" aria-label="Administrator metrics">
           {overviewStats.map((stat) => (
             <AdminStatCard stat={stat} key={stat.label} />
           ))}
         </section>
 
-        <section className="admin-control-center" aria-label="Admin control center">
+        <section
+          className="admin-control-center"
+          aria-label="Admin control center"
+        >
           <div className="admin-control-heading">
             <div>
               <span>Full Access</span>
@@ -17859,7 +19564,11 @@ function AdminDashboard() {
           </div>
           <div className="admin-control-grid">
             {adminControlCards.map((item) => (
-              <button type="button" key={item.title} onClick={navTo(item.route)}>
+              <button
+                type="button"
+                key={item.title}
+                onClick={navTo(item.route)}
+              >
                 <i>
                   <MiniIcon path={item.icon} />
                 </i>
@@ -17883,7 +19592,7 @@ function AdminDashboard() {
                 </button>
               </div>
               <div className="admin-growth-chart">
-                <AdminUserGrowthChart />
+                <AdminUserGrowthChart rows={adminOverview?.userGrowth || []} />
               </div>
             </section>
 
@@ -17893,15 +19602,13 @@ function AdminDashboard() {
               </div>
               <div className="admin-role-layout">
                 <div className="admin-role-chart">
-                  <AdminRoleDistributionChart />
+                  <AdminRoleDistributionChart
+                    rows={managedRoleDistribution}
+                    totalUsers={managedRoleTotal}
+                  />
                 </div>
                 <div className="admin-role-legend">
-                  {[
-                    ["Researcher", "45%", "#5145e5"],
-                    ["Student", "30%", "#45d6aa"],
-                    ["Lecturer", "20%", "#cfe1fb"],
-                    ["Admin", "5%", "#101827"],
-                  ].map(([label, value, color]) => (
+                  {roleLegend.map(([label, value, color]) => (
                     <p key={label}>
                       <span>
                         <i style={{ background: color }}></i>
@@ -17920,13 +19627,16 @@ function AdminDashboard() {
               <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
               <div>
                 <h2>Failed Syncs Alert</h2>
-                <p>2 sources failed during the last automated cycle.</p>
+                <p>
+                  {Number(adminOverview?.failedSyncsLast24Hours || 0)} failed
+                  syncs during the last 24 hours.
+                </p>
                 <button type="button" onClick={navTo("/admin-system-logs")}>
                   Review Logs
                 </button>
               </div>
             </section>
-            <AdminActivityPanel />
+            <AdminActivityPanel rows={adminOverview?.recentActivity || []} />
           </aside>
         </div>
       </div>
@@ -17934,69 +19644,7 @@ function AdminDashboard() {
   );
 }
 
-const adminManagedUsers = [
-  {
-    id: "admin-user-1",
-    name: "Elena Smith",
-    email: "elena.smith@university.edu",
-    role: "Administrator",
-    status: "Active",
-    createdAt: "2026-06-01T08:30:00.000Z",
-    lastLoginAt: "2026-06-30T02:15:00.000Z",
-    isPro: true,
-    plan: "Pro",
-    avatar: "ES",
-    avatarTone: "blue",
-  },
-  {
-    id: "admin-user-2",
-    name: "Dr. Marcus Vance",
-    email: "m.vance@institute.org",
-    role: "Researcher",
-    status: "Active",
-    createdAt: "2026-05-14T09:45:00.000Z",
-    lastLoginAt: "2026-06-28T10:20:00.000Z",
-    isPro: false,
-    plan: "Free",
-    avatar: "MV",
-    avatarTone: "photo",
-  },
-  {
-    id: "admin-user-3",
-    name: "Sarah Jenkins",
-    email: "s.jenkins@corp.com",
-    role: "Viewer",
-    status: "Inactive",
-    createdAt: "2026-04-20T03:20:00.000Z",
-    lastLoginAt: "2026-05-02T06:30:00.000Z",
-    isPro: false,
-    plan: "Free",
-    avatar: "SJ",
-    avatarTone: "muted",
-  },
-  {
-    id: "admin-user-4",
-    name: "Chen Wei",
-    email: "wei.c@scholar.edu",
-    role: "Researcher",
-    status: "Active",
-    createdAt: "2026-06-12T11:00:00.000Z",
-    lastLoginAt: "2026-06-30T04:40:00.000Z",
-    isPro: true,
-    plan: "Pro",
-    avatar: "CW",
-    avatarTone: "green",
-  },
-];
-
-const ADMIN_USERS_KEY = "scholartrend.adminManagedUsers";
-const adminRoleOptions = [
-  "Administrator",
-  "Researcher",
-  "Lecturer",
-  "Student",
-  "Viewer",
-];
+const adminRoleOptions = ["Researcher", "Lecturer", "Student"];
 const adminStatusOptions = ["Active", "Inactive"];
 
 const getAdminUserInitials = (name = "") => {
@@ -18022,15 +19670,32 @@ const formatAdminDateTime = (value, fallback = "N/A") => {
   });
 };
 
-const normalizeAdminManagedUser = (user) => ({
-  id: user.id || `admin-user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+const normalizeAdminManagedUser = (user) => {
+  const normalizedRole = normalizeRoleForUi(user.role || "Student");
+  const isSystemAdministrator = normalizedRole === "Administrator";
+  const managedRole = isSystemAdministrator
+    ? "Administrator"
+    : adminRoleOptions.includes(normalizedRole)
+      ? normalizedRole
+      : "Student";
+
+  return {
+  id:
+    user.id ||
+    `admin-user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  backendId: user.backendId || "",
+  provider: user.provider || "",
   name: user.name || user.fullName || "Unnamed User",
   email: user.email || "",
-  role: normalizeRoleForUi(user.role || "Viewer"),
+  role: managedRole,
+  isSystemAdministrator,
   status: user.status || (user.isActive === false ? "Inactive" : "Active"),
   createdAt: user.createdAt || user.createdOn || "",
   lastLoginAt: user.lastLoginAt || user.lastLogin || "",
-  lastLogin: formatAdminDateTime(user.lastLoginAt || user.lastLogin, "Never signed in"),
+  lastLogin: formatAdminDateTime(
+    user.lastLoginAt || user.lastLogin,
+    "Never signed in",
+  ),
   createdLabel: formatAdminDateTime(
     user.createdAt || user.createdOn,
     "Created date unavailable",
@@ -18040,37 +19705,51 @@ const normalizeAdminManagedUser = (user) => ({
   subscriptionStatus:
     user.subscriptionStatus ||
     (user.isPro || user.plan === "Pro" ? "active" : "free"),
-  searchAccuracy:
-    user.searchAccuracy ||
-    getSearchAccuracyForAccount(
-      normalizeRoleForUi(user.role || "Viewer"),
-      Boolean(user.isPro || user.plan === "Pro"),
-    ),
+  subscriptionBillingCycle: user.subscriptionBillingCycle || "",
+  subscriptionStartedAt: user.subscriptionStartedAt || "",
+  subscriptionExpiresAt: user.subscriptionExpiresAt || "",
+  subscriptionExpiredAt: user.subscriptionExpiredAt || "",
+  subscriptionUpdatedAt: user.subscriptionUpdatedAt || "",
+  searchAccuracy: getSearchAccuracyForAccount(
+    managedRole,
+    Boolean(user.isPro || user.plan === "Pro"),
+  ),
   avatar: user.avatar || getAdminUserInitials(user.name || user.fullName),
   avatarTone:
     user.avatarTone ||
-    (normalizeRoleForUi(user.role) === "Administrator"
-      ? "blue"
-      : normalizeRoleForUi(user.role) === "Lecturer"
+    (managedRole === "Lecturer"
         ? "green"
-        : normalizeRoleForUi(user.role) === "Student"
+        : managedRole === "Student"
           ? "muted"
           : "photo"),
-});
-
-const getAdminManagedUsers = () => {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(ADMIN_USERS_KEY) || "null");
-    return Array.isArray(saved) && saved.length
-      ? saved.map(normalizeAdminManagedUser)
-      : adminManagedUsers.map(normalizeAdminManagedUser);
-  } catch {
-    return adminManagedUsers.map(normalizeAdminManagedUser);
-  }
+  // Track when this user record was last updated (for merge logic)
+  updatedAt:
+    user.updatedAt ||
+    user.lastLoginAt ||
+    user.createdAt ||
+    new Date().toISOString(),
+  };
 };
 
-const setAdminManagedUsers = (users) => {
-  window.localStorage.setItem(ADMIN_USERS_KEY, JSON.stringify(users));
+const getAdminManagedUsers = () => [];
+const setAdminManagedUsers = () => {};
+
+const fetchAdminUsersFromAuthHelper = async () => {
+  if (!GOOGLE_AUTH_BASE_URL) return [];
+  const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/users`, {
+    credentials: "include",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not load users from the auth/payment helper.",
+    );
+  }
+  return Array.isArray(payload.items)
+    ? payload.items.map(normalizeAdminManagedUser)
+    : [];
 };
 
 const upsertAdminManagedUserFromAccount = (account) => {
@@ -18092,7 +19771,8 @@ const upsertAdminManagedUserFromAccount = (account) => {
     subscriptionStatus: account.subscriptionStatus,
     searchAccuracy: account.searchAccuracy,
     lastLogin: account.lastLoginAt || account.signedInAt || "Just now",
-    lastLoginAt: account.lastLoginAt || account.signedInAt || new Date().toISOString(),
+    lastLoginAt:
+      account.lastLoginAt || account.signedInAt || new Date().toISOString(),
     createdAt: account.createdAt,
   });
   const nextUsers =
@@ -18102,13 +19782,17 @@ const upsertAdminManagedUserFromAccount = (account) => {
   setAdminManagedUsers(nextUsers);
 };
 
-function AdminSimilarityReviewPanel() {
-  const [submissions, setSubmissions] = React.useState(getPublicationSubmissions);
+function AdminSimilarityReviewPanel({
+  canUseAdminApi = hasAdminBackendAccess(),
+}) {
+  const [submissions, setSubmissions] = React.useState([]);
   const [selectedSubmission, setSelectedSubmission] = React.useState(null);
   const [rejectDialog, setRejectDialog] = React.useState(null);
   const [deleteDialog, setDeleteDialog] = React.useState(null);
   const [queueMessage, setQueueMessage] = React.useState("");
   const [queueStatus, setQueueStatus] = React.useState("idle");
+  const [versionHistory, setVersionHistory] = React.useState([]);
+  const [versionMessage, setVersionMessage] = React.useState("");
   const overLimit = submissions.filter(
     (item) => item.similarityPercent > SIMILARITY_LIMIT_PERCENT,
   );
@@ -18116,47 +19800,81 @@ function AdminSimilarityReviewPanel() {
   const approved = submissions.filter((item) => item.status === "approved");
 
   React.useEffect(() => {
+    const publicationId = selectedSubmission?.publishedPublicationId;
+    if (!publicationId || !canUseAdminApi) {
+      setVersionHistory([]);
+      return;
+    }
     let cancelled = false;
+    apiFetch(`/api/publications/${publicationId}/versions`, { auth: true })
+      .then((payload) => {
+        if (!cancelled) setVersionHistory(Array.isArray(payload.items) ? payload.items : []);
+      })
+      .catch((error) => {
+        if (!cancelled) setVersionMessage(`Could not load version history: ${error.message}`);
+      });
+    return () => { cancelled = true; };
+  }, [selectedSubmission?.publishedPublicationId, canUseAdminApi]);
+
+  const restorePublicationVersion = async (versionNumber) => {
+    const publicationId = selectedSubmission?.publishedPublicationId;
+    if (!publicationId) return;
+    try {
+      const payload = await apiFetch(`/api/publications/${publicationId}/versions/${versionNumber}/restore`, {
+        method: "POST", auth: true,
+      });
+      const refreshed = await apiFetch(`/api/publications/${publicationId}/versions`, { auth: true });
+      setVersionHistory(Array.isArray(refreshed.items) ? refreshed.items : []);
+      setVersionMessage(payload.message || `Version ${versionNumber} restored.`);
+    } catch (error) {
+      setVersionMessage(`Restore failed: ${error.message}`);
+    }
+  };
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!canUseAdminApi) {
+      setSubmissions([]);
+      setQueueStatus("error");
+      setQueueMessage("Administrator backend access is required to load the publication queue.");
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setQueueStatus("loading");
     fetchPublicationSubmissionsFromBackend()
       .then((items) => {
         if (cancelled) return;
-        if (items.length) {
-          setSubmissions(items);
-          setPublicationSubmissions(items);
-          setQueueMessage("");
-        } else {
-          setSubmissions((current) =>
-            current.length ? current : getPublicationSubmissions(),
-          );
-          setQueueMessage(
-            "Backend queue is empty. Showing the local publication review queue.",
-          );
-        }
+        // Trust backend data — filter out any IsDeleted items
+        const activeItems = items.filter((item) => !item.isDeleted);
+        setSubmissions(activeItems);
         setQueueStatus("success");
+        if (!activeItems.length) {
+          setQueueMessage(
+            "Backend publication queue is empty. No pending submissions.",
+          );
+        } else {
+          setQueueMessage("");
+        }
       })
       .catch((error) => {
         if (cancelled) return;
         setQueueStatus("error");
-        setSubmissions((current) =>
-          current.length ? current : getPublicationSubmissions(),
-        );
-        setQueueMessage(
-          `Backend queue unavailable, showing local queue: ${error.message}`,
-        );
+        setSubmissions([]);
+        setQueueMessage(`Backend publication queue unavailable: ${error.message}`);
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canUseAdminApi]);
 
   const replaceSubmission = (nextSubmission) => {
     setSubmissions((current) => {
       const next = current.map((item) =>
         String(item.id) === String(nextSubmission.id) ? nextSubmission : item,
       );
-      setPublicationSubmissions(next);
       setSelectedSubmission((currentSelection) =>
         String(currentSelection?.id) === String(nextSubmission.id)
           ? nextSubmission
@@ -18176,9 +19894,17 @@ function AdminSimilarityReviewPanel() {
     }
 
     if (status === "approved" && isBackendSubmissionId(id)) {
+      if (!canUseAdminApi) {
+        setQueueMessage(
+          "Approving backend submissions requires an Administrator session.",
+        );
+        return;
+      }
+
       try {
         setQueueMessage("Approving submission...");
-        const approvedSubmission = await approvePublicationSubmissionOnBackend(id);
+        const approvedSubmission =
+          await approvePublicationSubmissionOnBackend(id);
         replaceSubmission(approvedSubmission);
         publishApprovedSubmission(approvedSubmission);
         sendPublicationApprovedNotification(approvedSubmission);
@@ -18225,10 +19951,17 @@ function AdminSimilarityReviewPanel() {
       publishApprovedSubmission(reviewedSubmission);
       sendPublicationApprovedNotification(reviewedSubmission);
       uploadApprovedSubmissionToBackend(reviewedSubmission).catch(() => {});
+      mirrorPublicationSubmissionToAuthHelper(reviewedSubmission).catch(
+        () => {},
+      );
       sendAdminAuditLog(
         `Approved publication "${reviewedSubmission.title}" from ${reviewedSubmission.submitter}.`,
         "Publication Management",
         "ADMIN-PUBLICATION-APPROVE",
+      );
+    } else if (reviewedSubmission) {
+      mirrorPublicationSubmissionToAuthHelper(reviewedSubmission).catch(
+        () => {},
       );
     }
   };
@@ -18266,6 +19999,13 @@ function AdminSimilarityReviewPanel() {
 
     const { submission } = rejectDialog;
     if (isBackendSubmissionId(submission.id)) {
+      if (!canUseAdminApi) {
+        setQueueMessage(
+          "Rejecting backend submissions requires an Administrator session.",
+        );
+        return;
+      }
+
       try {
         const rejectedSubmission = await rejectPublicationSubmissionOnBackend(
           submission.id,
@@ -18279,18 +20019,17 @@ function AdminSimilarityReviewPanel() {
         return;
       }
     } else {
+      const rejectedSubmission = {
+        ...submission,
+        status: "rejected",
+        reviewedAt: new Date().toISOString(),
+        rejectedReason: reason,
+        rejectedEvidence: evidence,
+        decision: `Admin rejected: ${reason}`,
+      };
       setSubmissions((current) => {
         const next = current.map((item) =>
-          item.id === submission.id
-            ? {
-                ...item,
-                status: "rejected",
-                reviewedAt: new Date().toISOString(),
-                rejectedReason: reason,
-                rejectedEvidence: evidence,
-                decision: `Admin rejected: ${reason}`,
-              }
-            : item,
+          item.id === submission.id ? rejectedSubmission : item,
         );
         setPublicationSubmissions(next);
         setSelectedSubmission((currentSelection) =>
@@ -18300,6 +20039,9 @@ function AdminSimilarityReviewPanel() {
         );
         return next;
       });
+      mirrorPublicationSubmissionToAuthHelper(rejectedSubmission).catch(
+        () => {},
+      );
     }
     await sendPublicationReviewNotification(submission, reason, evidence);
     sendAdminAuditLog(
@@ -18320,8 +20062,19 @@ function AdminSimilarityReviewPanel() {
 
     const { submission } = deleteDialog;
     if (isBackendSubmissionId(submission.id)) {
+      if (!canUseAdminApi) {
+        setQueueMessage(
+          "Deleting backend submissions requires an Administrator session.",
+        );
+        return;
+      }
+
       try {
-        await deletePublicationSubmissionOnBackend(submission.id, reason, evidence);
+        await deletePublicationSubmissionOnBackend(
+          submission.id,
+          reason,
+          evidence,
+        );
         setQueueMessage("Submission deleted in backend.");
       } catch (error) {
         setQueueMessage(error.message);
@@ -18334,6 +20087,7 @@ function AdminSimilarityReviewPanel() {
       setPublicationSubmissions(next);
       return next;
     });
+    deletePublicationSubmissionFromAuthHelper(submission).catch(() => {});
     await sendPublicationDeleteNotification(submission, reason, evidence);
     sendAdminAuditLog(
       `Deleted publication "${submission.title}" from ${submission.submitter}. Reason: ${reason}.`,
@@ -18359,7 +20113,9 @@ function AdminSimilarityReviewPanel() {
       </div>
 
       {queueMessage ? (
-        <p className={`admin-panel-note ${queueStatus === "error" ? "error" : ""}`}>
+        <p
+          className={`admin-panel-note ${queueStatus === "error" ? "error" : ""}`}
+        >
           {queueMessage}
         </p>
       ) : null}
@@ -18535,7 +20291,8 @@ function AdminSimilarityReviewPanel() {
               </div>
               <strong
                 className={
-                  selectedSubmission.similarityPercent > SIMILARITY_LIMIT_PERCENT
+                  selectedSubmission.similarityPercent >
+                  SIMILARITY_LIMIT_PERCENT
                     ? "danger"
                     : "safe"
                 }
@@ -18586,22 +20343,51 @@ function AdminSimilarityReviewPanel() {
             {Array.isArray(selectedSubmission.candidates) &&
             selectedSubmission.candidates.length ? (
               <section className="admin-submission-candidates">
-                <h3>Google Scholar Candidates</h3>
+                <h3>Matched-source analysis</h3>
                 {selectedSubmission.candidates.slice(0, 5).map((candidate) => (
-                  <article key={`${candidate.title}-${candidate.similarityPercent}`}>
+                  <article
+                    key={`${candidate.title}-${candidate.similarityPercent}`}
+                  >
                     <strong>{candidate.similarityPercent}%</strong>
                     <div>
                       <p>{candidate.title}</p>
-                      <small>{candidate.source}</small>
+                      <small>{candidate.source} · {candidate.similarityPercent >= 50 ? "high-risk match" : candidate.similarityPercent >= 25 ? "review recommended" : "low-risk match"}</small>
+                      {candidate.snippet || candidate.abstract ? (
+                        <p className="admin-candidate-snippet">{candidate.snippet || candidate.abstract}</p>
+                      ) : null}
+                      {candidate.segmentMatches?.length ? (
+                        <details className="admin-segment-matches">
+                          <summary>{candidate.segmentMatches.length} matching passages</summary>
+                          {candidate.segmentMatches.map((match, matchIndex) => (
+                            <div key={`${candidate.title}-segment-${matchIndex}`}>
+                              <p><mark>{match.submittedText}</mark></p>
+                              <p>{match.sourceText}</p>
+                              <strong>{match.similarityPercent}% passage similarity</strong>
+                            </div>
+                          ))}
+                        </details>
+                      ) : null}
+                      {candidate.link ? <a href={candidate.link} target="_blank" rel="noreferrer">Inspect source</a> : null}
                     </div>
                   </article>
                 ))}
               </section>
             ) : null}
 
+            {selectedSubmission.publishedPublicationId ? (
+              <React.Suspense fallback={<p>Loading version history…</p>}>
+                <PublicationVersionHistory
+                  versions={versionHistory}
+                  message={versionMessage}
+                  onRestore={restorePublicationVersion}
+                />
+              </React.Suspense>
+            ) : null}
+
             <footer className="admin-submission-modal-actions">
               {selectedSubmission.status === "pending" &&
-              selectedSubmission.similarityPercent <= SIMILARITY_LIMIT_PERCENT ? (
+              selectedSubmission.similarityPercent <=
+                SIMILARITY_LIMIT_PERCENT ? (
                 <>
                   <button
                     type="button"
@@ -18800,8 +20586,13 @@ function AdminSimilarityReviewPanel() {
 }
 
 function AdminPublicationManagementPage() {
+  const canUseAdminApi = hasAdminBackendAccess();
+
   return (
-    <AdminShell activeRoute="/admin-publications" current="Publication Management">
+    <AdminShell
+      activeRoute="/admin-publications"
+      current="Publication Management"
+    >
       <div className="admin-publications-content">
         <header className="admin-users-heading">
           <div>
@@ -18810,18 +20601,25 @@ function AdminPublicationManagementPage() {
             </p>
             <h1>Publication Management</h1>
             <small>
-              Manage submitted papers, AI similarity results, approval decisions,
-              and rejection notices
+              Manage submitted papers, AI similarity results, approval
+              decisions, and rejection notices
             </small>
           </div>
         </header>
-        <AdminSimilarityReviewPanel />
+        {!canUseAdminApi ? (
+          <p className="admin-users-message" role="status">
+            Admin backend access required. Log out, choose Administrator, then
+            sign in with an admin account.
+          </p>
+        ) : null}
+        <AdminSimilarityReviewPanel canUseAdminApi={canUseAdminApi} />
       </div>
     </AdminShell>
   );
 }
 
 function AdminUserManagementPage() {
+  const { t } = useTranslation();
   const [query, setQuery] = React.useState("");
   const [role, setRole] = React.useState("All Roles");
   const [status, setStatus] = React.useState("All Statuses");
@@ -18854,7 +20652,13 @@ function AdminUserManagementPage() {
     (safePage - 1) * pageSize,
     safePage * pageSize,
   );
-  const activeCount = users.filter((user) => user.status === "Active").length;
+  const activeCount = users.filter((user) => {
+    if (user.lastLoginAt) {
+      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      return new Date(user.lastLoginAt).getTime() >= thirtyDaysAgo;
+    }
+    return user.status === "Active";
+  }).length;
   const proCount = users.filter((user) => user.isPro).length;
   const roleCounts = adminRoleOptions.reduce(
     (acc, option) => ({
@@ -18865,7 +20669,7 @@ function AdminUserManagementPage() {
   );
   const summaryCards = [
     {
-      label: "Total Users",
+      label: "admin.totalUsers",
       value: formatCount(users.length),
       note: `${formatCount(activeCount)} active accounts`,
       icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
@@ -18899,13 +20703,21 @@ function AdminUserManagementPage() {
     let backendPage = 1;
     let totalBackendUsers = null;
 
-    while (totalBackendUsers === null || backendUsers.length < totalBackendUsers) {
+    while (
+      totalBackendUsers === null ||
+      backendUsers.length < totalBackendUsers
+    ) {
       const payload = await apiFetch(
         `/api/admin/users?page=${backendPage}&pageSize=${backendPageSize}`,
         { auth: true },
       );
       const pageUsers = Array.isArray(payload?.items)
-        ? payload.items.map(normalizeAdminManagedUser)
+        ? payload.items.map((user) =>
+            normalizeAdminManagedUser({
+              ...user,
+              backendId: String(user.id),
+            }),
+          )
         : [];
 
       backendUsers.push(...pageUsers);
@@ -18917,31 +20729,9 @@ function AdminUserManagementPage() {
       backendPage += 1;
     }
 
-    let googleUsers = [];
-    if (GOOGLE_AUTH_BASE_URL) {
-      try {
-        const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/users`, {
-          credentials: "include",
-        });
-        const googlePayload = await response.json().catch(() => ({}));
-        googleUsers = Array.isArray(googlePayload?.items)
-          ? googlePayload.items.map(normalizeAdminManagedUser)
-          : [];
-      } catch {
-        googleUsers = [];
-      }
-    }
-
-    const usersByEmail = new Map();
-    [...googleUsers, ...backendUsers].forEach((user) => {
-      if (user.email) usersByEmail.set(user.email.toLowerCase(), user);
-    });
-    const mergedUsers = Array.from(usersByEmail.values());
-
-    if (mergedUsers.length) {
-      persistUsers(mergedUsers);
-    }
-    return mergedUsers;
+    persistUsers(backendUsers);
+    setMessage("Users loaded from SQL Server.");
+    return backendUsers;
   }, []);
 
   React.useEffect(() => {
@@ -18949,9 +20739,14 @@ function AdminUserManagementPage() {
     loadBackendUsers()
       .then((backendUsers) => {
         if (cancelled || backendUsers.length) return;
-        persistUsers(getAdminManagedUsers());
+        persistUsers([]);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (!cancelled) {
+          persistUsers([]);
+          setMessage(`Could not load users from SQL Server: ${error.message}`);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -18971,6 +20766,7 @@ function AdminUserManagementPage() {
       lastLoginAt: "",
       isPro: false,
       plan: "Free",
+      password: "",
     });
   };
 
@@ -18979,6 +20775,7 @@ function AdminUserManagementPage() {
     setEditor({
       mode: "edit",
       ...user,
+      password: "",
     });
   };
 
@@ -19000,8 +20797,7 @@ function AdminUserManagementPage() {
 
     const emailExists = users.some(
       (user) =>
-        user.email.toLowerCase() === normalizedEmail &&
-        user.id !== editor.id,
+        user.email.toLowerCase() === normalizedEmail && user.id !== editor.id,
     );
     if (emailExists) {
       setMessage("This email already exists.");
@@ -19009,17 +20805,33 @@ function AdminUserManagementPage() {
     }
 
     if (editor.mode === "edit") {
-      if (!isBackendNumericId(editor.id)) {
-        const nextUser = normalizeAdminManagedUser({
-          ...editor,
-          name: trimmedName,
-          email: normalizedEmail,
-          status: editor.status,
-          isPro: editor.plan === "Pro",
-          plan: editor.plan,
-        });
-        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
-        setMessage("Demo user updated locally.");
+      if (!editor.backendId) {
+        const response = await fetch(
+          `${GOOGLE_AUTH_BASE_URL}/api/admin/users/${encodeURIComponent(editor.email || editor.id)}`,
+          {
+            method: "PUT",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: trimmedName,
+              email: normalizedEmail,
+              role: editor.role,
+              isActive: editor.status === "Active",
+              isPro: editor.plan === "Pro",
+              plan: editor.plan,
+            }),
+          },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setMessage(payload.error || "Could not update this user.");
+          return;
+        }
+        const nextUser = normalizeAdminManagedUser(payload.user);
+        persistUsers(
+          users.map((user) => (user.id === editor.id ? nextUser : user)),
+        );
+        setMessage("User updated successfully.");
         closeEditor();
         return;
       }
@@ -19033,8 +20845,12 @@ function AdminUserManagementPage() {
           isPro: editor.plan === "Pro",
           plan: editor.plan,
         });
-        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
-        setMessage("User updated locally. Sign in as Administrator to sync SQL Server.");
+        persistUsers(
+          users.map((user) => (user.id === editor.id ? nextUser : user)),
+        );
+        setMessage(
+          "User updated locally. Sign in as Administrator to sync SQL Server.",
+        );
         setEditor(null);
         return;
       }
@@ -19054,9 +20870,44 @@ function AdminUserManagementPage() {
             plan: editor.plan,
           },
         });
+        if (editor.password?.trim()) {
+          await apiFetch(`/api/admin/users/${editor.id}/reset-password`, {
+            method: "POST",
+            auth: true,
+            body: { newPassword: editor.password },
+          });
+        }
         const nextUser = normalizeAdminManagedUser(payload.user);
-        persistUsers(users.map((user) => (user.id === editor.id ? nextUser : user)));
-        setMessage("User updated in SQL Server.");
+        persistUsers(
+          users.map((user) => (user.id === editor.id ? nextUser : user)),
+        );
+        setMessage(
+          editor.password?.trim()
+            ? "User updated and password reset in SQL Server. They can now sign in with the new password."
+            : "User updated in SQL Server.",
+        );
+        // Sync pro/plan to Node auth server so reload keeps changes
+        if (
+          GOOGLE_AUTH_BASE_URL &&
+          (editor.plan === "Pro" || payload.user?.isPro)
+        ) {
+          try {
+            await fetch(
+              `${GOOGLE_AUTH_BASE_URL}/api/admin/users/${encodeURIComponent(editor.id)}/pro`,
+              {
+                method: "PUT",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  isPro: editor.plan === "Pro",
+                  plan: editor.plan,
+                }),
+              },
+            );
+          } catch {
+            // best-effort sync
+          }
+        }
         setEditor(null);
         loadBackendUsers().catch(() => {});
       } catch (error) {
@@ -19068,19 +20919,7 @@ function AdminUserManagementPage() {
     }
 
     if (!hasAdminBackendAccess()) {
-      const nextUser = normalizeAdminManagedUser({
-        ...editor,
-        id: `local-${Date.now()}`,
-        name: trimmedName,
-        fullName: trimmedName,
-        email: normalizedEmail,
-        status: editor.status,
-        isPro: editor.plan === "Pro",
-        plan: editor.plan,
-      });
-      persistUsers([nextUser, ...users]);
-      setMessage(`User created locally for ${normalizedEmail}. Sign in as Administrator to sync SQL Server.`);
-      setEditor(null);
+      setMessage("Administrator SQL Server access is required. No local user record was created.");
       return;
     }
 
@@ -19097,11 +20936,19 @@ function AdminUserManagementPage() {
           isActive: editor.status === "Active",
           isPro: editor.plan === "Pro",
           plan: editor.plan,
+          ...(editor.password?.trim()
+            ? { password: editor.password }
+            : {}),
         },
       });
       const nextUser = normalizeAdminManagedUser(payload.user);
       persistUsers([nextUser, ...users]);
-      setMessage(`User created in SQL Server for ${normalizedEmail}.`);
+      const initialPwd = payload.initialPassword;
+      setMessage(
+        initialPwd
+          ? `User created in SQL Server for ${normalizedEmail}. Initial password: ${initialPwd} — share this securely and ask the user to change it on first login.`
+          : `User created in SQL Server for ${normalizedEmail}.`,
+      );
       setEditor(null);
       loadBackendUsers().catch(() => {});
     } catch (error) {
@@ -19112,49 +20959,88 @@ function AdminUserManagementPage() {
   };
 
   const updateUser = async (id, patch) => {
-    const nextUsers = users.map((user) =>
-      user.id === id ? normalizeAdminManagedUser({ ...user, ...patch }) : user,
-    );
-    persistUsers(nextUsers);
+    const prevUsers = [...users];
+    const targetUser = users.find((user) => user.id === id);
 
-    if (!isBackendNumericId(id)) {
-      setMessage("Demo user updated locally.");
+    // Add timestamp to track this update
+    const patchWithTimestamp = {
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (!targetUser?.backendId) {
+      setMessage("This account is not present in SQL Server. Refresh User Management before editing it.");
       return;
     }
 
     if (!hasAdminBackendAccess()) {
-      setMessage("User updated locally. Sign in as Administrator to sync SQL Server.");
+      setMessage("Administrator SQL Server access is required. No local changes were saved.");
       return;
     }
+
+    // Reflect table controls immediately while the database and audit log are
+    // being updated. The previous snapshot is restored if the request fails.
+    const optimisticUser = normalizeAdminManagedUser({
+      ...targetUser,
+      ...patchWithTimestamp,
+    });
+    persistUsers(
+      prevUsers.map((user) => (user.id === id ? optimisticUser : user)),
+    );
 
     try {
       setPendingAction(`update:${id}`);
       let payload = null;
       if (Object.prototype.hasOwnProperty.call(patch, "role")) {
-        payload = await apiFetch(`/api/admin/users/${id}/role`, {
-          method: "PUT",
-          auth: true,
-          body: { role: normalizeRoleForApi(patch.role) },
-        });
+        if (patch.role === "Administrator") {
+          if (!window.confirm("Grant this account full Administrator access? This action is audited.")) return;
+          payload = await apiFetch(`/api/admin/users/${id}/grant-admin`, {
+            method: "POST", auth: true, body: { confirmation: "GRANT ADMIN" },
+          });
+        } else {
+          payload = await apiFetch(`/api/admin/users/${id}/role`, {
+            method: "PUT", auth: true, body: { role: normalizeRoleForApi(patch.role) },
+          });
+        }
       } else if (Object.prototype.hasOwnProperty.call(patch, "status")) {
         payload = await apiFetch(`/api/admin/users/${id}/toggle-active`, {
           method: "PUT",
           auth: true,
         });
-      } else if (Object.prototype.hasOwnProperty.call(patch, "isPro")) {
+      } else if (
+        Object.prototype.hasOwnProperty.call(patch, "isPro") ||
+        Object.prototype.hasOwnProperty.call(patch, "plan")
+      ) {
         payload = await apiFetch(`/api/admin/users/${id}/toggle-pro`, {
           method: "PUT",
           auth: true,
+          body: { isPro: Boolean(patch.isPro) },
         });
       }
       if (payload?.user) {
-        const syncedUser = normalizeAdminManagedUser(payload.user);
-        persistUsers((payload ? users : nextUsers).map((user) =>
-          user.id === id ? syncedUser : user,
-        ));
+        const syncedUser = normalizeAdminManagedUser({
+          ...optimisticUser,
+          ...payload.user,
+          updatedAt: patchWithTimestamp.updatedAt,
+        });
+        persistUsers(
+          prevUsers.map((user) => (user.id === id ? syncedUser : user)),
+        );
+        setMessage("✅ User updated successfully in database!");
+      } else {
+        // Backend confirmed but returned no user — apply patch locally
+        const nextUsers = prevUsers.map((user) =>
+          user.id === id
+            ? normalizeAdminManagedUser({ ...user, ...patchWithTimestamp })
+            : user,
+        );
+        persistUsers(nextUsers);
+        setMessage("✅ User updated successfully!");
       }
     } catch (error) {
-      setMessage(`User updated locally. Backend sync failed: ${error.message}`);
+      // Revert to previous state on error
+      persistUsers(prevUsers);
+      setMessage(`❌ Update failed, changes reverted: ${error.message}`);
     } finally {
       setPendingAction("");
     }
@@ -19170,49 +21056,17 @@ function AdminUserManagementPage() {
     setDeleteCandidate(null);
   };
 
-  const deleteAuthServerUser = async (user) => {
-    if (!GOOGLE_AUTH_BASE_URL || !user?.email) return false;
-
-    const response = await fetch(
-      `${GOOGLE_AUTH_BASE_URL}/api/admin/users/${encodeURIComponent(
-        user.id || user.email,
-      )}?email=${encodeURIComponent(user.email)}`,
-      {
-        method: "DELETE",
-        credentials: "include",
-      },
-    );
-
-    if (response.status === 404) return false;
-
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(
-        payload?.message ||
-          payload?.error ||
-          "Could not delete this account from the auth user list.",
-      );
-    }
-    return true;
-  };
-
   const confirmDeleteUser = async () => {
     const user = deleteCandidate;
     if (!user) return;
 
-    const isSqlUser = isBackendNumericId(user.id);
+    const isSqlUser = Boolean(user.backendId);
 
     try {
       setPendingAction(`delete:${user.id}`);
-      const deletedFromAuthServer = await deleteAuthServerUser(user);
-      let deletedFromSqlServer = deletedFromAuthServer && isSqlUser;
-      if (isSqlUser && !deletedFromSqlServer && hasAdminBackendAccess()) {
-        await apiFetch(`/api/admin/users/${user.id}`, {
-          method: "DELETE",
-          auth: true,
-        });
-        deletedFromSqlServer = true;
-      }
+      if (!isSqlUser || !hasAdminBackendAccess())
+        throw new Error("Administrator SQL Server access is required to delete this account.");
+      await apiFetch(`/api/admin/users/${user.backendId}`, { method: "DELETE", auth: true });
 
       const nextUsers = users.filter(
         (item) =>
@@ -19220,13 +21074,7 @@ function AdminUserManagementPage() {
           item.email.toLowerCase() !== user.email.toLowerCase(),
       );
       persistUsers(nextUsers);
-      if (isSqlUser && !deletedFromSqlServer && !deletedFromAuthServer) {
-        setMessage(
-          `${user.name} deleted locally. Sign in as Administrator to delete from SQL Server.`,
-        );
-      } else {
-        setMessage(`${user.name} deleted from admin user lists.`);
-      }
+      setMessage(`${user.name} deleted from SQL Server.`);
       setDeleteCandidate(null);
       if (hasAdminBackendAccess()) {
         loadBackendUsers().catch(() => {});
@@ -19238,36 +21086,37 @@ function AdminUserManagementPage() {
     }
   };
 
-  const resetUsers = () => {
-    const defaults = adminManagedUsers.map(normalizeAdminManagedUser);
-    persistUsers(defaults);
-    setMessage("User list reset to default demo accounts.");
-  };
-
   const refreshUsers = () => {
     loadBackendUsers()
-      .then(() => setMessage("User list refreshed from SQL Server."))
+      .then(() =>
+        setMessage(
+          hasAdminBackendAccess()
+            ? "User list refreshed from SQL Server."
+            : "Administrator SQL Server access is required.",
+        ),
+      )
       .catch((error) => setMessage(error.message));
   };
 
   const downloadUsers = () => {
-    const header = "Name,Email,Role,Status,Plan,Search Accuracy,Created At,Last Login";
-    const csvEscape = (value) => `"${String(value || "").replaceAll('"', '""')}"`;
+    const header =
+      "Name,Email,Role,Status,Plan,Search Accuracy,Created At,Last Login";
+    const csvEscape = (value) =>
+      `"${String(value || "").replaceAll('"', '""')}"`;
     const body = visibleUsers
-      .map(
-        (user) =>
-          [
-            user.name,
-            user.email,
-            user.role,
-            user.status,
-            user.plan,
-            `${user.searchAccuracy}%`,
-            user.createdLabel,
-            user.lastLogin,
-          ]
-            .map(csvEscape)
-            .join(","),
+      .map((user) =>
+        [
+          user.name,
+          user.email,
+          user.role,
+          user.status,
+          user.plan,
+          `${user.searchAccuracy}%`,
+          user.createdLabel,
+          user.lastLogin,
+        ]
+          .map(csvEscape)
+          .join(","),
       )
       .join("\n");
     const url = URL.createObjectURL(
@@ -19297,7 +21146,7 @@ function AdminUserManagementPage() {
             onClick={openInviteUser}
           >
             <MiniIcon path="M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M18.5 7v6M15.5 10h6" />
-            Invite User
+            Create User
           </button>
         </header>
 
@@ -19314,7 +21163,7 @@ function AdminUserManagementPage() {
           {summaryCards.map((item) => (
             <article className="admin-user-summary-card" key={item.label}>
               <div>
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
                 <MiniIcon path={item.icon} />
               </div>
               <strong>{item.value}</strong>
@@ -19326,7 +21175,7 @@ function AdminUserManagementPage() {
               <span>Key Roles</span>
               <MiniIcon path="M5.5 5h13M7.5 9h9M6.5 13.2h11M8.5 17.5h7M4.5 5v13.5h15V5M9.5 13.2l1.8 1.8 3.4-4.1" />
             </div>
-            {["Administrator", "Researcher", "Lecturer", "Student"].map(
+            {adminRoleOptions.map(
               (roleName) => (
                 <React.Fragment key={roleName}>
                   <p>
@@ -19363,11 +21212,9 @@ function AdminUserManagementPage() {
               aria-label="Filter users by role"
             >
               <option>All Roles</option>
-              <option>Administrator</option>
               <option>Researcher</option>
               <option>Lecturer</option>
               <option>Student</option>
-              <option>Viewer</option>
             </select>
             <select
               value={status}
@@ -19394,14 +21241,6 @@ function AdminUserManagementPage() {
                 title="Refresh"
               >
                 <MiniIcon path="M19 8v5h-5M5 16v-5h5M17.2 10A5.8 5.8 0 0 0 7.1 6.7L5 9M6.8 14a5.8 5.8 0 0 0 10.1 3.3L19 15" />
-              </button>
-              <button
-                type="button"
-                aria-label="Reset demo users"
-                onClick={resetUsers}
-                title="Reset demo users"
-              >
-                <MiniIcon path="M6 7.5h8.8a4.8 4.8 0 1 1-4.1 7.3M6 7.5 9.2 4.3M6 7.5l3.2 3.2M12 11.5v4M12 8.5h.01" />
               </button>
             </div>
           </div>
@@ -19432,25 +21271,32 @@ function AdminUserManagementPage() {
                       </span>
                     </td>
                     <td>
-                      <select
-                        className="admin-user-role-select"
-                        value={user.role}
-                        disabled={Boolean(pendingAction)}
-                        onChange={(event) =>
-                          updateUser(user.id, {
-                            role: event.target.value,
-                            searchAccuracy: getSearchAccuracyForAccount(
-                              event.target.value,
-                              user.isPro,
-                            ),
-                          })
-                        }
-                        aria-label={`Change role for ${user.name}`}
-                      >
-                        {adminRoleOptions.map((option) => (
-                          <option key={option}>{option}</option>
-                        ))}
-                      </select>
+                      {user.isSystemAdministrator ? (
+                        <span className="admin-user-role-select">
+                          System Administrator
+                        </span>
+                      ) : (
+                        <select
+                          className="admin-user-role-select"
+                          value={user.role}
+                          disabled={pendingAction === `update:${user.id}`}
+                          onChange={(event) =>
+                            updateUser(user.id, {
+                              role: event.target.value,
+                              searchAccuracy: getSearchAccuracyForAccount(
+                                event.target.value,
+                                user.isPro,
+                              ),
+                              updatedAt: new Date().toISOString(),
+                            })
+                          }
+                          aria-label={`Change role for ${user.name}`}
+                        >
+                          {adminRoleOptions.map((option) => (
+                            <option key={option}>{option}</option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td>
                       <label
@@ -19459,10 +21305,12 @@ function AdminUserManagementPage() {
                         <input
                           type="checkbox"
                           checked={user.status === "Active"}
-                          disabled={Boolean(pendingAction)}
+                          disabled={pendingAction === `update:${user.id}`}
                           onChange={(event) =>
                             updateUser(user.id, {
-                              status: event.target.checked ? "Active" : "Inactive",
+                              status: event.target.checked
+                                ? "Active"
+                                : "Inactive",
                             })
                           }
                           aria-label={`Toggle status for ${user.name}`}
@@ -19478,7 +21326,7 @@ function AdminUserManagementPage() {
                         <input
                           type="checkbox"
                           checked={user.isPro}
-                          disabled={Boolean(pendingAction)}
+                          disabled={pendingAction === `update:${user.id}`}
                           onChange={(event) =>
                             updateUser(user.id, {
                               isPro: event.target.checked,
@@ -19495,7 +21343,11 @@ function AdminUserManagementPage() {
                         <strong>{user.plan}</strong>
                       </label>
                     </td>
-                    <td>{user.searchAccuracy}%</td>
+                    <td>
+                      {user.isSystemAdministrator
+                        ? "N/A"
+                        : `${user.searchAccuracy}%`}
+                    </td>
                     <td>
                       <span className="admin-user-timeline">
                         <strong>{user.lastLogin}</strong>
@@ -19508,8 +21360,8 @@ function AdminUserManagementPage() {
                         className="admin-user-action edit"
                         aria-label={`Edit ${user.name}`}
                         onClick={() => openEditUser(user)}
-                        disabled={Boolean(pendingAction)}
-                        title="Edit account"
+                        disabled={Boolean(pendingAction) || user.isSystemAdministrator}
+                        title={user.isSystemAdministrator ? "System administrator accounts are managed outside User Management" : "Edit account"}
                       >
                         <MiniIcon path="M4.5 19.5h4L18.2 9.8a2 2 0 0 0-2.8-2.8L5.7 16.7l-1.2 2.8ZM14.4 8l2.6 2.6M12 19.5h7.5" />
                       </button>
@@ -19518,8 +21370,8 @@ function AdminUserManagementPage() {
                         className="admin-user-action delete"
                         aria-label={`Delete ${user.name}`}
                         onClick={() => requestDeleteUser(user)}
-                        disabled={Boolean(pendingAction)}
-                        title="Delete account"
+                        disabled={Boolean(pendingAction) || user.isSystemAdministrator}
+                        title={user.isSystemAdministrator ? "System administrator accounts cannot be deleted here" : "Delete account"}
                       >
                         <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
                       </button>
@@ -19539,24 +21391,31 @@ function AdminUserManagementPage() {
 
           <footer className="admin-users-pagination">
             <span>
-              Showing {pagedUsers.length ? (safePage - 1) * pageSize + 1 : 0}
-              {" "}to {pagedUsers.length ? (safePage - 1) * pageSize + pagedUsers.length : 0} of{" "}
-              {visibleUsers.length} entries
+              Showing {pagedUsers.length ? (safePage - 1) * pageSize + 1 : 0} to{" "}
+              {pagedUsers.length
+                ? (safePage - 1) * pageSize + pagedUsers.length
+                : 0}{" "}
+              of {visibleUsers.length} entries
             </span>
             <div>
               <button
                 type="button"
+                aria-label="Previous user page"
                 disabled={safePage === 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
               >
                 <MiniIcon path="M15 18l-6-6 6-6" />
               </button>
               <span className="admin-pagination-current">
-                Page {safePage}
+                Page {safePage} of {totalPages}
               </span>
               <button
                 type="button"
-                onClick={() => setPage((value) => value + 1)}
+                aria-label="Next user page"
+                disabled={safePage === totalPages}
+                onClick={() =>
+                  setPage((value) => Math.min(totalPages, value + 1))
+                }
               >
                 <MiniIcon path="M9 18l6-6-6-6" />
               </button>
@@ -19581,14 +21440,17 @@ function AdminUserManagementPage() {
                 <MiniIcon path="M6 6l12 12M18 6 6 18" />
               </button>
               <header>
-                <span>{editor.mode === "edit" ? "Edit Account" : "Invite User"}</span>
+                <span>
+                  {editor.mode === "edit" ? "Edit Account" : "Create User"}
+                </span>
                 <h2>
                   {editor.mode === "edit"
                     ? `Manage ${editor.name}`
                     : "Create a new account"}
                 </h2>
                 <p>
-                  Admin can set role, access status, and account identity here.
+                  Admin can set role, access status, account identity, and reset
+                  the password for an existing account here.
                 </p>
               </header>
               <label>
@@ -19620,22 +21482,47 @@ function AdminUserManagementPage() {
                   placeholder="name@university.edu"
                 />
               </label>
+              <label>
+                <span>
+                  {editor.mode === "edit" ? "Set new password" : "Password"}
+                </span>
+                <input
+                  type="password"
+                  value={editor.password || ""}
+                  onChange={(event) =>
+                    setEditor((current) => ({
+                      ...current,
+                      password: event.target.value,
+                    }))
+                  }
+                  minLength={8}
+                  placeholder={
+                    editor.mode === "edit"
+                      ? "Leave blank to keep current password"
+                      : "Optional; otherwise generated automatically"
+                  }
+                />
+              </label>
               <div className="admin-user-modal-grid">
                 <label>
                   <span>Role</span>
-                  <select
-                    value={editor.role}
-                    onChange={(event) =>
-                      setEditor((current) => ({
-                        ...current,
-                        role: event.target.value,
-                      }))
-                    }
-                  >
-                    {adminRoleOptions.map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
+                  {editor.isSystemAdministrator ? (
+                    <input value="System Administrator" readOnly />
+                  ) : (
+                    <select
+                      value={editor.role}
+                      onChange={(event) =>
+                        setEditor((current) => ({
+                          ...current,
+                          role: event.target.value,
+                        }))
+                      }
+                    >
+                      {adminRoleOptions.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  )}
                 </label>
                 <label>
                   <span>Status</span>
@@ -19675,13 +21562,18 @@ function AdminUserManagementPage() {
                     readOnly
                     value={`${getSearchAccuracyForAccount(
                       editor.role,
-                      (editor.plan || (editor.isPro ? "Pro" : "Free")) === "Pro",
+                      (editor.plan || (editor.isPro ? "Pro" : "Free")) ===
+                        "Pro",
                     )}%`}
                   />
                 </label>
               </div>
               <footer>
-                <button type="button" onClick={closeEditor} disabled={Boolean(pendingAction)}>
+                <button
+                  type="button"
+                  onClick={closeEditor}
+                  disabled={Boolean(pendingAction)}
+                >
                   Cancel
                 </button>
                 <button type="submit" disabled={Boolean(pendingAction)}>
@@ -19689,7 +21581,7 @@ function AdminUserManagementPage() {
                     ? "Saving..."
                     : editor.mode === "edit"
                       ? "Save Changes"
-                      : "Invite User"}
+                      : "Create User"}
                 </button>
               </footer>
             </form>
@@ -19703,7 +21595,11 @@ function AdminUserManagementPage() {
               if (event.target === event.currentTarget) closeDeleteDialog();
             }}
           >
-            <section className="admin-user-modal admin-delete-modal" role="dialog" aria-modal="true">
+            <section
+              className="admin-user-modal admin-delete-modal"
+              role="dialog"
+              aria-modal="true"
+            >
               <button
                 type="button"
                 className="admin-user-modal-close"
@@ -19717,15 +21613,22 @@ function AdminUserManagementPage() {
                 <span>Delete Account</span>
                 <h2>Delete {deleteCandidate.name}?</h2>
                 <p>
-                  This removes the account from the SQL Server user list. The action is applied immediately.
+                  This removes the account from the SQL Server user list. The
+                  action is applied immediately.
                 </p>
               </header>
               <div className="admin-delete-summary">
                 <strong>{deleteCandidate.email}</strong>
-                <span>{deleteCandidate.role} / {deleteCandidate.status}</span>
+                <span>
+                  {deleteCandidate.role} / {deleteCandidate.status}
+                </span>
               </div>
               <footer>
-                <button type="button" onClick={closeDeleteDialog} disabled={Boolean(pendingAction)}>
+                <button
+                  type="button"
+                  onClick={closeDeleteDialog}
+                  disabled={Boolean(pendingAction)}
+                >
                   Cancel
                 </button>
                 <button
@@ -19745,58 +21648,120 @@ function AdminUserManagementPage() {
   );
 }
 
-const normalizeAdminPayment = (payment) => ({
-  orderCode: payment.orderCode,
-  paymentLinkId: payment.paymentLinkId || "",
-  checkoutUrl: payment.checkoutUrl || "",
-  billingCycle: payment.billingCycle || "yearly",
-  plan: payment.plan || "Pro",
-  priceLabel:
-    payment.priceLabel ||
-    (payment.billingCycle === "monthly"
-      ? "$5 / month"
-      : "$49 / year"),
-  status: payment.status || "PENDING",
-  email: payment.email || "",
-  userName: payment.userName || payment.name || payment.email || "Unknown user",
-  role: normalizeRoleForUi(payment.role || "Researcher"),
-  createdAt: payment.createdAt || "",
-  expiresAt: payment.expiresAt || "",
-  expiresInSeconds: Number(payment.expiresInSeconds || 0),
-  updatedAt: payment.updatedAt || "",
-});
+const formatPaymentAmount = (amount, currency = "VND") => {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) return "";
+  return `${numericAmount.toLocaleString("vi-VN")} ${currency || "VND"}`;
+};
+
+const normalizeAdminPayment = (payment) => {
+  const billingCycle = payment.billingCycle || "yearly";
+  const currency = payment.currency || "VND";
+  const amount = Number(payment.amount || 0);
+
+  return {
+    orderCode: payment.orderCode,
+    paymentLinkId: payment.paymentLinkId || "",
+    checkoutUrl: payment.checkoutUrl || "",
+    billingCycle,
+    plan: payment.plan || "Pro",
+    amount,
+    currency,
+    priceLabel:
+      payment.priceLabel ||
+      formatPaymentAmount(amount, currency) ||
+      (billingCycle === "monthly" ? "$5 / month" : "$49 / year"),
+    status: payment.status || "PENDING",
+    email: payment.email || "",
+    userName:
+      payment.userName || payment.name || payment.email || "Unknown user",
+    role: normalizeRoleForUi(payment.role || "Researcher"),
+    createdAt: payment.createdAt || "",
+    expiresAt: payment.expiresAt || "",
+    expiresInSeconds: Number(payment.expiresInSeconds || 0),
+    paidAt: payment.paidAt || "",
+    updatedAt: payment.updatedAt || "",
+    payosReference: payment.payosReference || "",
+  };
+};
+
+const getAdminPayments = () => [];
+const setAdminPayments = () => {};
+
+const fetchAdminPaymentsFromAuthHelper = async () => {
+  if (!GOOGLE_AUTH_BASE_URL) return [];
+  const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/payments`, {
+    credentials: "include",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        payload?.error ||
+        "Could not load PayOS payments from the auth helper.",
+    );
+  }
+  return Array.isArray(payload.items)
+    ? payload.items.map(normalizeAdminPayment)
+    : [];
+};
 
 function AdminPaymentManagementPage() {
-  const [payments, setPayments] = React.useState([]);
+  const canUseAdminApi = hasAdminBackendAccess();
+  const [payments, setPayments] = React.useState(getAdminPayments);
   const [statusFilter, setStatusFilter] = React.useState("All Statuses");
   const [query, setQuery] = React.useState("");
   const [message, setMessage] = React.useState("");
+  const [isLoadingPayments, setIsLoadingPayments] = React.useState(false);
+  const [isReconciling, setIsReconciling] = React.useState(false);
+  const [lastPaymentSyncAt, setLastPaymentSyncAt] = React.useState(null);
   const [loadingOrderCode, setLoadingOrderCode] = React.useState(null);
   const [paymentActionNotes, setPaymentActionNotes] = React.useState({});
 
+  const persistPayments = React.useCallback((nextPayments) => {
+    const normalizedPayments = nextPayments.map(normalizeAdminPayment);
+    setPayments(normalizedPayments);
+    setAdminPayments(normalizedPayments);
+    return normalizedPayments;
+  }, []);
+
   const loadPayments = React.useCallback(() => {
+    if (!canUseAdminApi) {
+      persistPayments([]);
+      setMessage("Administrator backend access is required to load payments.");
+      return Promise.resolve([]);
+    }
+
+    setIsLoadingPayments(true);
+    setMessage("");
     return apiFetch("/api/admin/payments", { auth: true })
       .then((payload) => {
         const nextPayments = Array.isArray(payload.items)
           ? payload.items.map(normalizeAdminPayment)
           : [];
-        setPayments(nextPayments);
+        persistPayments(nextPayments);
+        setLastPaymentSyncAt(new Date());
         return nextPayments;
       })
-      .catch(() => {
-        setMessage("Payment data is unavailable. Check the auth/payment server.");
-        setPayments([]);
+      .catch((error) => {
+        persistPayments([]);
+        setMessage(`SQL Server payment data is unavailable: ${error.message}`);
+        return [];
+      })
+      .finally(() => {
+        setIsLoadingPayments(false);
       });
-  }, []);
+  }, [canUseAdminApi, persistPayments]);
 
   React.useEffect(() => {
     loadPayments();
   }, [loadPayments]);
 
   const visiblePayments = payments.filter((payment) => {
-    const matchesQuery = `${payment.orderCode} ${payment.email} ${payment.userName}`
-      .toLowerCase()
-      .includes(query.toLowerCase());
+    const matchesQuery =
+      `${payment.orderCode} ${payment.email} ${payment.userName}`
+        .toLowerCase()
+        .includes(query.toLowerCase());
     const matchesStatus =
       statusFilter === "All Statuses" || payment.status === statusFilter;
     return matchesQuery && matchesStatus;
@@ -19820,7 +21785,11 @@ function AdminPaymentManagementPage() {
       return;
     }
 
-    const popup = window.open(payment.checkoutUrl, "_blank", "noopener,noreferrer");
+    const popup = window.open(
+      payment.checkoutUrl,
+      "_blank",
+      "noopener,noreferrer",
+    );
     setMessage(
       popup
         ? `Opened PayOS checkout for payment ${payment.orderCode}.`
@@ -19829,8 +21798,15 @@ function AdminPaymentManagementPage() {
   };
 
   const runPaymentAction = async (payment, action) => {
+    if (!canUseAdminApi) {
+      setMessage("Payment actions require an Administrator session.");
+      return;
+    }
+
     if (action === "cancel" && !canCancelPayment(payment)) {
-      setMessage(`Payment ${payment.orderCode} is PAID; it cannot be cancelled.`);
+      setMessage(
+        `Payment ${payment.orderCode} is PAID; it cannot be cancelled.`,
+      );
       setPaymentActionNotes((current) => ({
         ...current,
         [payment.orderCode]: "Paid payments cannot be cancelled.",
@@ -19842,7 +21818,8 @@ function AdminPaymentManagementPage() {
     setMessage("");
     setPaymentActionNotes((current) => ({
       ...current,
-      [payment.orderCode]: action === "verify" ? "Checking PayOS..." : "Cancelling...",
+      [payment.orderCode]:
+        action === "verify" ? "Checking PayOS..." : "Cancelling...",
     }));
     try {
       const payload = await apiFetch(
@@ -19895,6 +21872,36 @@ function AdminPaymentManagementPage() {
     }
   };
 
+  const reconcilePendingPayments = async () => {
+    if (!canUseAdminApi || isReconciling) return;
+    const pendingPayments = payments.filter((payment) =>
+      ["PENDING", "PROCESSING"].includes(payment.status),
+    );
+    if (!pendingPayments.length) {
+      setMessage("There are no pending payments to reconcile.");
+      return;
+    }
+
+    setIsReconciling(true);
+    setMessage(`Reconciling ${pendingPayments.length} payment(s) with PayOS...`);
+    const results = await Promise.allSettled(
+      pendingPayments.map((payment) =>
+        apiFetch(`/api/admin/payments/${payment.orderCode}/verify`, {
+          method: "POST",
+          auth: true,
+        }),
+      ),
+    );
+    const failedCount = results.filter((result) => result.status === "rejected").length;
+    await loadPayments();
+    setMessage(
+      failedCount
+        ? `Reconciliation completed with ${failedCount} failure(s).`
+        : `Successfully reconciled ${pendingPayments.length} payment(s).`,
+    );
+    setIsReconciling(false);
+  };
+
   return (
     <AdminShell activeRoute="/admin-payments" current="Payment Management">
       <div className="admin-users-content admin-payments-content">
@@ -19904,7 +21911,9 @@ function AdminPaymentManagementPage() {
               Dashboard <span>/</span> <strong>Payment Management</strong>
             </p>
             <h1>Payment Management</h1>
-            <small>Manage PayOS Pro upgrades, payment statuses, and plan activation</small>
+            <small>
+              Manage PayOS Pro upgrades, payment statuses, and plan activation
+            </small>
           </div>
         </header>
 
@@ -19913,20 +21922,29 @@ function AdminPaymentManagementPage() {
             {message}
           </p>
         ) : null}
+        <p className="admin-users-message" role="status">
+          Last synchronized: {lastPaymentSyncAt ? lastPaymentSyncAt.toLocaleString() : "Not yet"}
+        </p>
 
         <section className="admin-users-summary-grid admin-payment-summary-grid">
           {[
             ["Total Payments", payments.length, "All PayOS checkout links"],
             ["Paid", paymentCounts.PAID || 0, "Activated Pro accounts"],
             ["Pending", paymentCounts.PENDING || 0, "Waiting for checkout"],
-            ["Expired", paymentCounts.EXPIRED || 0, "15 minute checkout window"],
+            [
+              "Expired",
+              paymentCounts.EXPIRED || 0,
+              "15 minute checkout window",
+            ],
           ].map(([label, value, note]) => (
             <article className="admin-user-summary-card" key={label}>
               <div>
                 <span>{label}</span>
                 <MiniIcon path="M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9" />
               </div>
-              <strong>{formatCount(value)}</strong>
+              <strong>
+                {typeof value === "number" ? formatCount(value) : value}
+              </strong>
               <p>{note}</p>
             </article>
           ))}
@@ -19955,6 +21973,20 @@ function AdminPaymentManagementPage() {
               <option>EXPIRED</option>
               <option>FAILED</option>
             </select>
+            <button
+              type="button"
+              onClick={loadPayments}
+              disabled={isLoadingPayments || isReconciling}
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={reconcilePendingPayments}
+              disabled={isReconciling || isLoadingPayments}
+            >
+              {isReconciling ? "Reconciling..." : "Reconcile Pending"}
+            </button>
           </div>
 
           <div className="admin-users-table-wrap">
@@ -19993,7 +22025,9 @@ function AdminPaymentManagementPage() {
                       </span>
                     </td>
                     <td>
-                      <span className={`admin-payment-status ${payment.status.toLowerCase()}`}>
+                      <span
+                        className={`admin-payment-status ${payment.status.toLowerCase()}`}
+                      >
                         {payment.status}
                       </span>
                     </td>
@@ -20003,7 +22037,8 @@ function AdminPaymentManagementPage() {
                         : "N/A"}
                     </td>
                     <td>
-                      {payment.status === "PENDING" && payment.expiresInSeconds > 0
+                      {payment.status === "PENDING" &&
+                      payment.expiresInSeconds > 0
                         ? `${Math.ceil(payment.expiresInSeconds / 60)} min left`
                         : payment.expiresAt
                           ? new Date(payment.expiresAt).toLocaleString()
@@ -20036,7 +22071,10 @@ function AdminPaymentManagementPage() {
                           aria-label={`Check payment ${payment.orderCode}`}
                         >
                           {loadingOrderCode === payment.orderCode ? (
-                            <span className="admin-payment-action-spinner" aria-hidden="true" />
+                            <span
+                              className="admin-payment-action-spinner"
+                              aria-hidden="true"
+                            />
                           ) : (
                             <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
                           )}
@@ -20066,7 +22104,11 @@ function AdminPaymentManagementPage() {
                 {!visiblePayments.length ? (
                   <tr>
                     <td colSpan="7" className="admin-users-empty">
-                      No PayOS payments match the current filters.
+                      {isLoadingPayments
+                        ? "Loading real PayOS payments..."
+                        : canUseAdminApi
+                          ? "No PayOS payments match the current filters."
+                          : "Sign in as Administrator to view real PayOS payments."}
                     </td>
                   </tr>
                 ) : null}
@@ -20080,10 +22122,30 @@ function AdminPaymentManagementPage() {
 }
 
 function AdminPlanManagementPage() {
+  const canUseAdminApi = hasAdminBackendAccess();
   const [settings, setSettings] = React.useState(getProPlanSettings);
   const [message, setMessage] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
-  const roles = ["Student", "Lecturer", "Researcher"];
+  const accuracyPackages = [
+    {
+      role: "Student",
+      label: "Student package",
+      note: "Applied to Student Free and Student Pro pricing.",
+      inherited: false,
+    },
+    {
+      role: "Lecturer",
+      label: "Lecturer workspace",
+      note: "Inherits the Student package accuracy after upgrade.",
+      inherited: true,
+    },
+    {
+      role: "Researcher",
+      label: "Researcher workspace",
+      note: "Inherits the Student package accuracy after upgrade.",
+      inherited: true,
+    },
+  ];
 
   React.useEffect(() => {
     syncPlanPolicyFromBackend()
@@ -20102,23 +22164,33 @@ function AdminPlanManagementPage() {
   const updateAccuracy = (tier, role, value) => {
     setSettings((current) => ({
       ...current,
-      [tier]: {
-        ...current[tier],
-        [role]: Number(value),
-      },
+      [tier]: mirrorStudentPackageAccuracy(
+        {
+          ...current[tier],
+          [role]: Number(value),
+        },
+        defaultProPlanSettings[tier],
+      ),
     }));
     setMessage("");
   };
 
   const saveSettings = async (event) => {
     event.preventDefault();
+    if (!canUseAdminApi) {
+      setMessage("Administrator backend access is required to save plan policy.");
+      return;
+    }
+
     setIsSaving(true);
     setMessage("");
 
     try {
       const savedSettings = await savePlanPolicyToBackend(settings);
       setSettings(savedSettings);
-      setMessage("Plan policy saved to backend and will be used for pricing, checkout expiry, and enforced accuracy.");
+      setMessage(
+        "Plan policy saved to backend and will be used for pricing, checkout expiry, and enforced accuracy.",
+      );
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -20127,6 +22199,11 @@ function AdminPlanManagementPage() {
   };
 
   const resetSettings = async () => {
+    if (!canUseAdminApi) {
+      setMessage("Administrator backend access is required to reset plan policy.");
+      return;
+    }
+
     setIsSaving(true);
     setMessage("");
 
@@ -20150,13 +22227,22 @@ function AdminPlanManagementPage() {
               Dashboard <span>/</span> <strong>Plan Management</strong>
             </p>
             <h1>Plan Management</h1>
-            <small>Manage Pro pricing display, role accuracy, and checkout expiry policy</small>
+            <small>
+              Manage Pro pricing display, role accuracy, and checkout expiry
+              policy
+            </small>
           </div>
         </header>
 
         {message ? (
           <p className="admin-users-message" role="status">
             {message}
+          </p>
+        ) : null}
+        {!canUseAdminApi ? (
+          <p className="admin-users-message" role="status">
+            Admin backend access required to save plan policy changes to the
+            backend.
           </p>
         ) : null}
 
@@ -20195,7 +22281,9 @@ function AdminPlanManagementPage() {
                   type="number"
                   min="1"
                   value={settings.monthlyPrice}
-                  onChange={(event) => updateField("monthlyPrice", event.target.value)}
+                  onChange={(event) =>
+                    updateField("monthlyPrice", event.target.value)
+                  }
                 />
               </label>
               <label>
@@ -20238,21 +22326,30 @@ function AdminPlanManagementPage() {
 
           <section>
             <h2>Search Accuracy Policy</h2>
+            <p className="admin-plan-note">
+              Accuracy is managed from the Student package. Lecturer and
+              Researcher workspaces inherit these Student package limits after a
+              paid upgrade.
+            </p>
             <div className="admin-plan-accuracy-table">
               <div className="admin-plan-accuracy-head">
-                <span>Role</span>
+                <span>Package</span>
                 <span>Free</span>
                 <span>Pro</span>
               </div>
-              {roles.map((role) => (
+              {accuracyPackages.map(({ role, label, note, inherited }) => (
                 <div className="admin-plan-accuracy-row" key={role}>
-                  <strong>{role}</strong>
+                  <strong>
+                    {label}
+                    <small>{note}</small>
+                  </strong>
                   <label>
                     <input
                       type="number"
                       min="0"
                       max="100"
                       value={settings.freeAccuracy[role]}
+                      disabled={inherited}
                       onChange={(event) =>
                         updateAccuracy("freeAccuracy", role, event.target.value)
                       }
@@ -20265,6 +22362,7 @@ function AdminPlanManagementPage() {
                       min="0"
                       max="100"
                       value={settings.proAccuracy[role]}
+                      disabled={inherited}
                       onChange={(event) =>
                         updateAccuracy("proAccuracy", role, event.target.value)
                       }
@@ -20290,52 +22388,94 @@ function AdminPlanManagementPage() {
   );
 }
 
-const normalizeAdminNotification = (notification) => ({
-  id: notification.id || `admin-notification-${Date.now()}`,
-  type: notification.type || notification.notificationType || "SYSTEM ALERT",
-  title: notification.title || "NOTICE:",
-  text: notification.text || notification.message || "",
-  recipientRole: notification.recipientRole || "All",
-  recipientEmail: notification.recipientEmail || "",
-  route: notification.route || "",
-  createdAt: notification.createdAt || new Date().toISOString(),
-  unread: notification.unread ?? notification.isRead === false,
-});
-
-const getNotificationRouteForRole = (role) => {
-  if (role === "Lecturer") return "/lecturer-notifications";
-  if (role === "Researcher") return "/researcher-notifications";
-  return "/student-notifications";
-};
+const normalizeAdminNotification = (notification) =>
+  normalizeAdminNotificationBase(notification, getNotificationRecipientRole);
 
 function AdminNotificationManagementPage() {
+  const canUseAdminApi = hasAdminBackendAccess();
   const [notifications, setNotifications] = React.useState([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [roleFilter, setRoleFilter] = React.useState("All");
+  const [page, setPage] = React.useState(1);
   const [message, setMessage] = React.useState("");
-  const [editingNotificationId, setEditingNotificationId] = React.useState("");
+  const [editingId, setEditingId] = React.useState(null);
+  const [actionInProgressId, setActionInProgressId] = React.useState(null);
+  const notificationFormRef = React.useRef(null);
+  const [analytics, setAnalytics] = React.useState({ total: 0, delivered: 0, failed: 0, pending: 0, read: 0, readRate: 0 });
+  const [previewRole, setPreviewRole] = React.useState("Student");
   const [form, setForm] = React.useState({
     type: "SYSTEM ALERT",
     title: "NOTICE:",
     text: "",
     recipientRole: "All",
+    recipientEmail: "",
     route: "/student-notifications",
+    scheduledAt: "",
   });
 
-  const loadNotifications = React.useCallback(async () => {
-    try {
-      const query = roleFilter === "All" ? "" : `?role=${encodeURIComponent(roleFilter)}`;
-      const payload = await apiFetch(`/api/admin/notifications${query}`, {
-        auth: true,
-      });
-      setNotifications(unwrapList(payload).map(normalizeAdminNotification));
-    } catch (error) {
-      setMessage(error.message);
-    }
-  }, [roleFilter]);
+  const loadBackendNotifications = React.useCallback(async () => {
+    if (!canUseAdminApi) return [];
+    const payload = await apiFetch(
+      "/api/admin/notifications?page=1&pageSize=200",
+      { auth: true },
+    );
+    const items = Array.isArray(payload.items)
+      ? payload.items
+      : Array.isArray(payload)
+        ? payload
+        : [];
+    return items.map(normalizeAdminNotification);
+  }, [canUseAdminApi]);
+
+  const loadAnalytics = React.useCallback(async () => {
+    if (!canUseAdminApi) return null;
+    return apiFetch("/api/admin/notifications/analytics?days=30", { auth: true });
+  }, [canUseAdminApi]);
 
   React.useEffect(() => {
-    loadNotifications();
-  }, [loadNotifications]);
+    let cancelled = false;
+    setIsLoading(true);
+
+    const load = async () => {
+      if (canUseAdminApi) {
+        try {
+          const [backendNotifications, analyticsPayload] = await Promise.all([
+            loadBackendNotifications(),
+            loadAnalytics(),
+          ]);
+          if (cancelled) return;
+          setNotifications(backendNotifications);
+          if (analyticsPayload) setAnalytics(analyticsPayload);
+          setMessage("");
+          setIsLoading(false);
+          return;
+        } catch (error) {
+          if (cancelled) return;
+          setNotifications([]);
+          setMessage(`Could not load backend notifications: ${error.message}`);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      setNotifications([]);
+      setMessage("Administrator backend access is required to load notifications.");
+      setIsLoading(false);
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseAdminApi, loadBackendNotifications, loadAnalytics]);
+
+  const persistNotifications = (nextNotifications) => {
+    const normalizedNotifications = mergeNotificationsById(
+      nextNotifications,
+    ).map(normalizeAdminNotification);
+    setNotifications(normalizedNotifications);
+    return normalizedNotifications;
+  };
 
   const visibleNotifications = notifications.filter(
     (notification) =>
@@ -20343,6 +22483,20 @@ function AdminNotificationManagementPage() {
       notification.recipientRole === "All" ||
       notification.recipientRole === roleFilter,
   );
+  const notificationPageSize = 10;
+  const notificationTotalPages = Math.max(
+    1,
+    Math.ceil(visibleNotifications.length / notificationPageSize),
+  );
+  const safeNotificationPage = Math.min(page, notificationTotalPages);
+  const pagedNotifications = visibleNotifications.slice(
+    (safeNotificationPage - 1) * notificationPageSize,
+    safeNotificationPage * notificationPageSize,
+  );
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [roleFilter]);
 
   const createNotification = async (event) => {
     event.preventDefault();
@@ -20351,117 +22505,185 @@ function AdminNotificationManagementPage() {
       return;
     }
 
-    if (editingNotificationId) {
-      try {
-        const payload = await apiFetch(`/api/admin/notifications/${editingNotificationId}`, {
-          method: "PUT",
-          auth: true,
-          body: {
-            title: form.title,
-            message: form.text.trim(),
-            notificationType: form.type,
-            route: form.route,
-          },
-        });
-        setNotifications((current) =>
-          current.map((notification) =>
-            notification.id === editingNotificationId
-              ? normalizeAdminNotification(payload.notification || notification)
-              : notification,
-          ),
-        );
-        setEditingNotificationId("");
-        setForm({
-          type: "SYSTEM ALERT",
-          title: "NOTICE:",
-          text: "",
-          recipientRole: "All",
-          route: "/student-notifications",
-        });
-        setMessage("Notification updated.");
-      } catch (error) {
-        setMessage(error.message);
-      }
+    if (!canUseAdminApi) {
+      setMessage(
+        "An Administrator session is required to publish notifications.",
+      );
       return;
     }
 
     try {
+      if (editingId !== null) {
+        await apiFetch(`/api/admin/notifications/${editingId}`, {
+          method: "PUT",
+          auth: true,
+          body: {
+            notificationType: form.type,
+            title: form.title,
+            message: form.text.trim(),
+            route: form.route,
+          },
+        });
+        const refreshed = await loadBackendNotifications();
+        setNotifications(refreshed);
+        setEditingId(null);
+        setForm((current) => ({ ...current, text: "" }));
+        setMessage("Notification updated in the database.");
+        return;
+      }
+
+      const broadcastBody = {
+        recipientRole: form.recipientRole,
+        notificationType: form.type,
+        title: form.title,
+        message: form.text.trim(),
+        route: form.route,
+        scheduledAt: vietnamScheduleToUtcIso(form.scheduledAt),
+      };
+      if (form.scheduledAt && !broadcastBody.scheduledAt) {
+        setMessage("Please select a valid Vietnam date and time.");
+        return;
+      }
+      if (broadcastBody.scheduledAt && new Date(broadcastBody.scheduledAt) <= new Date()) {
+        setMessage("Scheduled time must be in the future according to Vietnam time (GMT+7).");
+        return;
+      }
+      if (form.recipientEmail && form.recipientEmail.trim()) {
+        broadcastBody.recipientEmail = form.recipientEmail.trim();
+      }
       const payload = await apiFetch("/api/admin/notifications/broadcast", {
         method: "POST",
         auth: true,
-        body: {
-          recipientRole: form.recipientRole,
-          notificationType: form.type,
-          title: form.title,
-          message: form.text.trim(),
-          route: form.route,
-        },
+        body: broadcastBody,
       });
-      await loadNotifications();
+
+      // Reload from backend to show accurate data
+      const refreshed = await loadBackendNotifications();
+      setNotifications(refreshed);
       setForm((current) => ({ ...current, text: "" }));
-      setMessage(`Notification broadcast saved for ${payload.count || 0} users.`);
+      const analyticsPayload = await loadAnalytics();
+      if (analyticsPayload) setAnalytics(analyticsPayload);
+      setMessage(`${payload.deliveryStatus === "pending" ? "Notification scheduled" : "Notification broadcast saved"} for ${payload.count || 0} users.`);
     } catch (error) {
-      setMessage(error.message);
-    }
-  };
-
-  const deleteNotification = async (id) => {
-    try {
-      await apiFetch(`/api/admin/notifications/${id}`, {
-        method: "DELETE",
-        auth: true,
-      });
-      setNotifications((current) => current.filter((item) => item.id !== id));
-      setMessage("Notification deleted.");
-    } catch (error) {
-      setMessage(error.message);
-    }
-  };
-
-  const markAllRead = async () => {
-    try {
-      const query = roleFilter === "All" ? "" : `?role=${encodeURIComponent(roleFilter)}`;
-      await apiFetch(`/api/admin/notifications/read-all${query}`, {
-        method: "PUT",
-        auth: true,
-      });
-      setNotifications((current) =>
-        current.map((item) => ({ ...item, unread: false })),
+      // Don't silently fall back to local — show error
+      setMessage(
+        `Backend broadcast failed: ${error.message}. Try again or check the backend.`,
       );
-      setMessage("All notifications marked as read.");
-    } catch (error) {
-      setMessage(error.message);
     }
   };
 
   const editNotification = (notification) => {
-    setEditingNotificationId(notification.id);
+    if (!canUseAdminApi) {
+      setMessage("An Administrator session is required to edit notifications.");
+      return;
+    }
+    if (!/^\d+$/.test(String(notification.id))) {
+      setMessage("Only backend notifications can be edited.");
+      return;
+    }
+    setEditingId(notification.id);
     setForm({
       type: notification.type,
       title: notification.title,
       text: notification.text,
       recipientRole: notification.recipientRole,
-      route: notification.route || getNotificationRouteForRole(notification.recipientRole),
+      recipientEmail: notification.recipientEmail,
+      route: notification.route,
+      scheduledAt: notification.scheduledAt
+        ? utcIsoToVietnamSchedule(notification.scheduledAt)
+        : "",
     });
-    setMessage("Editing notification.");
+    setMessage(
+      "Editing an existing notification. Recipient cannot be changed.",
+    );
+    window.requestAnimationFrame(() => {
+      notificationFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      notificationFormRef.current?.querySelector("textarea")?.focus({ preventScroll: true });
+    });
   };
 
-  const exportNotifications = () => {
-    downloadXlsxFile("scholartrend-admin-notifications.xlsx", {
-      Notifications: [
-        ["Type", "Title", "Text", "Role", "Route", "Created At", "Unread"],
-        ...notifications.map((notification) => [
-          notification.type,
-          notification.title,
-          notification.text,
-          notification.recipientRole,
-          notification.route,
-          notification.createdAt,
-          notification.unread ? "Yes" : "No",
-        ]),
-      ],
-    });
+  const markNotificationRead = async (notification) => {
+    if (!canUseAdminApi || !/^\d+$/.test(String(notification.id))) {
+      setMessage("This notification is not available in the Admin API.");
+      return;
+    }
+    setActionInProgressId(`read-${notification.id}`);
+    try {
+      await apiFetch(`/api/admin/notifications/${notification.id}/read`, {
+        method: "PUT",
+        auth: true,
+      });
+      setNotifications((current) =>
+        current.map((item) =>
+          String(item.id) === String(notification.id)
+            ? { ...item, unread: false }
+            : item,
+        ),
+      );
+      setMessage("Notification marked as read.");
+    } catch (error) {
+      setMessage(`Could not update notification: ${error.message}`);
+    } finally {
+      setActionInProgressId(null);
+    }
   };
+
+  const deleteNotification = async (id) => {
+    if (!canUseAdminApi || !/^\d+$/.test(String(id))) {
+      setMessage(
+        "Only notifications stored in the backend can be deleted here.",
+      );
+      return;
+    }
+    setActionInProgressId(`delete-${id}`);
+    try {
+      await apiFetch(`/api/admin/notifications/${id}`, {
+        method: "DELETE",
+        auth: true,
+      });
+      setNotifications((current) =>
+        current.filter((item) => String(item.id) !== String(id)),
+      );
+      setMessage("Notification deleted from the database.");
+    } catch (error) {
+      setMessage(`Could not delete notification: ${error.message}`);
+    } finally {
+      setActionInProgressId(null);
+    }
+  };
+
+  const markAllRead = async () => {
+    if (!canUseAdminApi) {
+      setMessage("An Administrator session is required.");
+      return;
+    }
+    try {
+      await apiFetch(
+        `/api/admin/notifications/read-all?role=${encodeURIComponent(roleFilter)}`,
+        { method: "PUT", auth: true },
+      );
+      const refreshed = await loadBackendNotifications();
+      setNotifications(refreshed);
+      setMessage(
+        "All matching notifications were marked as read in the database.",
+      );
+    } catch (error) {
+      setMessage(`Could not mark notifications as read: ${error.message}`);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <AdminShell
+        activeRoute="/admin-notifications"
+        current="Notification Management"
+      >
+        <div className="admin-users-content admin-notifications-content">
+          <p className="admin-users-message">Loading notifications...</p>
+        </div>
+      </AdminShell>
+    );
+  }
 
   return (
     <AdminShell
@@ -20484,19 +22706,24 @@ function AdminNotificationManagementPage() {
             {message}
           </p>
         ) : null}
+        {!canUseAdminApi ? (
+          <p className="admin-users-message" role="status">
+            Admin backend access required to broadcast notifications to users.
+          </p>
+        ) : null}
 
         <section className="admin-users-summary-grid admin-notification-summary-grid">
           {[
-            ["Total Notifications", notifications.length, "All user-facing notices"],
+            ["Total Notifications", analytics.total, "Created in the last 30 days"],
             [
-              "Unread",
-              notifications.filter((item) => item.unread).length,
-              "Still visible as unread",
+              "Delivered / Read",
+              analytics.delivered,
+              `${analytics.read || 0} read (${analytics.readRate || 0}%)`,
             ],
             [
-              "Broadcasts",
-              notifications.filter((item) => item.recipientRole === "All").length,
-              "Sent to all roles",
+              "Pending / Failed",
+              `${analytics.pending || 0} / ${analytics.failed || 0}`,
+              "Scheduled or requiring attention",
             ],
           ].map(([label, value, note]) => (
             <article className="admin-user-summary-card" key={label}>
@@ -20511,12 +22738,19 @@ function AdminNotificationManagementPage() {
         </section>
 
         <div className="admin-notification-layout">
-          <form className="admin-notification-form" onSubmit={createNotification}>
-            <h2>{editingNotificationId ? "Edit Notification" : "Create Notification"}</h2>
+          <form
+            ref={notificationFormRef}
+            className="admin-notification-form"
+            onSubmit={createNotification}
+          >
+            <h2>
+              {editingId !== null ? "Edit Notification" : "Create Notification"}
+            </h2>
             <label>
               <span>Target role</span>
               <select
                 value={form.recipientRole}
+                disabled={editingId !== null}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
@@ -20532,11 +22766,28 @@ function AdminNotificationManagementPage() {
               </select>
             </label>
             <label>
+              <span>Target email (optional, exact account)</span>
+              <input
+                value={form.recipientEmail}
+                disabled={editingId !== null}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    recipientEmail: event.target.value,
+                  }))
+                }
+                placeholder="student@example.com"
+              />
+            </label>
+            <label>
               <span>Type</span>
               <select
                 value={form.type}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, type: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    type: event.target.value,
+                  }))
                 }
               >
                 <option>SYSTEM ALERT</option>
@@ -20550,7 +22801,10 @@ function AdminNotificationManagementPage() {
               <input
                 value={form.title}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, title: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
                 }
               />
             </label>
@@ -20559,7 +22813,10 @@ function AdminNotificationManagementPage() {
               <input
                 value={form.route}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, route: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    route: event.target.value,
+                  }))
                 }
                 placeholder="/student-notifications"
               />
@@ -20570,29 +22827,37 @@ function AdminNotificationManagementPage() {
                 rows={5}
                 value={form.text}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, text: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    text: event.target.value,
+                  }))
                 }
                 placeholder="Write an announcement for users..."
               />
             </label>
+            <VietnamScheduleField
+              value={form.scheduledAt}
+              disabled={editingId !== null}
+              onChange={(scheduledAt) => setForm((current) => ({ ...current, scheduledAt }))}
+            />
+            <React.Suspense fallback={<p>Loading preview…</p>}>
+              <AdminNotificationPreview form={form} role={previewRole} onRoleChange={setPreviewRole} />
+            </React.Suspense>
             <button type="submit">
-              {editingNotificationId ? "Save Notification" : "Publish Notification"}
+              {editingId !== null
+                ? "Save Notification"
+                : "Publish Notification"}
             </button>
-            {editingNotificationId ? (
+            {editingId !== null ? (
               <button
                 type="button"
                 onClick={() => {
-                  setEditingNotificationId("");
-                  setForm({
-                    type: "SYSTEM ALERT",
-                    title: "NOTICE:",
-                    text: "",
-                    recipientRole: "All",
-                    route: "/student-notifications",
-                  });
+                  setEditingId(null);
+                  setForm((current) => ({ ...current, text: "" }));
+                  setMessage("");
                 }}
               >
-                Cancel Edit
+                Cancel Editing
               </button>
             ) : null}
           </form>
@@ -20611,13 +22876,10 @@ function AdminNotificationManagementPage() {
               <button type="button" onClick={markAllRead}>
                 Mark All Read
               </button>
-              <button type="button" onClick={exportNotifications}>
-                Export
-              </button>
             </div>
 
             <div className="admin-notification-list">
-              {visibleNotifications.map((notification) => (
+              {pagedNotifications.map((notification) => (
                 <article
                   className={`admin-notification-row ${notification.unread ? "unread" : ""}`}
                   key={notification.id}
@@ -20628,32 +22890,85 @@ function AdminNotificationManagementPage() {
                       {notification.title} {notification.text}
                     </h3>
                     <p>
-                      Target: {notification.recipientRole} |{" "}
-                      {new Date(notification.createdAt).toLocaleString()}
+                      Target:{" "}
+                      {notification.recipientEmail ||
+                        notification.recipientRole}{" "}
+                      | {new Date(notification.createdAt).toLocaleString()}
                     </p>
+                    <small>
+                      Status: {notification.deliveryStatus}
+                      {notification.scheduledAt ? ` · scheduled ${formatVietnamDateTime(notification.scheduledAt)} (GMT+7)` : ""}
+                      {notification.failureReason ? ` · ${notification.failureReason}` : ""}
+                    </small>
                   </div>
-                  <button
-                    type="button"
-                    className="admin-user-action"
-                    onClick={() => editNotification(notification)}
-                    title="Edit notification"
-                  >
-                    <MiniIcon path="M4 16.5V20h3.5L18.8 8.7l-3.5-3.5L4 16.5ZM14.5 6l3.5 3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    className="admin-user-action delete"
-                    onClick={() => deleteNotification(notification.id)}
-                    title="Delete notification"
-                  >
-                    <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
-                  </button>
+                  <div className="admin-notification-row-actions" aria-label="Notification actions">
+                    {notification.unread ? (
+                      <button
+                        type="button"
+                        className="admin-user-action edit"
+                        onClick={() => markNotificationRead(notification)}
+                        title="Mark notification as read"
+                        aria-label="Mark notification as read"
+                        disabled={actionInProgressId === `read-${notification.id}`}
+                      >
+                        <MiniIcon path="M5 12.5 9.5 17 19 7.5" />
+                        <span className="admin-notification-action-label">Read</span>
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="admin-user-action edit"
+                      onClick={() => editNotification(notification)}
+                      title="Edit notification"
+                      aria-label="Edit notification"
+                    >
+                      <MiniIcon path="M4 20h4l10.8-10.8-4-4L4 16v4ZM13.8 6.2l4 4" />
+                      <span className="admin-notification-action-label">Edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-user-action delete"
+                      onClick={() => deleteNotification(notification.id)}
+                      title="Delete notification"
+                      aria-label="Delete notification"
+                      disabled={actionInProgressId === `delete-${notification.id}`}
+                    >
+                      <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
+                      <span className="admin-notification-action-label">Delete</span>
+                    </button>
+                  </div>
                 </article>
               ))}
               {!visibleNotifications.length ? (
                 <p className="admin-users-empty">No notifications found.</p>
               ) : null}
             </div>
+            <footer className="admin-users-pagination">
+              <span>{visibleNotifications.length} notifications</span>
+              <div>
+                <button
+                  type="button"
+                  disabled={safeNotificationPage === 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {safeNotificationPage} of {notificationTotalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={safeNotificationPage === notificationTotalPages}
+                  onClick={() =>
+                    setPage((value) =>
+                      Math.min(notificationTotalPages, value + 1),
+                    )
+                  }
+                >
+                  Next
+                </button>
+              </div>
+            </footer>
           </section>
         </div>
       </div>
@@ -20661,162 +22976,63 @@ function AdminNotificationManagementPage() {
   );
 }
 
-const adminSystemLogSummary = [
-  {
-    label: "Total Events",
-    value: "18,742",
-    note: "+326 today",
-    tone: "neutral",
-    icon: "M6 4.5h12A1.5 1.5 0 0 1 19.5 6v12A1.5 1.5 0 0 1 18 19.5H6A1.5 1.5 0 0 1 4.5 18V6A1.5 1.5 0 0 1 6 4.5ZM8 8h8M8 11.5h8M8 15h4.5M15.5 15.5l1.3 1.3 2.2-2.8",
-  },
-  {
-    label: "Warnings",
-    value: "128",
-    note: "14 unresolved",
-    tone: "warning",
-    icon: "M12 3.8 3.8 18.5a1.5 1.5 0 0 0 1.3 2.2h13.8a1.5 1.5 0 0 0 1.3-2.2L12 3.8ZM12 8.3v5.4M12 16.8h.01M18.5 6.5l1.4-1.4M5.5 6.5 4.1 5.1",
-  },
-  {
-    label: "Errors",
-    value: "12",
-    note: "2 critical",
-    tone: "danger",
-    icon: "M8.2 3.8h7.6l4.4 4.4v7.6l-4.4 4.4H8.2l-4.4-4.4V8.2l4.4-4.4ZM9 9l6 6M15 9l-6 6",
-  },
-  {
-    label: "Audit Pass Rate",
-    value: "99.2%",
-    note: "+0.4% from last week",
-    tone: "success",
-    icon: "M12 3.5 19 6.4v5.4c0 4.2-2.8 7.3-7 8.7-4.2-1.4-7-4.5-7-8.7V6.4l7-2.9ZM8.7 12.2l2.2 2.2 4.6-5",
-  },
-];
-
-const adminSystemLogs = [
-  {
-    time: "Today, 11:42 AM",
-    event: "Semantic Scholar API rate limit approaching",
-    detail: "Retry window scheduled for the next sync cycle.",
-    module: "Sync",
-    severity: "Warning",
-    actor: "scheduler@system",
-    code: "SYNC-429",
-  },
-  {
-    time: "Today, 11:18 AM",
-    event: "Admin role updated for Elena Smith",
-    detail: "Role changed from Researcher to Admin.",
-    module: "Users",
-    severity: "Info",
-    actor: "admin@scholartrend.io",
-    code: "USER-204",
-  },
-  {
-    time: "Today, 10:45 AM",
-    event: "OpenAlex delta sync completed",
-    detail: "3,201 records indexed successfully.",
-    module: "Sync",
-    severity: "Success",
-    actor: "openalex-worker",
-    code: "SYNC-200",
-  },
-  {
-    time: "Today, 09:36 AM",
-    event: "Failed login threshold exceeded",
-    detail: "Account temporarily locked after repeated attempts.",
-    module: "Auth",
-    severity: "Error",
-    actor: "m.vance@institute.org",
-    code: "AUTH-403",
-  },
-  {
-    time: "Yesterday, 05:12 PM",
-    event: "Publication index rebuilt",
-    detail: "Search cache refreshed across active collections.",
-    module: "Indexing",
-    severity: "Info",
-    actor: "indexer@system",
-    code: "IDX-118",
-  },
-];
-
 const ADMIN_SYSTEM_LOGS_KEY = "scholartrend.adminSystemLogs";
-
-const getAdminSystemLogs = () => {
-  try {
-    const saved = JSON.parse(
-      window.localStorage.getItem(ADMIN_SYSTEM_LOGS_KEY) || "null",
-    );
-    return Array.isArray(saved) && saved.length ? saved : adminSystemLogs;
-  } catch {
-    return adminSystemLogs;
-  }
-};
 
 const setAdminSystemLogs = (logs) => {
   window.localStorage.setItem(ADMIN_SYSTEM_LOGS_KEY, JSON.stringify(logs));
 };
 
-const getAdminLogIdentity = (log) =>
-  `${log.code || ""}:${log.time || ""}:${log.event || ""}:${log.detail || ""}`;
-
-const mergeAdminSystemLogs = (...lists) => {
-  const seen = new Set();
-  return lists
-    .flat()
-    .filter(Boolean)
-    .filter((log) => {
-      const identity = getAdminLogIdentity(log);
-      if (seen.has(identity)) return false;
-      seen.add(identity);
-      return true;
-    })
-    .sort((left, right) => {
-      const leftTime = Date.parse(left.time) || 0;
-      const rightTime = Date.parse(right.time) || 0;
-      return rightTime - leftTime;
-    });
-};
-
 function AdminSystemLogsPage() {
+  const { t } = useTranslation();
+  const canUseAdminApi = hasAdminBackendAccess();
   const [query, setQuery] = React.useState("");
   const [severity, setSeverity] = React.useState("All Severities");
   const [module, setModule] = React.useState("All Modules");
+  const [correlationId, setCorrelationId] = React.useState("");
+  const [ipAddress, setIpAddress] = React.useState("");
+  const [userIdFilter, setUserIdFilter] = React.useState("");
   const [page, setPage] = React.useState(1);
-  const [logs, setLogs] = React.useState(getAdminSystemLogs);
+  const [logs, setLogs] = React.useState([]);
   const [logMessage, setLogMessage] = React.useState("");
+  const [refreshVersion, setRefreshVersion] = React.useState(0);
   const pageSize = 5;
+  const backendLogUrl = React.useMemo(() => {
+    if (!canUseAdminApi) return null;
+    const params = new URLSearchParams({ limit: "100", refresh: String(refreshVersion) });
+    if (query.trim()) params.set("search", query.trim());
+    if (severity !== "All Severities") params.set("severity", severity);
+    if (module !== "All Modules") params.set("module", module);
+    if (correlationId.trim()) params.set("correlationId", correlationId.trim());
+    if (ipAddress.trim()) params.set("ip", ipAddress.trim());
+    if (/^\d+$/.test(userIdFilter.trim())) params.set("userId", userIdFilter.trim());
+    return `/api/admin/system-logs?${params.toString()}`;
+  }, [canUseAdminApi, correlationId, ipAddress, module, query, refreshVersion, severity, userIdFilter]);
   const { data: backendLogs, status: backendLogStatus } = useApiResource(
-    "/api/admin/system-logs?limit=100",
-    adminSystemLogs,
+    backendLogUrl,
+    [],
     {
       auth: true,
       select: (payload) => {
         const mapped = unwrapList(payload).map(mapAdminLogForUi);
-        return mapped.length ? mapped : adminSystemLogs;
+        return mapped;
       },
     },
+  );
+  const { data: backendHealth } = useApiResource(
+    canUseAdminApi ? `/api/admin/health?refresh=${refreshVersion}` : null,
+    null,
+    { auth: true },
   );
 
   React.useEffect(() => {
     if (backendLogStatus === "success" && Array.isArray(backendLogs)) {
-      const nextLogs = mergeAdminSystemLogs(getAdminSystemLogs(), backendLogs);
-      setLogs(nextLogs);
-      setAdminSystemLogs(nextLogs);
+      setLogs(backendLogs);
     }
   }, [backendLogStatus, backendLogs]);
 
   React.useEffect(() => {
-    const syncClientLogs = () => setLogs(getAdminSystemLogs());
-    window.addEventListener("scholartrend:system-log", syncClientLogs);
-    return () => {
-      window.removeEventListener("scholartrend:system-log", syncClientLogs);
-    };
-  }, []);
-
-  React.useEffect(() => {
     setPage(1);
-  }, [query, severity, module]);
+  }, [query, severity, module, correlationId, ipAddress, userIdFilter]);
 
   const persistLogs = (nextLogs) => {
     setLogs(nextLogs);
@@ -20824,7 +23040,7 @@ function AdminSystemLogsPage() {
   };
 
   const visibleLogs = logs.filter((log) => {
-    const matchesQuery = `${log.event} ${log.detail} ${log.actor} ${log.code}`
+    const matchesQuery = `${log.event} ${log.detail} ${log.actor} ${log.code} ${log.correlationId} ${log.ipAddress} ${log.path}`
       .toLowerCase()
       .includes(query.toLowerCase());
     const matchesSeverity =
@@ -20847,14 +23063,16 @@ function AdminSystemLogsPage() {
     visibleLogs.length === 0
       ? 100
       : Math.round(
-          ((visibleLogs.length - visibleErrorCount) / visibleLogs.length) * 1000,
+          ((visibleLogs.length - visibleErrorCount) / visibleLogs.length) *
+            1000,
         ) / 10;
   const getLogSearchText = (log) =>
     `${log.event} ${log.detail} ${log.module} ${log.actor} ${log.code}`.toLowerCase();
   const getLogRoute = (log) => {
     const text = getLogSearchText(log);
     if (/payment|payos|checkout|plan/.test(text)) return "/admin-payments";
-    if (/user|auth|login|role|account/.test(text)) return "/admin-user-management";
+    if (/user|auth|login|role|account/.test(text))
+      return "/admin-user-management";
     if (/sync|semantic scholar|openalex|worker/.test(text)) {
       return "/admin-sync-management";
     }
@@ -20864,33 +23082,38 @@ function AdminSystemLogsPage() {
     if (/notification|alert/.test(text)) return "/admin-notifications";
     return "/admin-system-logs";
   };
-  const alertLogs = logs.filter((log) =>
-    ["Warning", "Error"].includes(log.severity),
-  );
+  // The alert panel represents current service health. Historical warning/error
+  // audit entries remain searchable in the table, but they are not active alerts.
+  const alertLogs = Array.isArray(backendHealth?.services)
+    ? backendHealth.services
+        .filter((service) => service.operational === false)
+        .map((service) => ({
+          event: service.name,
+          detail: service.value || "Service health check failed.",
+          module: "Live Health",
+          severity: "Error",
+          actor: "health-check@system",
+          code: "SERVICE-CRITICAL",
+          time: backendHealth.checkedAt || new Date().toISOString(),
+        }))
+    : [];
   const activeAlert = alertLogs[0] || null;
   const getHealthState = (pattern) => {
-    const relatedLogs = logs.filter((log) => pattern.test(getLogSearchText(log)));
+    const relatedLogs = logs.filter((log) =>
+      pattern.test(getLogSearchText(log)),
+    );
     if (relatedLogs.some((log) => log.severity === "Error")) return "Critical";
-    if (relatedLogs.some((log) => log.severity === "Warning")) return "Degraded";
+    if (relatedLogs.some((log) => log.severity === "Warning"))
+      return "Degraded";
     return "Operational";
   };
-  const healthRows = [
-    {
-      label: "API Gateway",
-      query: "API",
-      state: getHealthState(/api|gateway|auth/),
-    },
-    {
-      label: "Sync Workers",
-      query: "sync",
-      state: getHealthState(/sync|semantic scholar|openalex/),
-    },
-    {
-      label: "Search Index",
-      query: "index",
-      state: getHealthState(/index|search/),
-    },
-  ];
+  const healthRows = Array.isArray(backendHealth?.services)
+    ? backendHealth.services.map((service) => ({
+        label: service.name,
+        query: service.name,
+        state: service.state || "Unknown",
+      }))
+    : [];
   const totalPages = Math.max(1, Math.ceil(visibleLogs.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const pagedLogs = visibleLogs.slice(
@@ -20951,23 +23174,10 @@ function AdminSystemLogsPage() {
   ];
 
   const refreshLogs = () => {
-    const now = new Date().toLocaleString([], {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    const nextLog = {
-      time: now,
-      event: "Manual log refresh completed",
-      detail: "Admin refreshed the local audit table.",
-      module: "Users",
-      severity: "Info",
-      actor: getStoredAuth().email || "admin@scholartrend.io",
-      code: `USER-${Date.now().toString().slice(-3)}`,
-    };
-    persistLogs([nextLog, ...logs]);
-    setLogMessage("System logs refreshed.");
+    setRefreshVersion((value) => value + 1);
+    setLogMessage(
+      "Refreshing system logs and service health from the backend...",
+    );
   };
 
   const filterHealth = (nextQuery = "") => {
@@ -21065,7 +23275,7 @@ function AdminSystemLogsPage() {
               key={item.label}
             >
               <div>
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
                 <MiniIcon path={item.icon} />
               </div>
               <strong>{item.value}</strong>
@@ -21098,6 +23308,25 @@ function AdminSystemLogsPage() {
                 <option>Warning</option>
                 <option>Error</option>
               </select>
+              <input
+                value={correlationId}
+                onChange={(event) => setCorrelationId(event.target.value)}
+                placeholder="Correlation ID"
+                aria-label="Filter logs by correlation ID"
+              />
+              <input
+                value={ipAddress}
+                onChange={(event) => setIpAddress(event.target.value)}
+                placeholder="IP address"
+                aria-label="Filter logs by IP address"
+              />
+              <input
+                value={userIdFilter}
+                onChange={(event) => setUserIdFilter(event.target.value.replace(/\D/g, ""))}
+                placeholder="User ID"
+                inputMode="numeric"
+                aria-label="Filter logs by user ID"
+              />
               <select
                 value={module}
                 onChange={(event) => setModule(event.target.value)}
@@ -21108,11 +23337,22 @@ function AdminSystemLogsPage() {
                   <option key={option}>{option}</option>
                 ))}
               </select>
-              <button type="button" aria-label="Refresh logs" onClick={refreshLogs}>
+              <button
+                type="button"
+                aria-label="Refresh logs"
+                onClick={refreshLogs}
+              >
                 <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M20 5v5h-5" />
               </button>
             </div>
-            {logMessage ? <p className="admin-logs-message">{logMessage}</p> : null}
+            {logMessage ? (
+              <p className="admin-logs-message">{logMessage}</p>
+            ) : null}
+            {!canUseAdminApi ? (
+              <p className="admin-logs-message">
+                Administrator backend access is required. System logs are unavailable.
+              </p>
+            ) : null}
 
             <div className="admin-logs-table-wrap">
               <table className="admin-logs-table">
@@ -21128,7 +23368,7 @@ function AdminSystemLogsPage() {
                 </thead>
                 <tbody>
                   {pagedLogs.map((log, index) => (
-                    <tr key={`${log.code}-${log.time}-${index}`}>
+                    <tr key={log.id || `${log.code}-${log.time}-${index}`}>
                       <td>{log.time}</td>
                       <td>
                         <strong>{log.event}</strong>
@@ -21163,8 +23403,8 @@ function AdminSystemLogsPage() {
 
             <footer className="admin-logs-pagination">
               <span>
-                Showing {pagedLogs.length ? (safePage - 1) * pageSize + 1 : 0} to{" "}
-                {(safePage - 1) * pageSize + pagedLogs.length} of{" "}
+                Showing {pagedLogs.length ? (safePage - 1) * pageSize + 1 : 0}{" "}
+                to {(safePage - 1) * pageSize + pagedLogs.length} of{" "}
                 {visibleLogs.length} events
               </span>
               <div>
@@ -21175,7 +23415,10 @@ function AdminSystemLogsPage() {
                 >
                   <MiniIcon path="M15 18l-6-6 6-6" />
                 </button>
-                {Array.from({ length: totalPages }, (_, index) => index + 1).map((number) => (
+                {Array.from(
+                  { length: totalPages },
+                  (_, index) => index + 1,
+                ).map((number) => (
                   <button
                     type="button"
                     className={safePage === number ? "active" : ""}
@@ -21188,7 +23431,9 @@ function AdminSystemLogsPage() {
                 <button
                   type="button"
                   disabled={safePage === totalPages}
-                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  onClick={() =>
+                    setPage((value) => Math.min(totalPages, value + 1))
+                  }
                 >
                   <MiniIcon path="M9 18l6-6-6-6" />
                 </button>
@@ -21222,7 +23467,9 @@ function AdminSystemLogsPage() {
             >
               <MiniIcon path="M12 4 3.5 20h17L12 4ZM12 9v5M12 17h.01" />
               <div>
-                <h2>{alertLogs.length ? "Attention Needed" : "No Active Alerts"}</h2>
+                <h2>
+                  {alertLogs.length ? "Attention Needed" : "No Active Alerts"}
+                </h2>
                 <p>
                   {activeAlert
                     ? `${alertLogs.length} alert${alertLogs.length === 1 ? "" : "s"} need admin review.`
@@ -21230,12 +23477,15 @@ function AdminSystemLogsPage() {
                 </p>
                 {alertLogs.length ? (
                   <div className="admin-log-alert-list">
-                    {alertLogs.map((alert, alertIndex) => (
+                    {alertLogs.map((alert) => (
                       <article
                         className={`admin-log-alert-item ${alert.severity.toLowerCase()}`}
-                        key={`${alert.code}-${alert.time}-${alertIndex}`}
+                        key={`${alert.code}-${alert.time}`}
                       >
-                        <button type="button" onClick={() => viewAlertLog(alert)}>
+                        <button
+                          type="button"
+                          onClick={() => viewAlertLog(alert)}
+                        >
                           <strong>{alert.event}</strong>
                           <span>
                             {alert.module} / {alert.code}
@@ -21283,7 +23533,10 @@ function PaymentReturnPage() {
   React.useEffect(() => {
     if (cancelled) {
       setStatus("cancelled");
-      setMessage("Payment was cancelled. Your account is still on the Free plan.");
+      setMessage(
+        "Payment was cancelled. Your account is still on the Free plan.",
+      );
+      clearPendingPayosUpgrade(orderCode);
       return;
     }
 
@@ -21294,15 +23547,34 @@ function PaymentReturnPage() {
     }
 
     let cancelledEffect = false;
-    apiFetch(`/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`)
+    authServerFetch(
+      `/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`,
+    )
       .then((payload) => {
         if (cancelledEffect) return;
         if (payload.status === "PAID" && payload.user) {
-          persistSession(payload.user);
-          upsertAdminManagedUserFromAccount(payload.user);
+          const responseRole = normalizeRoleForUi(payload.user.role);
+          const pendingRole = getPendingPayosUpgradeRole(orderCode);
+          const upgradedRole = upgradeRoleOptions.includes(responseRole)
+            ? responseRole
+            : pendingRole || responseRole;
+          const upgradedAccuracy = getSearchAccuracyForAccount(
+            upgradedRole,
+            true,
+          );
+          const upgradedUser = {
+            ...payload.user,
+            role: upgradedRole,
+            isPro: true,
+            plan: "Pro",
+            searchAccuracy: upgradedAccuracy,
+          };
+          persistSession(upgradedUser);
+          upsertAdminManagedUserFromAccount(upgradedUser);
+          clearPendingPayosUpgrade(orderCode);
           setStatus("success");
           setMessage(
-            `Pro activated. Your search accuracy is now ${payload.user.searchAccuracy}%.`,
+            `${upgradedRole} Pro activated. Your search accuracy is now ${upgradedAccuracy}%.`,
           );
           return;
         }
@@ -21349,112 +23621,120 @@ function PaymentReturnPage() {
   );
 }
 
-const legalPageCopy = {
-  "/docs": {
-    title: "Documentation",
-    eyebrow: "Developer Resources",
-    body:
-      "Use the REST API for publication search, trend metrics, bookmarks, notifications, payments, and admin sync operations.",
-    bullets: [
-      "Search: GET /api/publications/search?keyword=ai&source=Semantic%20Scholar",
-      "Reports: POST /api/dashboard/export or export locally from Reports.",
-      "Admin sync: POST /api/admin/sync/semantic-scholar and /api/admin/sync/openalex.",
-    ],
-  },
-  "/blog": {
-    title: "ScholarTrend Blog",
-    eyebrow: "Research Notes",
-    body:
-      "Product notes, research workflow updates, and dataset sync changes are collected here for the project team.",
-    bullets: ["Trend analytics releases", "Semantic Scholar sync notes", "Publication review workflow changes"],
-  },
-  "/guides": {
-    title: "Guides",
-    eyebrow: "Workflow Playbooks",
-    body:
-      "Step-by-step workflows for finding papers, comparing topic velocity, exporting reports, and managing submissions.",
-    bullets: ["Search and save publications", "Build an Excel trend report", "Review publication submissions"],
-  },
-  "/support": {
-    title: "Support",
-    eyebrow: "Help Center",
-    body:
-      "For local development, create an admin support ticket from the Admin Support panel. For user issues, collect route, account role, and error message.",
-    bullets: ["Check System Logs", "Run Admin Health Check", "Attach browser console details"],
-  },
-  "/about": {
-    title: "About ScholarTrend",
-    eyebrow: "Company",
-    body:
-      "ScholarTrend is a research intelligence workspace for academic discovery, publication trend tracking, and institutional analytics.",
-    bullets: ["Semantic search", "Trend dashboards", "Publication governance"],
-  },
-  "/careers": {
-    title: "Careers",
-    eyebrow: "Team",
-    body:
-      "ScholarTrend roles focus on scientific data engineering, research UX, and applied AI for academic discovery.",
-    bullets: ["Frontend engineering", "Data ingestion", "Research product design"],
-  },
-  "/contact": {
-    title: "Contact",
-    eyebrow: "Get in Touch",
-    body:
-      "Contact the project administrators through the Support page or use admin notifications for internal announcements.",
-    bullets: ["admin@university.edu", "Support tickets are stored locally in development", "System logs keep audit context"],
-  },
-  "/privacy": {
-    title: "Privacy Policy",
-    eyebrow: "Legal",
-    body:
-      "ScholarTrend stores account, bookmark, notification, and report preferences to provide a personalized research workspace.",
-    bullets: ["Local demo data stays in browser storage", "Backend data follows API authorization", "Do not commit real .env secrets"],
-  },
-  "/terms": {
-    title: "Terms of Service",
-    eyebrow: "Legal",
-    body:
-      "Use ScholarTrend for academic discovery and internal project workflows. Respect publisher rights and external API terms.",
-    bullets: ["Cite external sources", "Do not misuse API quotas", "Admins are responsible for moderation decisions"],
-  },
-};
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
 
-function StaticInfoPage({ path }) {
-  const page = legalPageCopy[path] || legalPageCopy["/docs"];
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
 
-  return (
-    <main className="page-shell static-info-page">
-      <header className="site-header" aria-label="Primary navigation">
-        <Brand />
-        <nav className="nav-actions" aria-label="Account">
-          <a className="login-link" href="/" onClick={navTo("/")}>
-            Home
-          </a>
-          <a className="primary-button compact" href="/register" onClick={navTo("/register")}>
-            Get Started
-          </a>
-        </nav>
-      </header>
-      <section className="static-info-content">
-        <span>{page.eyebrow}</span>
-        <h1>{page.title}</h1>
-        <p>{page.body}</p>
-        <div className="static-info-list">
-          {page.bullets.map((item) => (
-            <article key={item}>
-              <MiniIcon path="M4.5 12.5 9 17l10.5-10" />
-              <strong>{item}</strong>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
-  );
+  componentDidCatch(error, info) {
+    appendClientSystemLog({
+      event: "React render error",
+      detail:
+        `${error?.message || "Unknown render error"} ${info?.componentStack || ""}`.slice(
+          0,
+          400,
+        ),
+      module: getClientLogModule(window.location.pathname),
+      severity: "Error",
+      actor: "browser@client",
+      code: getClientLogCode("System", "REACT"),
+    });
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="student-app">
+          <section className="student-main">
+            <div className="student-content">
+              <section className="search-results-area">
+                <h1>Something went wrong</h1>
+                <p>{this.state.error.message}</p>
+                <button
+                  type="button"
+                  className="new-project"
+                  onClick={() => {
+                    this.setState({ error: null });
+                    goToRoute("/");
+                  }}
+                >
+                  Return Home
+                </button>
+              </section>
+            </div>
+          </section>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
-export default function App() {
+function AppRoutes() {
   const [, forceRender] = React.useReducer((value) => value + 1, 0);
   const path = window.location.pathname;
+  const [adminSessionRecovery, setAdminSessionRecovery] = React.useState("idle");
+
+  React.useEffect(() => {
+    if (!path.startsWith("/admin-") || hasAdminBackendAccess()) {
+      setAdminSessionRecovery("ready");
+      return;
+    }
+
+    let cancelled = false;
+    const recover = async () => {
+      setAdminSessionRecovery("loading");
+      const storedAuth = getStoredAuth();
+      if (storedAuth.refreshToken) {
+        try {
+          const response = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refreshToken: storedAuth.refreshToken }),
+          });
+          if (response.ok) {
+            persistAuth(await response.json());
+            if (hasAdminBackendAccess()) {
+              if (!cancelled) {
+                setAdminSessionRecovery("ready");
+                forceRender();
+              }
+              return;
+            }
+          }
+        } catch {
+          // Fall through to upgrading a legacy Google/Node session.
+        }
+      }
+
+      try {
+        const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/auth/me`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const payload = await response.json();
+          if (payload.accessToken) persistAuth(payload);
+        }
+      } catch {
+        // The access-denied screen remains available if no legacy session exists.
+      }
+
+      if (!cancelled) {
+        setAdminSessionRecovery(hasAdminBackendAccess() ? "ready" : "failed");
+        forceRender();
+      }
+    };
+    recover();
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
 
   React.useEffect(() => {
     const originalFetch = window.fetch.bind(window);
@@ -21474,7 +23754,8 @@ export default function App() {
           let detail = `${requestUrl}: HTTP ${response.status}`;
           try {
             const clonedResponse = response.clone();
-            const contentType = clonedResponse.headers.get("content-type") || "";
+            const contentType =
+              clonedResponse.headers.get("content-type") || "";
             const payload = contentType.includes("application/json")
               ? await clonedResponse.json()
               : await clonedResponse.text();
@@ -21483,7 +23764,8 @@ export default function App() {
               payload?.error ||
               payload?.title ||
               (typeof payload === "string" ? payload : "");
-            if (message) detail = `${detail} - ${String(message).slice(0, 180)}`;
+            if (message)
+              detail = `${detail} - ${String(message).slice(0, 180)}`;
           } catch {
             // Keep the status-only message if the response body cannot be read.
           }
@@ -21569,7 +23851,10 @@ export default function App() {
       window.removeEventListener("scholartrend:navigate", forceRender);
       window.removeEventListener("popstate", forceRender);
       window.removeEventListener("error", handleClientError);
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.removeEventListener(
+        "unhandledrejection",
+        handleUnhandledRejection,
+      );
       window.fetch = originalFetch;
       window.console.error = originalConsoleError;
     };
@@ -21578,7 +23863,53 @@ export default function App() {
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
   if (path === "/payment-return") return <PaymentReturnPage />;
-  if (legalPageCopy[path]) return <StaticInfoPage path={path} />;
+
+  const isAdminRoute = path.startsWith("/admin-");
+  if (isAdminRoute && adminSessionRecovery === "loading") {
+    return (
+      <main className="student-app">
+        <section className="student-main">
+          <div className="student-content" style={{ padding: "4rem 2rem" }}>
+            <h1>Restoring administrator session…</h1>
+            <p>Your SQL data is safe. Reconnecting this browser to the Admin API.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+  if (isAdminRoute && !hasAdminBackendAccess()) {
+    if (!getStoredAuth().accessToken) {
+      return (
+        <LoginPage message="Please sign in with an Administrator account to access the admin panel." />
+      );
+    }
+    return (
+      <main className="student-app">
+        <section className="student-main">
+          <div className="student-content">
+            <section
+              className="search-results-area"
+              style={{ textAlign: "center", padding: "4rem 2rem" }}
+            >
+              <h1>Access Denied</h1>
+              <p style={{ marginBottom: "1.5rem" }}>
+                You do not have Administrator privileges. Please log out and
+                sign in with an admin account.
+              </p>
+              <button
+                type="button"
+                className="new-project"
+                onClick={handleLogout}
+              >
+                Logout &amp; Sign In as Admin
+              </button>
+            </section>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (path === "/admin-dashboard") return <AdminDashboard />;
   if (path === "/admin-sync-management") return <AdminSyncManagementPage />;
   if (path === "/admin-user-management") return <AdminUserManagementPage />;
@@ -21601,8 +23932,7 @@ export default function App() {
     return <PublicationSubmissionPage role="Lecturer" />;
   if (path === "/lecturer-publication")
     return <StudentPublicationDetailPage role="lecturer" />;
-  if (path === "/lecturer-bookmarks")
-    return <BookmarksPage role="lecturer" />;
+  if (path === "/lecturer-bookmarks") return <BookmarksPage role="lecturer" />;
   if (path === "/lecturer-notifications")
     return <NotificationsPage role="lecturer" />;
   if (path === "/lecturer-profile") return <ProfilePage role="lecturer" />;
@@ -21633,4 +23963,30 @@ export default function App() {
   if (path === "/student-profile") return <ProfilePage />;
   if (path === "/student-publication") return <StudentPublicationDetailPage />;
   return <LandingPage />;
+}
+
+export default function App() {
+  const [, setAuthRevision] = React.useState(0);
+
+  React.useEffect(() => {
+    const refreshAccount = () => {
+      refreshStoredAuth()
+        .then((result) => {
+          if (result) setAuthRevision((value) => value + 1);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", refreshAccount);
+    const intervalId = window.setInterval(refreshAccount, 60_000);
+    return () => {
+      window.removeEventListener("focus", refreshAccount);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  return (
+    <AppErrorBoundary>
+      <AppRoutes />
+    </AppErrorBoundary>
+  );
 }

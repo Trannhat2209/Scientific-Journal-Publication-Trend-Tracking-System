@@ -10,6 +10,7 @@ namespace ScientificJournal.API.Services;
 public class PayosMerchantClient
 {
     private const string PayosBaseUrl = "https://api-merchant.payos.vn";
+    private const int DefaultTimeoutSeconds = 12;
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
@@ -19,6 +20,7 @@ public class PayosMerchantClient
         _httpClient = httpClient;
         _configuration = configuration;
         _httpClient.BaseAddress ??= new Uri(PayosBaseUrl);
+        _httpClient.Timeout = TimeSpan.FromSeconds(GetTimeoutSeconds());
     }
 
     public async Task<PayosPaymentLinkData> CreatePaymentLinkAsync(CreatePayosPaymentLinkRequest request)
@@ -52,7 +54,7 @@ public class PayosMerchantClient
         };
         AddAuthHeaders(httpRequest);
 
-        var response = await _httpClient.SendAsync(httpRequest);
+        var response = await SendPayosRequestAsync(httpRequest);
         var result = await ReadPayosResponseAsync<PayosPaymentLinkData>(response);
         return result.Data ?? throw new InvalidOperationException(result.Desc ?? "PayOS did not return payment link data.");
     }
@@ -64,7 +66,7 @@ public class PayosMerchantClient
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/v2/payment-requests/{orderCode}");
         AddAuthHeaders(request);
 
-        var response = await _httpClient.SendAsync(request);
+        var response = await SendPayosRequestAsync(request);
         var result = await ReadPayosResponseAsync<PayosPaymentInformationData>(response);
         return result.Data ?? throw new InvalidOperationException(result.Desc ?? "PayOS did not return payment data.");
     }
@@ -79,7 +81,7 @@ public class PayosMerchantClient
         };
         AddAuthHeaders(request);
 
-        var response = await _httpClient.SendAsync(request);
+        var response = await SendPayosRequestAsync(request);
         var result = await ReadPayosResponseAsync<PayosPaymentInformationData>(response);
         return result.Data ?? throw new InvalidOperationException(result.Desc ?? "PayOS did not return cancellation data.");
     }
@@ -108,6 +110,30 @@ public class PayosMerchantClient
         _ = GetRequiredConfig("PAYOS_CLIENT_ID", "Payments:PayOS:ClientId");
         _ = GetRequiredConfig("PAYOS_API_KEY", "Payments:PayOS:ApiKey");
         _ = GetRequiredConfig("PAYOS_CHECKSUM_KEY", "Payments:PayOS:ChecksumKey");
+    }
+
+    private int GetTimeoutSeconds()
+    {
+        var configured =
+            _configuration.GetValue<int?>("Payments:PayOS:TimeoutSeconds") ??
+            _configuration.GetValue<int?>("PAYOS_TIMEOUT_SECONDS");
+        return configured is > 0 ? configured.Value : DefaultTimeoutSeconds;
+    }
+
+    private async Task<HttpResponseMessage> SendPayosRequestAsync(HttpRequestMessage request)
+    {
+        try
+        {
+            return await _httpClient.SendAsync(request);
+        }
+        catch (TaskCanceledException exception)
+        {
+            throw new TimeoutException("PayOS did not respond before the request timed out.", exception);
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new InvalidOperationException("Could not connect to PayOS. Please check network access and PayOS credentials.", exception);
+        }
     }
 
     private string GetRequiredConfig(string envKey, string configKey)
@@ -189,6 +215,17 @@ public class PayosMerchantClient
         }
 
         return result;
+    }
+    public async Task<(bool Operational, string Detail)> ProbeAsync()
+    {
+        EnsureConfigured();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api-merchant.payos.vn/v2/payment-requests/0");
+        request.Headers.TryAddWithoutValidation("x-client-id", GetRequiredConfig("PAYOS_CLIENT_ID", "Payments:PayOS:ClientId"));
+        request.Headers.TryAddWithoutValidation("x-api-key", GetRequiredConfig("PAYOS_API_KEY", "Payments:PayOS:ApiKey"));
+        using var response = await SendPayosRequestAsync(request);
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+            return (false, $"HTTP {(int)response.StatusCode}: credentials rejected");
+        return (true, $"API reachable (HTTP {(int)response.StatusCode})");
     }
 }
 

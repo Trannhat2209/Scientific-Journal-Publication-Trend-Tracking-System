@@ -38,13 +38,16 @@ public class PaymentsController : ControllerBase
             return Unauthorized(new { error = "Please sign in before upgrading to Pro." });
         }
 
+        var targetRole = ParseProTargetRole(request.TargetRole);
         if (user.IsPro || string.Equals(user.Plan, "Pro", StringComparison.OrdinalIgnoreCase))
         {
+            await ActivateUserProAsync(user, 0, null, targetRole);
+            await _context.SaveChangesAsync();
             return Ok(new
             {
                 alreadyPro = true,
                 user = MapUser(user),
-                message = "This account is already on the Pro plan."
+                message = $"This account is already on the Pro plan. {targetRole} workspace is ready."
             });
         }
 
@@ -59,26 +62,44 @@ public class PaymentsController : ControllerBase
         var cancelUrl = $"{frontendUrl}/payment-return?provider=payos&orderCode={orderCode}&cancelled=1";
         var description = billingCycle == "monthly" ? "STPROMO" : "STPROYR";
 
-        var paymentLink = await _payosClient.CreatePaymentLinkAsync(new CreatePayosPaymentLinkRequest
+        PayosPaymentLinkData paymentLink;
+        try
         {
-            OrderCode = orderCode,
-            Amount = amount,
-            Description = description,
-            BuyerName = user.FullName,
-            BuyerEmail = user.Email,
-            CancelUrl = cancelUrl,
-            ReturnUrl = returnUrl,
-            ExpiredAt = checked((int)expiresAtUnix),
-            Items =
+            paymentLink = await _payosClient.CreatePaymentLinkAsync(new CreatePayosPaymentLinkRequest
             {
-                new PayosPaymentItem
+                OrderCode = orderCode,
+                Amount = amount,
+                Description = description,
+                BuyerName = user.FullName,
+                BuyerEmail = user.Email,
+                CancelUrl = cancelUrl,
+                ReturnUrl = returnUrl,
+                ExpiredAt = checked((int)expiresAtUnix),
+                Items =
                 {
-                    Name = billingCycle == "monthly" ? "ScholarTrend Pro Monthly" : "ScholarTrend Pro Yearly",
-                    Quantity = 1,
-                    Price = amount
+                    new PayosPaymentItem
+                    {
+                        Name = $"ScholarTrend Pro {targetRole} {(billingCycle == "monthly" ? "Monthly" : "Yearly")}",
+                        Quantity = 1,
+                        Price = amount
+                    }
                 }
-            }
-        });
+            });
+        }
+        catch (TimeoutException)
+        {
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new
+            {
+                error = "PayOS is taking too long to create the checkout link. Please try again in a moment."
+            });
+        }
+        catch (InvalidOperationException exception) when (exception.Message.Contains("PayOS", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                error = exception.Message
+            });
+        }
 
         var payment = new PaymentTransaction
         {
@@ -91,7 +112,7 @@ public class PaymentsController : ControllerBase
             Plan = "Pro",
             Amount = amount,
             Currency = "VND",
-            Description = description,
+            Description = BuildPaymentDescription(description, targetRole),
             Status = string.IsNullOrWhiteSpace(paymentLink.Status) ? "PENDING" : paymentLink.Status,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(expiresAtUnix).UtcDateTime
@@ -183,6 +204,11 @@ public class PaymentsController : ControllerBase
         var payment = request.OrderCode > 0
             ? await _context.PaymentTransactions.FirstOrDefaultAsync(p => p.OrderCode == request.OrderCode)
             : null;
+        var targetRole = ParseProTargetRole(request.TargetRole);
+        if (payment != null && string.IsNullOrWhiteSpace(request.TargetRole))
+        {
+            targetRole = GetPaymentTargetRole(payment);
+        }
 
         if (payment == null && request.OrderCode > 0)
         {
@@ -196,7 +222,7 @@ public class PaymentsController : ControllerBase
                 Amount = string.Equals(request.BillingCycle, "monthly", StringComparison.OrdinalIgnoreCase)
                     ? PlanPolicy.MonthlyAmountVnd
                     : PlanPolicy.YearlyAmountVnd,
-                Description = "External PayOS sync",
+                Description = BuildPaymentDescription("External PayOS sync", targetRole),
                 Status = "PAID",
                 PaidAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
@@ -207,11 +233,12 @@ public class PaymentsController : ControllerBase
         else if (payment != null)
         {
             payment.Status = "PAID";
+            payment.Description = BuildPaymentDescription(GetBasePaymentDescription(payment.Description), targetRole);
             payment.PaidAt ??= DateTime.UtcNow;
             payment.UpdatedAt = DateTime.UtcNow;
         }
 
-        await ActivateUserProAsync(user, request.OrderCode, request.PaymentLinkId);
+        await ActivateUserProAsync(user, request.OrderCode, request.PaymentLinkId, targetRole);
         await _context.SaveChangesAsync();
         return Ok(MapUser(user));
     }
@@ -275,27 +302,32 @@ public class PaymentsController : ControllerBase
 
         if (normalizedStatus == "PAID" && payment.User != null && amountPaid >= payment.Amount)
         {
-            await ActivateUserProAsync(payment.User, payment.OrderCode, payment.PaymentLinkId);
+            await ActivateUserProAsync(payment.User, payment.OrderCode, payment.PaymentLinkId, GetPaymentTargetRole(payment));
             payment.PaidAt ??= DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync();
     }
 
-    private async Task ActivateUserProAsync(User user, long orderCode, string? paymentLinkId)
+    private async Task ActivateUserProAsync(User user, long orderCode, string? paymentLinkId, UserRole targetRole)
     {
         var wasPro = user.IsPro || string.Equals(user.Plan, "Pro", StringComparison.OrdinalIgnoreCase);
+        var previousRole = user.Role;
         user.IsPro = true;
         user.Plan = "Pro";
+        user.Role = targetRole;
 
-        if (!wasPro)
+        if (!wasPro || previousRole != targetRole)
         {
+            var source = orderCode > 0
+                ? $"PayOS payment {orderCode} ({paymentLinkId})"
+                : "Existing Pro access";
             _context.SyncLogs.Add(new SyncLog
             {
                 TriggeredByUserId = user.Id,
                 SourceApi = "PayOS",
                 Status = SyncStatus.Completed,
-                ErrorMessage = $"PAYOS-PAID: PayOS payment {orderCode} ({paymentLinkId}) activated Pro for {user.Email}.",
+                ErrorMessage = $"PAYOS-PAID: {source} activated {targetRole} Pro for {user.Email}.",
                 StartedAt = DateTime.UtcNow,
                 FinishedAt = DateTime.UtcNow
             });
@@ -350,10 +382,50 @@ public class PaymentsController : ControllerBase
                string.Equals(configuredSecret, providedSecret, StringComparison.Ordinal);
     }
 
+    private static UserRole ParseProTargetRole(string? role)
+    {
+        if (Enum.TryParse<UserRole>(role, true, out var parsed) &&
+            parsed is UserRole.Researcher or UserRole.Lecturer)
+        {
+            return parsed;
+        }
+
+        return UserRole.Researcher;
+    }
+
+    private static string BuildPaymentDescription(string? baseDescription, UserRole targetRole)
+    {
+        var normalizedBase = GetBasePaymentDescription(baseDescription);
+        return $"{normalizedBase}:{targetRole}";
+    }
+
+    private static string GetBasePaymentDescription(string? description)
+    {
+        var value = string.IsNullOrWhiteSpace(description)
+            ? "STPRO"
+            : description.Trim();
+        var separatorIndex = value.LastIndexOf(':');
+        return separatorIndex > 0 ? value[..separatorIndex] : value;
+    }
+
+    private static UserRole GetPaymentTargetRole(PaymentTransaction payment)
+    {
+        var description = payment.Description ?? string.Empty;
+        var separatorIndex = description.LastIndexOf(':');
+        if (separatorIndex >= 0 && separatorIndex < description.Length - 1)
+        {
+            return ParseProTargetRole(description[(separatorIndex + 1)..]);
+        }
+
+        return payment.User?.Role is UserRole.Researcher or UserRole.Lecturer
+            ? payment.User.Role
+            : UserRole.Researcher;
+    }
+
     private static UserRole ParseRole(string? role)
     {
         var normalized = string.Equals(role, "Administrator", StringComparison.OrdinalIgnoreCase) ? "Admin" : role;
-        return Enum.TryParse<UserRole>(normalized, true, out var parsed) ? parsed : UserRole.Researcher;
+        return Enum.TryParse<UserRole>(normalized, true, out var parsed) ? parsed : UserRole.Student;
     }
 
     private static long GetJsonLong(JsonElement element, string propertyName)
@@ -380,6 +452,7 @@ public class PaymentsController : ControllerBase
         payment.CheckoutUrl,
         payment.BillingCycle,
         payment.Plan,
+        TargetRole = GetPaymentTargetRole(payment).ToString(),
         payment.Amount,
         payment.Currency,
         payment.Status,
@@ -408,6 +481,7 @@ public class PaymentsController : ControllerBase
 public class CreateProPaymentRequest
 {
     public string BillingCycle { get; set; } = "yearly";
+    public string TargetRole { get; set; } = "Researcher";
     public PaymentUserDto? User { get; set; }
 }
 
@@ -416,13 +490,14 @@ public class PaymentUserDto
     public string Email { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string FullName { get => Name; set => Name = value; }
-    public string Role { get; set; } = "Researcher";
+    public string Role { get; set; } = "Student";
 }
 
 public class PayosActivateProRequest
 {
     public string Email { get; set; } = string.Empty;
     public string BillingCycle { get; set; } = string.Empty;
+    public string TargetRole { get; set; } = "Researcher";
     public long OrderCode { get; set; }
     public string PaymentLinkId { get; set; } = string.Empty;
 }

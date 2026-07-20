@@ -4,21 +4,44 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 5174",
+    "dev": "vite --host 0.0.0.0 --port 5174 --configLoader runner",
     "dev:all": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-dev.ps1",
     "dev:api": "node server/server.js",
     "start": "node server/server.js",
     "build": "vite build --configLoader runner",
+    "lint": "eslint src server tests vite.config.js",
+    "lint:dotnet": "dotnet format ScientificJournalTrendSystem/ScientificJournal.sln --verify-no-changes --no-restore && dotnet format ScientificJournalTrendSystem/ScientificJournal.AdminTests/ScientificJournal.AdminTests.csproj --verify-no-changes --no-restore",
+    "lint:encoding": "node scripts/check-encoding.mjs",
+    "test": "npm run test:admin && npm run test:ui",
+    "test:admin": "node --test tests/admin/*.test.js",
+    "test:ui": "vitest run tests/ui",
+    "test:dotnet": "dotnet test ScientificJournalTrendSystem/ScientificJournal.AdminTests/ScientificJournal.AdminTests.csproj --no-restore",
+    "check": "npm run lint && npm run lint:encoding && npm run lint:dotnet && npm run test && npm run test:dotnet && npm run build",
     "preview": "vite preview --host 0.0.0.0 --port 4173"
   },
   "dependencies": {
     "@payos/node": "^2.0.5",
     "@vitejs/plugin-react": "^5.0.0",
+    "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
+    "i18next": "^26.3.4",
+    "i18next-browser-languagedetector": "^8.2.1",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "^19.0.0",
+    "react-i18next": "^17.0.8",
     "three": "^0.184.0",
     "vite": "^7.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "eslint": "^10.7.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.10"
   }
 }

@@ -13,12 +13,9 @@ namespace ScientificJournal.Business.Services.Implementations;
 public class NotificationService : INotificationService
 {
     private readonly AppDbContext _context;
-    private readonly INotificationHubService _notificationHubService;
-
-    public NotificationService(AppDbContext context, INotificationHubService notificationHubService)
+    public NotificationService(AppDbContext context)
     {
         _context = context;
-        _notificationHubService = notificationHubService;
     }
 
 
@@ -26,19 +23,34 @@ public class NotificationService : INotificationService
     {
         return await _context.Notifications
             .AsNoTracking()
-            .Where(n => n.UserId == userId)
+            .Where(n => n.UserId == userId &&
+                        (n.DeliveryStatus == "dispatched" || n.DeliveryStatus == "delivered"))
             .OrderByDescending(n => n.CreatedAt)
             .ToListAsync();
     }
 
-    public async Task MarkReadAsync(int notificationId)
+    public async Task<bool> MarkReadAsync(int notificationId, int userId)
     {
-        var notification = await _context.Notifications.FindAsync(notificationId);
-        if (notification != null)
-        {
-            notification.IsRead = true;
-            await _context.SaveChangesAsync();
-        }
+        var notification = await _context.Notifications
+            .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
+        if (notification == null) return false;
+        notification.IsRead = true;
+        notification.ReadAt ??= DateTime.UtcNow;
+        notification.AcknowledgedAt ??= DateTime.UtcNow;
+        notification.DeliveryStatus = "delivered";
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> AcknowledgeAsync(int notificationId, int userId)
+    {
+        var notification = await _context.Notifications
+            .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
+        if (notification == null) return false;
+        notification.AcknowledgedAt ??= DateTime.UtcNow;
+        notification.DeliveryStatus = "delivered";
+        await _context.SaveChangesAsync();
+        return true;
     }
 
     public async Task MarkAllReadAsync(int userId)
@@ -50,6 +62,7 @@ public class NotificationService : INotificationService
         foreach (var n in unread)
         {
             n.IsRead = true;
+            n.ReadAt ??= DateTime.UtcNow;
         }
 
         await _context.SaveChangesAsync();
@@ -66,31 +79,14 @@ public class NotificationService : INotificationService
             IsRead = false,
             PublicationId = publicationId,
             NotificationType = ScientificJournal.Common.Enums.NotificationType.NEW_PUBLICATION,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            DeliveryStatus = "pending",
+            ScheduledAt = DateTime.UtcNow
         };
 
         _context.Notifications.Add(notification);
         await _context.SaveChangesAsync();
 
-        // Push real-time notification to client via SignalR
-        try
-        {
-            await _notificationHubService.SendNotificationAsync(userId.ToString(), new
-            {
-                id = notification.Id,
-                title = notification.Title,
-                message = notification.Message,
-                route = notification.Route,
-                isRead = notification.IsRead,
-                publicationId = notification.PublicationId,
-                notificationType = notification.NotificationType.ToString(),
-                createdAt = notification.CreatedAt
-            });
-        }
-        catch
-        {
-            // Ignore SignalR client push errors if no client is listening/connected
-        }
     }
 
     public async Task<Notification?> CreateNotificationForEmailAsync(
@@ -122,30 +118,13 @@ public class NotificationService : INotificationService
             IsRead = false,
             PublicationId = publicationId,
             NotificationType = notificationType,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            DeliveryStatus = "pending",
+            ScheduledAt = DateTime.UtcNow
         };
 
         _context.Notifications.Add(notification);
         await _context.SaveChangesAsync();
-
-        try
-        {
-            await _notificationHubService.SendNotificationAsync(user.Id.ToString(), new
-            {
-                id = notification.Id,
-                title = notification.Title,
-                message = notification.Message,
-                route = notification.Route,
-                isRead = notification.IsRead,
-                publicationId = notification.PublicationId,
-                notificationType = notification.NotificationType.ToString(),
-                createdAt = notification.CreatedAt
-            });
-        }
-        catch
-        {
-            // Ignore SignalR client push errors if no client is listening/connected
-        }
 
         return notification;
     }
@@ -153,7 +132,9 @@ public class NotificationService : INotificationService
     public async Task<int> GetUnreadCountAsync(int userId)
     {
         return await _context.Notifications
-            .CountAsync(n => n.UserId == userId && !n.IsRead);
+            .CountAsync(n => n.UserId == userId &&
+                             (n.DeliveryStatus == "dispatched" || n.DeliveryStatus == "delivered") &&
+                             !n.IsRead);
     }
 }
 

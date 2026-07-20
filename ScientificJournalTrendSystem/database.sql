@@ -439,7 +439,7 @@ INSERT INTO sync_logs
     (id, triggered_by_user_id, source_api, status, records_synced, started_at, finished_at)
 VALUES
 (1, 1, 'SemanticScholar', 'Completed', 1204, '2024-12-01 02:00:00', '2024-12-01 02:14:00'),
-(2, NULL, 'OpenAlex', 'Failed', 0, '2024-12-02 02:00:00', '2024-12-02 02:01:00'),
+(2, NULL, 'OpenAlex', 'Completed', 980, '2024-12-02 02:00:00', '2024-12-02 02:09:00'),
 (3, NULL, 'SemanticScholar', 'Completed', 890, '2024-12-03 02:00:00', '2024-12-03 02:11:00');
 SET IDENTITY_INSERT sync_logs OFF;
 GO

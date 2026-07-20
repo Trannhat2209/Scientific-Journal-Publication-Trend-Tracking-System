@@ -7,12 +7,14 @@ public class SemanticScholarClient
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly ExternalApiRateLimiter _rateLimiter;
 
-    public SemanticScholarClient(HttpClient httpClient, IConfiguration configuration)
+    public SemanticScholarClient(HttpClient httpClient, IConfiguration configuration, ExternalApiRateLimiter rateLimiter)
     {
         _httpClient = httpClient;
         _httpClient.Timeout = TimeSpan.FromSeconds(12);
         _configuration = configuration;
+        _rateLimiter = rateLimiter;
     }
 
     public async Task<IReadOnlyList<ExternalPublication>> SearchAsync(
@@ -55,6 +57,7 @@ public class SemanticScholarClient
             request.Headers.TryAddWithoutValidation("x-api-key", apiKey);
         }
 
+        await _rateLimiter.WaitAsync("SemanticScholar", cancellationToken);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -84,6 +87,7 @@ public class SemanticScholarClient
         var doi = GetDoi(paper);
         var venue = GetVenueName(paper);
         var paperId = GetString(paper, "paperId");
+        var sourceUrl = GetString(paper, "url");
 
         return new ExternalPublication
         {
@@ -93,6 +97,9 @@ public class SemanticScholarClient
             DOI = string.IsNullOrWhiteSpace(doi)
                 ? (string.IsNullOrWhiteSpace(paperId) ? string.Empty : $"semanticscholar:{paperId}")
                 : doi,
+            SourceUrl = string.IsNullOrWhiteSpace(sourceUrl) && !string.IsNullOrWhiteSpace(paperId)
+                ? $"https://www.semanticscholar.org/paper/{paperId}"
+                : sourceUrl,
             SourceApi = "Semantic Scholar",
             JournalName = string.IsNullOrWhiteSpace(venue)
                 ? "Semantic Scholar"

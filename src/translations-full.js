@@ -1,0 +1,238 @@
+// Complete translation mapping for all text in the app
+export const translationMap = {
+  // Headers & Titles
+  "Knowledge Graph": "Đồ thị Tri thức",
+  Dashboard: "Bảng điều khiển",
+  "Submit Publication": "Nộp Bài viết",
+  "Bookmarks & Followed Items": "Đánh dấu & Mục theo dõi",
+  Notifications: "Thông báo",
+  "Trend Tracking": "Theo dõi Xu hướng",
+  Reports: "Báo cáo",
+  "Year Comparison Analysis": "Phân tích So sánh Năm",
+  "Academic Data Sync Management": "Quản lý Đồng bộ Dữ liệu Học thuật",
+  "User Profile": "Hồ sơ Người dùng",
+  Settings: "Cài đặt",
+  "Generate Custom Report": "Tạo Báo cáo Tùy chỉnh",
+
+  // Buttons & Actions
+  "List View": "Xem Danh sách",
+  Filters: "Bộ lọc",
+  "Compare New Paper": "So sánh Bài viết Mới",
+  "Export Excel": "Xuất Excel",
+  "Download Papers TXT": "Tải Bài viết TXT",
+  Publications: "Bài viết",
+  Keywords: "Từ khóa",
+  Journals: "Tạp chí",
+  Topics: "Chủ đề",
+  "Save Full Text": "Lưu Toàn văn",
+  "Save Link Only": "Chỉ Lưu Liên kết",
+  "Compare (0)": "So sánh (0)",
+  "Mark all as read": "Đánh dấu tất cả đã đọc",
+  "All Notifications": "Tất cả Thông báo",
+  Unread: "Chưa đọc",
+  "Any Time": "Mọi lúc",
+  Today: "Hôm nay",
+  "This Week": "Tuần này",
+  Compare: "So sánh",
+  Comparison: "So sánh",
+  "Export Data": "Xuất Dữ liệu",
+  "Run Dry Check": "Chạy Kiểm tra Thử",
+  "Start Sync": "Bắt đầu Đồng bộ",
+  Configure: "Cấu hình",
+  "Upload New": "Tải lên Mới",
+  Remove: "Xóa",
+  "Save Changes": "Lưu Thay đổi",
+  Cancel: "Hủy",
+  Reset: "Đặt lại",
+  "Profile settings": "Cài đặt Hồ sơ",
+  "Save Settings": "Lưu Cài đặt",
+
+  // Form Labels
+  "Publication Title": "Tiêu đề Bài viết",
+  Authors: "Tác giả",
+  "Abstract / Paper Content": "Tóm tắt / Nội dung Bài viết",
+  "Upload File": "Tải lên Tệp",
+  "Choose File": "Chọn Tệp",
+  "No file chosen": "Chưa chọn tệp",
+  "Enter paper title": "Nhập tiêu đề bài viết",
+  "Demo Researcher": "Nhà nghiên cứu Demo",
+  "machine learning, citations, trend analysis":
+    "học máy, trích dẫn, phân tích xu hướng",
+  "Paste the abstract or main paper content for AI similarity checking...":
+    "Dán tóm tắt hoặc nội dung bài viết chính để kiểm tra độ tương đồng AI...",
+  "PDF, DOCX, or TXT accepted": "Chấp nhận PDF, DOCX hoặc TXT",
+  "Check Similarity and Submit": "Kiểm tra Độ tương đồng và Nộp",
+
+  // Messages & Descriptions
+  "Stay updated on publications, trends, and system alerts.":
+    "Cập nhật về bài viết, xu hướng và cảnh báo hệ thống.",
+  "Analyze keyword velocity and raw publication volume across disciplines.":
+    "Phân tích tốc độ từ khóa và khối lượng bài viết thô theo ngành.",
+  "Monitor publication metadata ingestion, API comparison sampling, normalization, scheduled jobs, and failure logs.":
+    "Giám sát việc thu thập metadata bài viết, lấy mẫu so sánh API, chuẩn hóa, công việc đã lên lịch và nhật ký lỗi.",
+  "Manage your personal information, security, and academic preferences.":
+    "Quản lý thông tin cá nhân, bảo mật và sở thích học thuật của bạn.",
+  "Control how ScholarTrend tracks publications, trends, and alerts.":
+    "Kiểm soát cách ScholarTrend theo dõi bài viết, xu hướng và cảnh báo.",
+  "AI similarity check runs before the paper can enter Admin review.":
+    "Kiểm tra độ tương đồng AI chạy trước khi bài viết có thể vào đánh giá của Quản trị viên.",
+
+  // Submission Rule
+  "SUBMISSION RULE": "QUY TẮC NỘP BÀI",
+  "Papers must not exceed 50% similarity with an original source. If the similarity score is over 50%, the AI system will automatically cancel the submission and Admin will not approve it.":
+    "Bài viết không được vượt quá 50% độ tương đồng với nguồn gốc. Nếu điểm tương đồng trên 50%, hệ thống AI sẽ tự động hủy bài nộp và Quản trị viên sẽ không phê duyệt.",
+  "Max similarity: 50%": "Độ tương đồng tối đa: 50%",
+
+  // Stats & Metrics
+  "TOTAL PUBS": "TỔNG BÀI VIẾT",
+  "YOY GROWTH": "TĂNG TRƯỞNG YOY",
+  "TRENDING SCORE A (RAW)": "ĐIỂM XU HƯỚNG A (THÔ)",
+  "TRENDING SCORE B (RATE)": "ĐIỂM XU HƯỚNG B (TỶ LỆ)",
+  "vs last year": "so với năm trước",
+  "Total Publications": "Tổng Bài viết",
+  "Total Citations": "Tổng Trích dẫn",
+  "Top Keyword Shift": "Thay đổi Từ khóa Hàng đầu",
+  "Top Journal Divergence": "Phân kỳ Tạp chí Hàng đầu",
+  Baseline: "Cơ sở",
+  "Publication Volume Trajectory": "Quỹ đạo Khối lượng Bài viết",
+  "Keyword Differential": "Chênh lệch Từ khóa",
+  Keyword: "Từ khóa",
+  Delta: "Chênh lệch",
+
+  // Sync Management
+  "Semantic Scholar API": "API Semantic Scholar",
+  "OpenAlex API": "API OpenAlex",
+  "Primary metadata source": "Nguồn metadata chính",
+  "R02 comparison sample": "Mẫu so sánh R02",
+  Connected: "Đã kết nối",
+  "Compare-only": "Chỉ so sánh",
+  "SYNCED RECORDS": "BẢN GHI ĐÃ ĐỒNG BỘ",
+  LATENCY: "ĐỘ TRỄ",
+  COVERAGE: "PHẠM VI",
+  Sample: "Mẫu",
+  "Metadata Pipeline": "Pipeline Metadata",
+  "Current batch": "Lô hiện tại",
+  "Fetch Publication Metadata": "Lấy Metadata Bài viết",
+  "Normalize Schema": "Chuẩn hóa Lược đồ",
+  "Deduplicate Records": "Loại bỏ Bản ghi Trùng lặp",
+  "Persist to Database": "Lưu vào Cơ sở dữ liệu",
+  Complete: "Hoàn thành",
+  Active: "Đang hoạt động",
+  Queued: "Đang chờ",
+  "Hangfire Schedule": "Lịch Hangfire",
+  Job: "Công việc",
+  Schedule: "Lịch trình",
+  "Last Run": "Lần chạy cuối",
+  Duration: "Thời lượng",
+  Status: "Trạng thái",
+  "Nightly Semantic Scholar Refresh": "Làm mới Semantic Scholar Hàng đêm",
+  "OpenAlex Journal Sample Compare": "So sánh Mẫu Tạp chí OpenAlex",
+  "Metadata Normalization Sweep": "Quét Chuẩn hóa Metadata",
+  daily: "hàng ngày",
+  Saturday: "Thứ Bảy",
+  "Every 6 hours": "Mỗi 6 giờ",
+  Succeeded: "Thành công",
+  Running: "Đang chạy",
+  "Database Health": "Tình trạng Cơ sở dữ liệu",
+  "CANONICAL PUBLICATIONS": "BÀI VIẾT CHUẨN",
+  "NORMALIZED AUTHORS": "TÁC GIẢ ĐÃ CHUẨN HÓA",
+  "SUSPECT DATA": "DỮ LIỆU NGHI NGỜ",
+  "ERROR QUEUE": "HÀNG ĐỢI LỖI",
+
+  // Profile Tabs
+  "Personal Info": "Thông tin Cá nhân",
+  "Academic Identity": "Danh tính Học thuật",
+  "Change Password": "Đổi Mật khẩu",
+  "Research Interests": "Sở thích Nghiên cứu",
+  "Notification Settings": "Cài đặt Thông báo",
+  "Privacy & Security": "Riêng tư & Bảo mật",
+  Preferences: "Tùy chọn",
+  "Personal Information": "Thông tin Cá nhân",
+  "Full Name": "Họ và Tên",
+  "Email Address (Read-only)": "Địa chỉ Email (Chỉ đọc)",
+  Institution: "Cơ quan",
+  Department: "Khoa/Bộ môn",
+  "Institute of Advanced Analytics": "Viện Phân tích Nâng cao",
+  "Computational Biology": "Sinh học Tính toán",
+  Researcher: "Nhà nghiên cứu",
+  "JPG, GIF or PNG. Max size of 800K":
+    "JPG, GIF hoặc PNG. Kích thước tối đa 800K",
+
+  // Settings
+  "RESEARCHER WORKSPACE": "KHÔNG GIAN LÀM VIỆC NHÀ NGHIÊN CỨU",
+  "20% weekly growth": "Tăng trưởng 20% hàng tuần",
+  Digest: "Bản tóm tắt",
+  Weekly: "Hàng tuần",
+  Sources: "Nguồn",
+  "3 active": "3 đang hoạt động",
+  "Academic data sources": "Nguồn dữ liệu Học thuật",
+  "WoKs, authors, institutions, and corpora":
+    "WoKs, tác giả, cơ quan và kho dữ liệu",
+  "Citation graph and index similarity":
+    "Đồ thị trích dẫn và độ tương đồng chỉ mục",
+  "300 metadata and publisher records": "300 bản ghi metadata và nhà xuất bản",
+  "Preprint discovery for fast-moving fields":
+    "Khám phá Preprint cho các lĩnh vực phát triển nhanh",
+  "Trend and citation alerts": "Cảnh báo Xu hướng và Trích dẫn",
+  "Default discipline": "Ngành mặc định",
+  "Computer Science": "Khoa học Máy tính",
+  "Trend threshold": "Ngưỡng Xu hướng",
+
+  // Upgrade Modal
+  "SCHOLARTREND PRO": "SCHOLARTREND PRO",
+  "Upgrade to Pro": "Nâng cấp lên Pro",
+  "Unlock deeper analytical intelligence for your tracked disciplines.":
+    "Mở khóa trí tuệ phân tích sâu hơn cho các ngành bạn theo dõi.",
+  "Researcher search accuracy": "Độ chính xác tìm kiếm Nhà nghiên cứu",
+  "Free account now. Pay05 upgrade in-churns Pro and lets admin manage this account plan.":
+    "Tài khoản miễn phí hiện tại. Nâng cấp Pay05 trong Pro và cho phép quản trị viên quản lý kế hoạch tài khoản này.",
+  Monthly: "Hàng tháng",
+  "Yearly Save 2%": "Hàng năm Tiết kiệm 2%",
+  "/ year": "/ năm",
+  "Unlimited tracked keywords": "Từ khóa theo dõi Không giới hạn",
+  "Priority trend alerts": "Cảnh báo xu hướng Ưu tiên",
+  "Advanced citation intelligence": "Trí tuệ trích dẫn Nâng cao",
+  "Full report export suite": "Bộ xuất báo cáo Đầy đủ",
+  "Upgrade Now": "Nâng cấp Ngay",
+  "Secure checkout is processed by PayOS.":
+    "Thanh toán an toàn được xử lý bởi PayOS.",
+
+  // Report Generation
+  "Step 1: Select Scope": "Bước 1: Chọn Phạm vi",
+  "Step 2: Choose Metrics": "Bước 2: Chọn Chỉ số",
+  "Step 3: Live Preview": "Bước 3: Xem trước Trực tiếp",
+  "Step 4: Export Options": "Bước 4: Tùy chọn Xuất",
+  "Keywords (Multi-select)": "Từ khóa (Nhiều lựa chọn)",
+  "machine learning": "học máy",
+  "climate models": "mô hình khí hậu",
+  "Journals (Multi-select)": "Tạp chí (Nhiều lựa chọn)",
+  "Start Year": "Năm Bắt đầu",
+  "End Year": "Năm Kết thúc",
+  "e.g. Artificial Intelligence, Genomics": "ví dụ: Trí tuệ Nhân tạo, Genomics",
+  "Publication Count": "Số lượng Bài viết",
+  "Growth Rate": "Tỷ lệ Tăng trưởng",
+  "Trending Score A": "Điểm Xu hướng A",
+  "Trending Score B": "Điểm Xu hướng B",
+  "Top Journals": "Tạp chí Hàng đầu",
+  "Citation Analysis": "Phân tích Trích dẫn",
+  "Trend Analysis: machine learning (2018-2023)":
+    "Phân tích Xu hướng: học máy (2018-2023)",
+  "Generated on": "Tạo vào",
+  "Sisper backend trend metrics": "Chỉ số xu hướng backend Sisper",
+  "TOTAL PUBLICATIONS": "TỔNG BÀI VIẾT",
+  "AVG GROWTH RATE": "TỶ LỆ TĂNG TRƯỞNG TRUNG BÌNH",
+  "AVG CITATIONS/PAPER": "TRUNG BÌNH TRÍCH DẪN/BÀI VIẾT",
+  "Top Authors": "Tác giả Hàng đầu",
+  Author: "Tác giả",
+  Pubs: "Bài viết",
+  "Trend Score A": "Điểm Xu hướng A",
+  "J. Smith et al.": "J. Smith và cộng sự",
+  "A. Johnson": "A. Johnson",
+  "Sample Data": "Dữ liệu Mẫu",
+};
+
+// Auto-translate function
+export function autoTranslate(text, currentLanguage = "en") {
+  if (currentLanguage === "en") return text;
+  return translationMap[text] || text;
+}

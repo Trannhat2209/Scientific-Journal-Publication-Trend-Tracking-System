@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.DTOs.Request.Publication;
 using ScientificJournal.Common.DTOs.Response.Publication;
+using ScientificJournal.DataAccess.External;
 
 namespace ScientificJournal.Business.Services.Implementations;
 
@@ -11,11 +12,13 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
     private const int SimilarityLimitPercent = 50;
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly ExternalApiRateLimiter _rateLimiter;
 
-    public SerpApiScholarSimilarityService(HttpClient httpClient, IConfiguration configuration)
+    public SerpApiScholarSimilarityService(HttpClient httpClient, IConfiguration configuration, ExternalApiRateLimiter rateLimiter)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _rateLimiter = rateLimiter;
     }
 
     public async Task<PublicationSimilarityCheckResponseDto> CheckSimilarityAsync(
@@ -40,6 +43,7 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
             $"?engine=google_scholar&q={Uri.EscapeDataString(query)}" +
             $"&num={maxResults}&api_key={Uri.EscapeDataString(apiKey)}";
 
+        await _rateLimiter.WaitAsync("SerpApi", cancellationToken);
         using var response = await _httpClient.GetAsync(url, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -60,7 +64,8 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
                 Source = candidate.Source,
                 Link = candidate.Link,
                 Snippet = candidate.Snippet,
-                SimilarityPercent = CalculateSimilarityPercent(request, candidate)
+                SimilarityPercent = CalculateSimilarityPercent(request, candidate),
+                SegmentMatches = FindSegmentMatches(request, candidate)
             })
             .OrderByDescending(candidate => candidate.SimilarityPercent)
             .Take(maxResults)
@@ -216,6 +221,32 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
         var union = leftSet.Count + rightSet.Count - intersection;
         return union == 0 ? 0 : (double)intersection / union;
     }
+
+    private static List<PublicationSimilaritySegmentDto> FindSegmentMatches(
+        PublicationSimilarityCheckRequestDto request,
+        ScholarCandidate candidate)
+    {
+        var submittedSegments = SplitSegments($"{request.Title}. {request.Abstract}");
+        var sourceSegments = SplitSegments($"{candidate.Title}. {candidate.Snippet}");
+        return submittedSegments
+            .SelectMany(submitted => sourceSegments.Select(source => new PublicationSimilaritySegmentDto
+            {
+                SubmittedText = submitted,
+                SourceText = source,
+                SimilarityPercent = (int)Math.Round(Jaccard(submitted, source) * 100, MidpointRounding.AwayFromZero)
+            }))
+            .Where(match => match.SimilarityPercent >= 15)
+            .OrderByDescending(match => match.SimilarityPercent)
+            .DistinctBy(match => match.SubmittedText)
+            .Take(5)
+            .ToList();
+    }
+
+    private static List<string> SplitSegments(string value) => value
+        .Split(['.', '!', '?', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(segment => Tokenize(segment).Count >= 3)
+        .Take(30)
+        .ToList();
 
     private static HashSet<string> Tokenize(string value)
     {

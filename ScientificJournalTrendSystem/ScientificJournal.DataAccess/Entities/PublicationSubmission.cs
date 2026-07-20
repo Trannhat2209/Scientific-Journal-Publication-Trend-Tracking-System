@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace ScientificJournal.DataAccess.Entities;
 
@@ -34,4 +35,6 @@ public class PublicationSubmission
     public DateTime? ReviewedAt { get; set; }
     public int? ReviewedByUserId { get; set; }
     public User? ReviewedByUser { get; set; }
+    [Timestamp]
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }

@@ -102,6 +102,113 @@ public class DashboardController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("report-preview")]
+    public async Task<IActionResult> GetReportPreview(
+        [FromServices] AppDbContext context,
+        [FromQuery] string? keyword,
+        [FromQuery] int fromYear = 2018,
+        [FromQuery] int toYear = 2023)
+    {
+        if (fromYear <= 0 && toYear <= 0)
+        {
+            toYear = DateTime.UtcNow.Year;
+            fromYear = toYear - 4;
+        }
+        else if (fromYear <= 0)
+        {
+            fromYear = toYear - 4;
+        }
+        else if (toYear <= 0)
+        {
+            toYear = DateTime.UtcNow.Year;
+        }
+
+        if (fromYear > toYear)
+        {
+            (fromYear, toYear) = (toYear, fromYear);
+        }
+
+        var keywordText = (keyword ?? string.Empty).Trim();
+        var normalizedKeyword = keywordText.ToLowerInvariant();
+
+        var query = context.Publications
+            .AsNoTracking()
+            .Where(p => !p.IsDeleted && p.Year >= fromYear && p.Year <= toYear);
+
+        if (!string.IsNullOrWhiteSpace(keywordText))
+        {
+            query = query.Where(p =>
+                p.Title.Contains(keywordText) ||
+                (p.Abstract != null && p.Abstract.Contains(keywordText)) ||
+                p.PublicationKeywords.Any(pk =>
+                    pk.Keyword != null &&
+                    (pk.Keyword.Term.Contains(keywordText) ||
+                     pk.Keyword.NormalizedTerm.Contains(normalizedKeyword))) ||
+                p.PublicationAuthors.Any(pa =>
+                    pa.Author != null && pa.Author.Name.Contains(keywordText)));
+        }
+
+        var publications = await query
+            .Select(p => new
+            {
+                p.Id,
+                p.Year,
+                p.CitationCount
+            })
+            .ToListAsync();
+
+        var publicationIds = publications.Select(p => p.Id).ToHashSet();
+        var yearlyCounts = Enumerable.Range(fromYear, toYear - fromYear + 1)
+            .Select(year => new
+            {
+                year,
+                publicationCount = publications.Count(p => p.Year == year)
+            })
+            .ToList();
+
+        var growthRates = yearlyCounts
+            .Zip(yearlyCounts.Skip(1), (previous, current) =>
+                previous.publicationCount > 0
+                    ? ((current.publicationCount - previous.publicationCount) / (double)previous.publicationCount) * 100
+                    : current.publicationCount > 0 ? 100 : 0)
+            .ToList();
+
+        var topAuthors = publicationIds.Count == 0
+            ? new List<object>()
+            : await context.PublicationAuthors
+                .AsNoTracking()
+                .Where(pa => publicationIds.Contains(pa.PublicationId) && pa.Author != null)
+                .GroupBy(pa => pa.Author!.Name)
+                .Select(group => new
+                {
+                    name = group.Key,
+                    publications = group.Select(pa => pa.PublicationId).Distinct().Count()
+                })
+                .OrderByDescending(author => author.publications)
+                .ThenBy(author => author.name)
+                .Take(5)
+                .Select(author => new
+                {
+                    author.name,
+                    author.publications,
+                    trendScore = Math.Round(author.publications * 100.0 / Math.Max(1, publications.Count), 1)
+                })
+                .Cast<object>()
+                .ToListAsync();
+
+        return Ok(new
+        {
+            keyword = keywordText,
+            fromYear,
+            toYear,
+            yearlyCounts,
+            totalPublications = publications.Count,
+            averageGrowthRate = Math.Round(growthRates.Count == 0 ? 0 : growthRates.Average(), 1),
+            averageCitationsPerPaper = Math.Round(publications.Count == 0 ? 0 : publications.Average(p => p.CitationCount), 1),
+            topAuthors
+        });
+    }
+
 
     [HttpPost("export")]
     public async Task<IActionResult> Export([FromBody] ExportRequestDto request)

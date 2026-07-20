@@ -443,6 +443,9 @@ server/data/*.json
 # VS Code
 .vscode/
 
+# Codex/local run artifacts
+.codex-run/
+
 .fake
 
 # ASP.NET runtime/generated files

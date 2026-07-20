@@ -33,7 +33,7 @@ public class GoogleScholarAiService : IPlagiarismCheckService
             // Compute similarity based on title & abstract text
             double titleSim = _similarityService.CalculateSimilarity(title, pub.Title);
             double abstractSim = _similarityService.CalculateSimilarity(abstractText, pub.Abstract ?? string.Empty);
-            
+
             // Average similarity of title (30%) and abstract (70%)
             double avgSim = (titleSim * 0.3) + (abstractSim * 0.7);
 
@@ -41,21 +41,6 @@ public class GoogleScholarAiService : IPlagiarismCheckService
             {
                 maxScore = avgSim;
                 matchingSource = pub.Title;
-            }
-        }
-
-        // Mock external Google Scholar AI checking triggers
-        if (!string.IsNullOrEmpty(abstractText))
-        {
-            if (abstractText.Contains("plagiarism-test-high"))
-            {
-                maxScore = 0.85;
-                matchingSource = "Google Scholar External Index #9482";
-            }
-            else if (abstractText.Contains("plagiarism-test-medium"))
-            {
-                maxScore = 0.45;
-                matchingSource = "Google Scholar External Index #1042";
             }
         }
 
