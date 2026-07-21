@@ -40,6 +40,7 @@ const INSTITUTION_OIDC_ISSUER = trimTrailingSlash(
       ? `https://login.microsoftonline.com/${INSTITUTION_OIDC_TENANT_ID}/v2.0`
       : ""),
 );
+const INSTITUTION_OIDC_DEV = String(process.env.INSTITUTION_OIDC_DEV || "").toLowerCase() === "true";
 const INSTITUTION_OIDC_AUTHORITY = INSTITUTION_OIDC_ISSUER.replace(
   /\/v2\.0$/i,
   "",
@@ -178,6 +179,24 @@ const server = http.createServer(async (req, res) => {
           maxAge: 600,
         }),
       });
+      return;
+    }
+
+    // Development helper: simulate an institution SSO handshake locally when
+    // `INSTITUTION_OIDC_DEV=true` is set. This redirects immediately to the
+    // standard callback with a generated dev code so the rest of the flow can
+    // run unmodified and create a test session.
+    if (requestUrl.pathname === "/api/auth/institution/dev") {
+      if (!INSTITUTION_OIDC_DEV) {
+        sendJson(res, 404, { error: "Not found" });
+        return;
+      }
+      const state = String(requestUrl.searchParams.get("state") || "");
+      const code = `DEV:${crypto.randomBytes(8).toString("hex")}`;
+      const redirectUrl = `${requestUrl.origin}/api/auth/institution/callback?code=${encodeURIComponent(
+        code,
+      )}&state=${encodeURIComponent(state)}`;
+      redirect(res, redirectUrl);
       return;
     }
 
@@ -1281,6 +1300,9 @@ async function exchangeOrcidCode(code) {
 }
 
 function requireInstitutionConfig() {
+  // Allow a developer-friendly fallback when INSTITUTION_OIDC_DEV=true.
+  if (INSTITUTION_OIDC_DEV) return;
+
   if (
     !INSTITUTION_OIDC_CLIENT_ID ||
     !INSTITUTION_OIDC_CLIENT_SECRET ||
@@ -1307,6 +1329,21 @@ function createInstitutionAuthUrl(requestUrl, requestOrigin) {
     frontendOrigin,
     exp: Math.floor(Date.now() / 1000) + 600,
   });
+  // If developer mode is enabled, return a local dev endpoint that will
+  // simulate the institution provider and immediately redirect to the
+  // callback with a dev code.
+  if (INSTITUTION_OIDC_DEV) {
+    try {
+      const origin = requestUrl?.origin || FRONTEND_URL;
+      const devUrl = new URL("/api/auth/institution/dev", origin);
+      devUrl.searchParams.set("state", stateToken);
+      return { url: devUrl.toString(), stateToken };
+    } catch {
+      // Fallback to frontend origin if anything goes wrong.
+      return { url: `${FRONTEND_URL}/?auth=institution-dev`, stateToken };
+    }
+  }
+
   const authUrl = new URL(
     `${INSTITUTION_OIDC_AUTHORITY}/oauth2/v2.0/authorize`,
   );
@@ -1333,6 +1370,19 @@ async function handleInstitutionCallback(req, res, requestUrl) {
 }
 
 async function exchangeInstitutionCode(code) {
+  // Developer-mode: return a fake profile for dev codes so local testing
+  // works without real OIDC credentials.
+  if (INSTITUTION_OIDC_DEV && String(code || "").startsWith("DEV:")) {
+    const id = String(code).slice(4);
+    return {
+      externalId: `dev-institution:${id}`,
+      email: `dev.user+${id}@example.edu`,
+      name: `Dev Institution User ${id}`,
+      picture: "",
+      emailVerified: true,
+    };
+  }
+
   const response = await fetch(
     `${INSTITUTION_OIDC_AUTHORITY}/oauth2/v2.0/token`,
     {
