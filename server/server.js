@@ -1354,6 +1354,7 @@ function createInstitutionAuthUrl(requestUrl, requestOrigin) {
   authUrl.searchParams.set("redirect_uri", INSTITUTION_OIDC_REDIRECT_URI);
   authUrl.searchParams.set("state", stateToken);
   authUrl.searchParams.set("nonce", stateToken.slice(0, 32));
+  authUrl.searchParams.set("prompt", "select_account");
   return { url: authUrl.toString(), stateToken };
 }
 
