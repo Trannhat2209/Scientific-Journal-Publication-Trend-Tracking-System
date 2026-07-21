@@ -11,6 +11,9 @@ public class PublicationSimilarityCheckResponseDto
     public string MatchedSource { get; set; } = "SerpApi Google Scholar";
     public string? MatchedLink { get; set; }
     public string Decision { get; set; } = string.Empty;
+    public int TotalCandidatesScanned { get; set; }
+    public List<string> SourcesSearched { get; set; } = new();
+    public List<string> SourceWarnings { get; set; } = new();
     public List<PublicationSimilarityCandidateDto> Candidates { get; set; } = new();
 }
 

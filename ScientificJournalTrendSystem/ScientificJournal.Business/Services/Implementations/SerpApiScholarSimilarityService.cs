@@ -13,12 +13,18 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly ExternalApiRateLimiter _rateLimiter;
+    private readonly OpenAlexClient _openAlexClient;
 
-    public SerpApiScholarSimilarityService(HttpClient httpClient, IConfiguration configuration, ExternalApiRateLimiter rateLimiter)
+    public SerpApiScholarSimilarityService(
+        HttpClient httpClient,
+        IConfiguration configuration,
+        ExternalApiRateLimiter rateLimiter,
+        OpenAlexClient openAlexClient)
     {
         _httpClient = httpClient;
         _configuration = configuration;
         _rateLimiter = rateLimiter;
+        _openAlexClient = openAlexClient;
     }
 
     public async Task<PublicationSimilarityCheckResponseDto> CheckSimilarityAsync(
@@ -30,34 +36,83 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
             throw new ArgumentException("Title or abstract is required for similarity checking.");
         }
 
-        var apiKey = ResolveApiKey();
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            throw new InvalidOperationException("SERPAPI_API_KEY is not configured.");
-        }
-
         var query = BuildScholarQuery(request);
-        var maxResults = Math.Clamp(request.MaxResults <= 0 ? 10 : request.MaxResults, 1, 20);
-        var url =
-            "https://serpapi.com/search.json" +
-            $"?engine=google_scholar&q={Uri.EscapeDataString(query)}" +
-            $"&num={maxResults}&api_key={Uri.EscapeDataString(apiKey)}";
+        var maxResults = Math.Clamp(request.MaxResults <= 0 ? 80 : request.MaxResults, 10, 100);
+        // One Scholar page avoids duplicate paid requests and Google anti-bot
+        // throttling. OpenAlex supplies the larger candidate pool.
+        var scholarLimit = Math.Min(20, maxResults);
+        var openAlexLimit = Math.Min(50, Math.Max(10, maxResults - scholarLimit));
+        var sourcesSearched = new List<string>();
+        var sourceWarnings = new List<string>();
+        var rawCandidates = new List<ScholarCandidate>();
 
-        await _rateLimiter.WaitAsync("SerpApi", cancellationToken);
-        using var response = await _httpClient.GetAsync(url, cancellationToken);
-        var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var scholarTask = SearchGoogleScholarAsync(
+            query,
+            scholarLimit,
+            cancellationToken);
+        using var openAlexTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        openAlexTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+        var openAlexTask = _openAlexClient.SearchWorksAsync(
+            query,
+            openAlexLimit,
+            openAlexTimeout.Token);
+
+        try
         {
-            throw new InvalidOperationException($"SerpApi request failed: {(int)response.StatusCode}");
+            await Task.WhenAll(scholarTask, openAlexTask);
+        }
+        catch
+        {
+            // Each provider is evaluated independently below so one failed
+            // source does not discard successful results from another.
         }
 
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.TryGetProperty("error", out var errorElement))
+        if (scholarTask.IsCompletedSuccessfully)
         {
-            throw new InvalidOperationException(errorElement.GetString() ?? "SerpApi returned an error.");
+            rawCandidates.AddRange(scholarTask.Result);
+            sourcesSearched.Add("Google Scholar (SerpApi)");
+        }
+        else
+        {
+            sourceWarnings.Add(
+                $"Google Scholar unavailable: {GetTaskError(scholarTask)}");
         }
 
-        var candidates = ParseCandidates(document.RootElement)
+        if (openAlexTask.IsCompletedSuccessfully)
+        {
+            rawCandidates.AddRange(openAlexTask.Result.Select(work => new ScholarCandidate(
+                work.Title,
+                work.Abstract ?? string.Empty,
+                string.IsNullOrWhiteSpace(work.JournalName) ? "OpenAlex" : work.JournalName,
+                work.SourceUrl)));
+            sourcesSearched.Add("OpenAlex");
+        }
+        else
+        {
+            sourceWarnings.Add($"OpenAlex unavailable: {GetTaskError(openAlexTask)}");
+        }
+
+        // Connected Papers needs a licensed API token plus a seed paper ID/DOI.
+        // ResearchGate does not publish a general-purpose search API. Report
+        // these explicitly instead of scraping either website.
+        sourceWarnings.Add("Connected Papers not queried: API access token and seed DOI are required.");
+        sourceWarnings.Add("ResearchGate not queried: no public publication-search API is available.");
+
+        if (rawCandidates.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"No similarity source was available. {string.Join(" ", sourceWarnings)}");
+        }
+
+        var uniqueCandidates = rawCandidates
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate.Title))
+            .GroupBy(candidate => NormalizeTitle(candidate.Title))
+            .Select(group => group.First())
+            .Take(maxResults)
+            .ToList();
+
+        var candidates = uniqueCandidates
             .Select(candidate => new PublicationSimilarityCandidateDto
             {
                 Title = candidate.Title,
@@ -86,9 +141,59 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
             Decision = overLimit
                 ? "Auto cancelled: over 50% similarity rule."
                 : "Within rule: waiting for admin approval.",
+            TotalCandidatesScanned = candidates.Count,
+            SourcesSearched = sourcesSearched,
+            SourceWarnings = sourceWarnings,
             Candidates = candidates
         };
     }
+
+    private async Task<List<ScholarCandidate>> SearchGoogleScholarAsync(
+        string query,
+        int requestedResults,
+        CancellationToken cancellationToken)
+    {
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("SERPAPI_API_KEY is not configured.");
+        }
+
+        var pageRequests = Enumerable
+            .Range(0, (int)Math.Ceiling(requestedResults / 20d))
+            .Select(async pageIndex =>
+        {
+            var start = pageIndex * 20;
+            var pageSize = Math.Min(20, requestedResults - start);
+            var url =
+                "https://serpapi.com/search.json" +
+                $"?engine=google_scholar&q={Uri.EscapeDataString(query)}" +
+                $"&num={pageSize}&start={start}&api_key={Uri.EscapeDataString(apiKey)}";
+
+            await _rateLimiter.WaitAsync("SerpApi", cancellationToken);
+            using var response = await _httpClient.GetAsync(url, cancellationToken);
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new InvalidOperationException($"SerpApi request failed: {(int)response.StatusCode}");
+            }
+
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                throw new InvalidOperationException(errorElement.GetString() ?? "SerpApi returned an error.");
+            }
+
+            return ParseCandidates(document.RootElement).ToList();
+        });
+
+        var pages = await Task.WhenAll(pageRequests);
+        return pages.SelectMany(page => page).ToList();
+    }
+
+    private static string GetTaskError(Task task) =>
+        task.Exception?.GetBaseException().Message ??
+        (task.IsCanceled ? "request was cancelled" : "unknown provider error");
 
     private string ResolveApiKey()
     {
@@ -151,11 +256,20 @@ public class SerpApiScholarSimilarityService : ISerpApiScholarSimilarityService
 
     private static string BuildScholarQuery(PublicationSimilarityCheckRequestDto request)
     {
-        var keywordPart = string.IsNullOrWhiteSpace(request.Keywords)
-            ? string.Empty
-            : $" {request.Keywords}";
-        return $"{request.Title}{keywordPart}".Trim();
+        // Long keyword lists make Google Scholar treat the request as overly
+        // restrictive. Search by title first; keywords remain part of scoring.
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            return request.Title.Trim();
+        }
+
+        return request.Keywords?.Trim() ?? string.Empty;
     }
+
+    private static string NormalizeTitle(string title) => new(
+        title.ToLowerInvariant()
+            .Where(character => char.IsLetterOrDigit(character))
+            .ToArray());
 
     private static IEnumerable<ScholarCandidate> ParseCandidates(JsonElement root)
     {
