@@ -19,6 +19,28 @@ const getAcademicPath = (path, role = getAcademicRole()) => {
   return path;
 };
 
+const getSafeRecipientRoute = (path, role = "student") => {
+  const route = String(path || "");
+  const rolePrefix =
+    String(role).toLowerCase() === "lecturer"
+      ? "lecturer"
+      : String(role).toLowerCase() === "researcher"
+        ? "researcher"
+        : "student";
+
+  if (!route.startsWith("/admin-")) return getAcademicPath(route, rolePrefix);
+  if (/^\/admin-(payments|plans)/.test(route)) {
+    return `/${rolePrefix}-profile`;
+  }
+  if (route === "/admin-publications") return `/${rolePrefix}-search`;
+  if (route === "/admin-notifications") return `/${rolePrefix}-notifications`;
+  if (route === "/admin-user-management") return `/${rolePrefix}-profile`;
+  // Admin-only operational pages (dashboard, sync, logs, and unknown admin
+  // routes) have no equivalent destination for academic users. Keep the user
+  // in their notification center and omit the related-page action.
+  return `/${rolePrefix}-notifications`;
+};
+
 const navTo = (path) => (event) => {
   event.preventDefault();
   window.history.pushState({}, "", getAcademicPath(path));
@@ -1515,7 +1537,7 @@ const checkPublicationSimilarityWithScholar = async (submission) => {
       title: submission.title,
       abstract: submission.abstract,
       keywords: submission.keywords,
-      maxResults: 10,
+      maxResults: 80,
     },
   });
 };
@@ -14215,7 +14237,12 @@ function BookmarksPage({ role = "student" }) {
   );
 }
 
-function NotificationFilterPanel({ activeFilters, onChangeFilter }) {
+function NotificationFilterPanel({
+  activeFilters,
+  onChangeFilter,
+  totalCount = 0,
+  unreadCount = 0,
+}) {
   return (
     <aside className="notification-filters" aria-label="Notification filters">
       {notificationFilters.map((group, groupIndex) => (
@@ -14236,6 +14263,11 @@ function NotificationFilterPanel({ activeFilters, onChangeFilter }) {
               >
                 <i aria-hidden="true"></i>
                 <span>{option.label}</span>
+                {groupIndex === 0 ? (
+                  <b>
+                    {option.label === "Unread" ? unreadCount : totalCount}
+                  </b>
+                ) : null}
               </button>
             ))}
           </div>
@@ -14275,6 +14307,10 @@ function renderFormattedText(text) {
 }
 
 function NotificationCard({ item, onOpen, onToggleBookmark }) {
+  const displayTitle = String(item.title || "Notification")
+    .replace(/^(NOTICE|REJECTED|REVIEW|NEW RESEARCH|SYNC COMPLETE|TREND SPIKE):\s*/i, "")
+    .trim();
+
   return (
     <article
       role="button"
@@ -14292,22 +14328,21 @@ function NotificationCard({ item, onOpen, onToggleBookmark }) {
         <MiniIcon path={item.icon} />
       </div>
       <div className="notification-body">
+        <div className="notification-card-heading">
+          <div className="notification-source">
+            <span className={item.fromAdmin ? "admin" : ""}>
+              {item.source || "ScholarTrend System"}
+            </span>
+            {item.unread ? <b>New</b> : null}
+          </div>
+          <time>{item.time}</time>
+        </div>
         <div className="notification-meta">
           <span>{item.type}</span>
-          <i aria-hidden="true"></i>
-          <span>{item.time}</span>
         </div>
-        <p>
-          {item.title ? <strong>{item.title} </strong> : null}
-          {renderFormattedText(item.text)}
-        </p>
+        <h3>{displayTitle}</h3>
+        <p>{renderFormattedText(item.text)}</p>
       </div>
-      {item.unread ? (
-        <span
-          className="notification-unread-dot"
-          aria-label="Unread notification"
-        ></span>
-      ) : null}
       {item.bookmarked ? (
         <button
           type="button"
@@ -14351,11 +14386,16 @@ function NotificationDetailPanel({ item, route, onClose }) {
             <MiniIcon path={item.icon} />
           </div>
           <div>
-            <span>{item.type}</span>
+            <div className="notification-detail-source">
+              <span className={item.fromAdmin ? "admin" : ""}>
+                {item.source || "ScholarTrend System"}
+              </span>
+              <b>{item.type}</b>
+            </div>
             <h2 id="notification-detail-title">
               {item.title || "Notification"}
             </h2>
-            <p>{item.time}</p>
+            <time>{item.time}</time>
           </div>
           <button
             type="button"
@@ -14446,6 +14486,8 @@ const mapBackendNotificationForUi = (item, role) => ({
   icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
   tone: item.isRead ? "gray" : "green",
   unread: !item.isRead,
+  source: item.batchId ? "ScholarTrend Admin" : "ScholarTrend System",
+  fromAdmin: Boolean(item.batchId),
   route:
     item.route ||
     `/${
@@ -14513,6 +14555,8 @@ function NotificationsPage({ role = "student" }) {
         unread: item.unread,
         route: item.route,
         localReview: true,
+        source: "ScholarTrend Editorial",
+        fromAdmin: true,
       }));
   }, [role, session.email]);
   const [notifications, setNotifications] = React.useState(() => [
@@ -14555,6 +14599,8 @@ function NotificationsPage({ role = "student" }) {
         unread: item.unread,
         route: item.route,
         localReview: true,
+        source: "ScholarTrend Editorial",
+        fromAdmin: true,
       }));
       setNotifications([...mappedLocalItems, ...backendNotifications]);
       setHasMore(false);
@@ -14651,10 +14697,15 @@ function NotificationsPage({ role = "student" }) {
 
   const resolveNotificationRoute = (item) => {
     if (item.route) {
-      if (/^\/(student|lecturer|researcher)-notifications/.test(item.route)) {
+      const recipientSafeRoute = getSafeRecipientRoute(item.route, rolePrefix);
+      if (
+        /^\/(student|lecturer|researcher)-notifications/.test(
+          recipientSafeRoute,
+        )
+      ) {
         return roleNotificationsPath;
       }
-      return getAcademicPath(item.route, rolePrefix);
+      return getAcademicPath(recipientSafeRoute, rolePrefix);
     }
     if (rolePrefix === "student") {
       if (item.type.includes("SYSTEM")) return "/student-notifications";
@@ -14693,10 +14744,13 @@ function NotificationsPage({ role = "student" }) {
         }).catch(() => {});
       }
     }
-    apiFetch(`/api/notifications/${item.id}/read`, {
-      method: "PUT",
-      auth: true,
-    }).catch(() => {});
+    const backendNotificationId = Number(item.id);
+    if (Number.isInteger(backendNotificationId)) {
+      apiFetch(`/api/notifications/${backendNotificationId}/read`, {
+        method: "PUT",
+        auth: true,
+      }).catch(() => {});
+    }
   };
 
   const handleToggleBookmark = (itemId) => {
@@ -14746,22 +14800,31 @@ function NotificationsPage({ role = "student" }) {
       <div className="notifications-header">
         <div>
           <h1>Notifications</h1>
-          <p>Stay updated on publications, trends, and system alerts.</p>
+          <p>Messages from ScholarTrend Admin, editorial reviews, and system updates.</p>
         </div>
-        <button
-          type="button"
-          className="mark-read-button"
-          onClick={handleMarkAllRead}
-        >
-          <MiniIcon path="M5 12.5 9 16.5 19 6.5" />
-          Mark all as read
-        </button>
+        <div className="notifications-header-actions">
+          <div className="notification-summary" aria-label="Notification summary">
+            <span><b>{notifications.filter((item) => item.unread).length}</b> unread</span>
+            <span><b>{notifications.length}</b> total</span>
+          </div>
+          <button
+            type="button"
+            className="mark-read-button"
+            onClick={handleMarkAllRead}
+            disabled={!notifications.some((item) => item.unread)}
+          >
+            <MiniIcon path="M5 12.5 9 16.5 19 6.5" />
+            Mark all as read
+          </button>
+        </div>
       </div>
 
       <div className="notifications-layout">
         <NotificationFilterPanel
           activeFilters={activeFilters}
           onChangeFilter={handleChangeFilter}
+          totalCount={notifications.length}
+          unreadCount={notifications.filter((item) => item.unread).length}
         />
         <section className="notification-list" aria-label="Notifications list">
           {filteredNotifications.length ? (
@@ -14774,7 +14837,13 @@ function NotificationsPage({ role = "student" }) {
               />
             ))
           ) : (
-            <p className="empty-state">No notifications yet.</p>
+            <div className="notification-empty-state">
+              <div className="notification-icon gray">
+                <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
+              </div>
+              <h2>No notifications found</h2>
+              <p>Try another filter or check back later.</p>
+            </div>
           )}
           {hasMore ? (
             <button
@@ -14807,20 +14876,11 @@ function NotificationsPage({ role = "student" }) {
               </span>
             </button>
           ) : (
-            <div
-              className="no-more-notifications"
-              style={{
-                textAlign: "center",
-                color: "#6b7280",
-                fontSize: "13px",
-                padding: "12px",
-                background: "#fff",
-                border: "1px dashed #cbd2df",
-                borderRadius: "8px",
-              }}
-            >
-              No more notifications
-            </div>
+            filteredNotifications.length ? (
+              <div className="no-more-notifications">
+                You are all caught up
+              </div>
+            ) : null
           )}
         </section>
       </div>
@@ -17096,6 +17156,16 @@ function PublicationSubmissionPage({ role = "Student" }) {
             Matched original: <b>{result.matchedTitle}</b> from{" "}
             {result.matchedSource}.
           </p>
+          {result.totalCandidatesScanned ? (
+            <p>
+              Checked <b>{result.totalCandidatesScanned}</b> unique papers
+              across{" "}
+              <b>
+                {(result.sourcesSearched || []).join(", ") || "available sources"}
+              </b>
+              .
+            </p>
+          ) : null}
           <p>
             {result.similarityPercent > SIMILARITY_LIMIT_PERCENT
               ? "Over 50%: this paper was blocked automatically and was not sent to Admin."
@@ -23680,9 +23750,32 @@ function AppRoutes() {
   const [, forceRender] = React.useReducer((value) => value + 1, 0);
   const path = window.location.pathname;
   const [adminSessionRecovery, setAdminSessionRecovery] = React.useState("idle");
+  const sessionRole = normalizeRoleForUi(
+    getStoredSession().role || getStoredAuthRole(),
+  );
+  const nonAdminRolePrefix =
+    sessionRole === "Lecturer"
+      ? "lecturer"
+      : sessionRole === "Researcher"
+        ? "researcher"
+        : sessionRole === "Student"
+          ? "student"
+          : "";
+  const isKnownNonAdminSession = Boolean(nonAdminRolePrefix);
 
   React.useEffect(() => {
-    if (!path.startsWith("/admin-") || hasAdminBackendAccess()) {
+    if (!path.startsWith("/admin-") || !isKnownNonAdminSession) return;
+    const safeRoute = getSafeRecipientRoute(path, nonAdminRolePrefix);
+    window.history.replaceState({}, "", safeRoute);
+    window.dispatchEvent(new Event("scholartrend:navigate"));
+  }, [path, isKnownNonAdminSession, nonAdminRolePrefix]);
+
+  React.useEffect(() => {
+    if (
+      !path.startsWith("/admin-") ||
+      hasAdminBackendAccess() ||
+      isKnownNonAdminSession
+    ) {
       setAdminSessionRecovery("ready");
       return;
     }
@@ -23734,7 +23827,7 @@ function AppRoutes() {
     return () => {
       cancelled = true;
     };
-  }, [path]);
+  }, [path, isKnownNonAdminSession]);
 
   React.useEffect(() => {
     const originalFetch = window.fetch.bind(window);
@@ -23865,6 +23958,18 @@ function AppRoutes() {
   if (path === "/payment-return") return <PaymentReturnPage />;
 
   const isAdminRoute = path.startsWith("/admin-");
+  if (isAdminRoute && isKnownNonAdminSession) {
+    return (
+      <main className="student-app">
+        <section className="student-main">
+          <div className="student-content" style={{ padding: "4rem 2rem" }}>
+            <h1>Redirecting...</h1>
+            <p>Opening the page available for your account.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
   if (isAdminRoute && adminSessionRecovery === "loading") {
     return (
       <main className="student-app">
