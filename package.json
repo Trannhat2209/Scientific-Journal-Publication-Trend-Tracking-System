@@ -43,5 +43,22 @@
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
     "vitest": "^4.1.10"
-  }
+  },
+  "description": "",
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Trannhat2209/Scientific-Journal-Publication-Trend-Tracking-System.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Trannhat2209/Scientific-Journal-Publication-Trend-Tracking-System/issues"
+  },
+  "homepage": "https://github.com/Trannhat2209/Scientific-Journal-Publication-Trend-Tracking-System#readme"
 }
