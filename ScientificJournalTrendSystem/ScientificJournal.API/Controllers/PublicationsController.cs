@@ -102,12 +102,7 @@ public class PublicationsController : ControllerBase
         return Ok(new { items = keywords.Concat(titles).Concat(authors) });
     }
 
-    [HttpGet("{id:int}/network")]
-    public async Task<IActionResult> GetCitationNetwork(int id, [FromQuery] double threshold = 0.3)
-    {
-        var result = await _relationshipNetworkService.GetRelationshipNetworkAsync(id, threshold);
-        return Ok(result);
-    }
+
 
     [HttpGet("export")]
     public async Task<IActionResult> ExportReferences(

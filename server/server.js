@@ -1542,7 +1542,7 @@ async function handleGoogleCallback(req, res, requestUrl) {
       ? applyDotnetUserSync(localUser, syncResult.user)
       : localUser;
     const accountRole = sanitizeRole(user.role);
-    if (statePayload.role !== accountRole) {
+    if (accountRole !== "Administrator" && statePayload.role !== accountRole) {
       throw new Error(
         accountRole === "Student"
           ? "This Google account is currently a Student account. Upgrade your plan before signing in as Researcher or Lecturer."
