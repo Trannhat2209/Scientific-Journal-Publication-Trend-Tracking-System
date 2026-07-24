@@ -21435,16 +21435,6 @@ function AdminUserManagementPage() {
                       >
                         <MiniIcon path="M4.5 19.5h4L18.2 9.8a2 2 0 0 0-2.8-2.8L5.7 16.7l-1.2 2.8ZM14.4 8l2.6 2.6M12 19.5h7.5" />
                       </button>
-                      <button
-                        type="button"
-                        className="admin-user-action delete"
-                        aria-label={`Delete ${user.name}`}
-                        onClick={() => requestDeleteUser(user)}
-                        disabled={Boolean(pendingAction) || user.isSystemAdministrator}
-                        title={user.isSystemAdministrator ? "System administrator accounts cannot be deleted here" : "Delete account"}
-                      >
-                        <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
-                      </button>
                     </td>
                   </tr>
                 ))}
