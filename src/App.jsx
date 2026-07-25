@@ -17625,7 +17625,6 @@ function AdminUserManagementPage() {
   const [users, setUsers] = React.useState([]);
   const [isLoadingUsers, setIsLoadingUsers] = React.useState(false);
   const [editor, setEditor] = React.useState(null);
-  const [deleteCandidate, setDeleteCandidate] = React.useState(null);
   const [pendingAction, setPendingAction] = React.useState("");
   const [message, setMessage] = React.useState("");
   const pageSize = 5;
@@ -17907,53 +17906,6 @@ function AdminUserManagementPage() {
     }
   };
 
-  const requestDeleteUser = (user) => {
-    setMessage("");
-    setDeleteCandidate(user);
-  };
-
-  const closeDeleteDialog = () => {
-    if (pendingAction) return;
-    setDeleteCandidate(null);
-  };
-
-  const confirmDeleteUser = async () => {
-    const user = deleteCandidate;
-    if (!user) return;
-
-    if (!isBackendNumericId(user.id)) {
-      setMessage("This user does not have a backend id. Refresh users from the C# API.");
-      return;
-    }
-
-    if (!hasAdminBackendAccess()) {
-      setMessage(adminAccessMessage);
-      return;
-    }
-
-    try {
-      setPendingAction(`delete:${user.id}`);
-      await apiFetch(`/api/admin/users/${user.id}`, {
-        method: "DELETE",
-        auth: true,
-      });
-
-      const nextUsers = users.filter(
-        (item) =>
-          item.id !== user.id &&
-          item.email.toLowerCase() !== user.email.toLowerCase(),
-      );
-      persistUsers(nextUsers);
-      setMessage(`${user.name} deleted from SQL Server.`);
-      setDeleteCandidate(null);
-      loadBackendUsers().catch(() => {});
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setPendingAction("");
-    }
-  };
-
   const refreshUsers = () => {
     loadBackendUsers()
       .then(() => setMessage("User list refreshed from SQL Server."))
@@ -18214,16 +18166,6 @@ function AdminUserManagementPage() {
                       >
                         <MiniIcon path="M4.5 19.5h4L18.2 9.8a2 2 0 0 0-2.8-2.8L5.7 16.7l-1.2 2.8ZM14.4 8l2.6 2.6M12 19.5h7.5" />
                       </button>
-                      <button
-                        type="button"
-                        className="admin-user-action delete"
-                        aria-label={`Delete ${user.name}`}
-                        onClick={() => requestDeleteUser(user)}
-                        disabled={Boolean(pendingAction)}
-                        title="Delete account"
-                      >
-                        <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
-                      </button>
                     </td>
                   </tr>
                 ))}
@@ -18399,50 +18341,6 @@ function AdminUserManagementPage() {
           </div>
         ) : null}
 
-        {deleteCandidate ? (
-          <div
-            className="admin-user-modal-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) closeDeleteDialog();
-            }}
-          >
-            <section className="admin-user-modal admin-delete-modal" role="dialog" aria-modal="true">
-              <button
-                type="button"
-                className="admin-user-modal-close"
-                aria-label="Close delete confirmation"
-                onClick={closeDeleteDialog}
-                disabled={Boolean(pendingAction)}
-              >
-                <MiniIcon path="M6 6l12 12M18 6 6 18" />
-              </button>
-              <header>
-                <span>Delete Account</span>
-                <h2>Delete {deleteCandidate.name}?</h2>
-                <p>
-                  This removes the account from the SQL Server user list. The action is applied immediately.
-                </p>
-              </header>
-              <div className="admin-delete-summary">
-                <strong>{deleteCandidate.email}</strong>
-                <span>{deleteCandidate.role} / {deleteCandidate.status}</span>
-              </div>
-              <footer>
-                <button type="button" onClick={closeDeleteDialog} disabled={Boolean(pendingAction)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="admin-delete-confirm"
-                  onClick={confirmDeleteUser}
-                  disabled={Boolean(pendingAction)}
-                >
-                  {pendingAction ? "Deleting..." : "Delete User"}
-                </button>
-              </footer>
-            </section>
-          </div>
-        ) : null}
       </div>
     </AdminShell>
   );
@@ -18473,6 +18371,8 @@ function AdminPaymentManagementPage() {
   const [payments, setPayments] = React.useState([]);
   const [statusFilter, setStatusFilter] = React.useState("All Statuses");
   const [query, setQuery] = React.useState("");
+  const [page, setPage] = React.useState(1);
+  const pageSize = 5;
   const [message, setMessage] = React.useState("");
   const [loadingOrderCode, setLoadingOrderCode] = React.useState(null);
   const [paymentActionNotes, setPaymentActionNotes] = React.useState({});
@@ -18504,6 +18404,20 @@ function AdminPaymentManagementPage() {
       statusFilter === "All Statuses" || payment.status === statusFilter;
     return matchesQuery && matchesStatus;
   });
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(visiblePayments.length / pageSize),
+  );
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const pagedPayments = visiblePayments.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [query, statusFilter]);
 
   const paymentCounts = payments.reduce(
     (acc, payment) => ({
@@ -18674,7 +18588,7 @@ function AdminPaymentManagementPage() {
                 </tr>
               </thead>
               <tbody>
-                {visiblePayments.map((payment) => (
+                {pagedPayments.map((payment) => (
                   <tr key={payment.orderCode}>
                     <td>
                       <span>
@@ -18766,7 +18680,7 @@ function AdminPaymentManagementPage() {
                     </td>
                   </tr>
                 ))}
-                {!visiblePayments.length ? (
+                {!pagedPayments.length ? (
                   <tr>
                     <td colSpan="7" className="admin-users-empty">
                       No PayOS payments match the current filters.
@@ -18776,6 +18690,39 @@ function AdminPaymentManagementPage() {
               </tbody>
             </table>
           </div>
+
+          <footer className="admin-users-pagination">
+            <span>
+              Showing {pagedPayments.length ? (safePage - 1) * pageSize + 1 : 0} to{" "}
+              {pagedPayments.length
+                ? (safePage - 1) * pageSize + pagedPayments.length
+                : 0}{" "}
+              of {visiblePayments.length} entries
+            </span>
+            <div>
+              <button
+                type="button"
+                aria-label="Previous payment page"
+                disabled={safePage === 1}
+                onClick={() => setPage((value) => Math.max(1, value - 1))}
+              >
+                <MiniIcon path="M15 18l-6-6 6-6" />
+              </button>
+              <span className="admin-pagination-current">
+                Page {safePage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                aria-label="Next payment page"
+                disabled={safePage === totalPages}
+                onClick={() =>
+                  setPage((value) => Math.min(totalPages, value + 1))
+                }
+              >
+                <MiniIcon path="M9 18l6-6-6-6" />
+              </button>
+            </div>
+          </footer>
         </section>
       </div>
     </AdminShell>
