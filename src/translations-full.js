@@ -74,14 +74,6 @@ export const translationMap = {
     "Quản lý thông tin cá nhân, bảo mật và sở thích học thuật của bạn.",
   "Control how ScholarTrend tracks publications, trends, and alerts.":
     "Kiểm soát cách ScholarTrend theo dõi bài viết, xu hướng và cảnh báo.",
-  "AI similarity check runs before the paper can enter Admin review.":
-    "Kiểm tra độ tương đồng AI chạy trước khi bài viết có thể vào đánh giá của Quản trị viên.",
-
-  // Submission Rule
-  "SUBMISSION RULE": "QUY TẮC NỘP BÀI",
-  "Papers must not exceed 50% similarity with an original source. If the similarity score is over 50%, the AI system will automatically cancel the submission and Admin will not approve it.":
-    "Bài viết không được vượt quá 50% độ tương đồng với nguồn gốc. Nếu điểm tương đồng trên 50%, hệ thống AI sẽ tự động hủy bài nộp và Quản trị viên sẽ không phê duyệt.",
-  "Max similarity: 50%": "Độ tương đồng tối đa: 50%",
 
   // Stats & Metrics
   "TOTAL PUBS": "TỔNG BÀI VIẾT",

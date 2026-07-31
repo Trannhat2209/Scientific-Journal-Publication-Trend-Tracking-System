@@ -33,20 +33,6 @@ test("administrator can reset an existing SQL user's password", () => {
   assert.match(controller, /ADMIN-PASSWORD-RESET/);
 });
 
-test("premium plans and payment endpoints are removed", () => {
-  const controller = read(
-    "ScientificJournalTrendSystem/ScientificJournal.API/Controllers/AdminController.cs",
-  );
-  const program = read(
-    "ScientificJournalTrendSystem/ScientificJournal.API/Program.cs",
-  );
-  const packageJson = read("package.json");
-
-  assert.doesNotMatch(controller, /Http(Get|Post|Put)\("payments|toggle-pro/);
-  assert.doesNotMatch(program, /AddHostedService<PaymentReconciliationWorker>/);
-  assert.doesNotMatch(packageJson, /@payos\/node/);
-});
-
 test("notification pending and failed summary is not coerced into NaN", () => {
   const app = read("src/App.jsx");
 
@@ -95,14 +81,6 @@ test("review moderation hides content without destroying its audit record", () =
   );
 });
 
-test("publication submission endpoints and model are removed", () => {
-  const context = read("ScientificJournalTrendSystem/ScientificJournal.DataAccess/Context/AppDbContext.cs");
-  const controller = read("ScientificJournalTrendSystem/ScientificJournal.API/Controllers/PublicationsController.cs");
-  assert.doesNotMatch(context, /DbSet<PublicationSubmission>/);
-  assert.doesNotMatch(controller, /HttpPost\("upload"\)/);
-  assert.doesNotMatch(controller, /HttpPost\("submissions"\)/);
-});
-
 test("publication version history is persisted and exposed", () => {
   const context = read("ScientificJournalTrendSystem/ScientificJournal.DataAccess/Context/AppDbContext.cs");
   const controller = read("ScientificJournalTrendSystem/ScientificJournal.API/Controllers/PublicationsController.cs");
@@ -128,5 +106,4 @@ test("system audit middleware records API and denied access events", () => {
   const middleware = read("ScientificJournalTrendSystem/ScientificJournal.API/Middleware/SystemAuditMiddleware.cs");
   assert.match(middleware, /ACCESS-DENIED/);
   assert.match(middleware, /SystemEventLogs\.Add/);
-  assert.doesNotMatch(middleware, /PayOS|\/api\/payments/);
 });

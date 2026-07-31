@@ -219,7 +219,6 @@ const getClientLogModule = (path = "") => {
   if (value.includes("/publications") || value.includes("/search")) {
     return "Publication Management";
   }
-  if (value.includes("/plans")) return "Plan Management";
   return "System";
 };
 
@@ -229,7 +228,6 @@ const getClientLogCode = (module, status = "WEB") => {
     "Sync Management": "SYNC",
     "Notification Management": "NOTIFY",
     "Publication Management": "PUB",
-    "Plan Management": "PLAN",
     System: "WEB",
   };
   const prefix = prefixMap[module] || "WEB";
@@ -13613,7 +13611,6 @@ const extraNotificationItems = [
 const getNotificationTypeLabel = (type) => {
   const normalized = String(type || "SYSTEM").toUpperCase();
   if (normalized === "NEW_PUBLICATION") return "PUBLICATION NOTICE";
-  if (normalized === "PLAN_UPDATE") return "PLAN UPDATE";
   if (normalized === "SYSTEM") return "SYSTEM ALERT";
   return normalized.replaceAll("_", " ");
 };
@@ -18056,10 +18053,7 @@ const isLegacyOpenAlexSeedHistoryRow = (row = {}) => {
 };
 
 const sanitizeAdminSyncHistory = (history = []) =>
-  history.filter((row) => {
-    const source = String(row.source || row.sourceApi || row.SourceApi || "");
-    return !/payos/i.test(source) && !isLegacyOpenAlexSeedHistoryRow(row);
-  });
+  history.filter((row) => !isLegacyOpenAlexSeedHistoryRow(row));
 
 const getAdminSyncConfig = () => {
   try {
@@ -18128,7 +18122,6 @@ const isRealSyncLog = (log) => {
   const source = log.sourceApi || log.SourceApi || log.source || "";
   return (
     !String(source).startsWith("Admin Audit:") &&
-    !/payos/i.test(String(source)) &&
     !isLegacyOpenAlexSeedHistoryRow(log)
   );
 };
@@ -20575,9 +20568,7 @@ function AdminNotificationManagementPage() {
                 }
               >
                 <option>SYSTEM ALERT</option>
-                <option>PAYMENT NOTICE</option>
                 <option>PUBLICATION NOTICE</option>
-                <option>PLAN UPDATE</option>
               </select>
             </label>
             <label>

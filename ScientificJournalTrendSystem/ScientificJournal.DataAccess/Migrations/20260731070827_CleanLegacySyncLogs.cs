@@ -11,9 +11,6 @@ namespace ScientificJournal.DataAccess.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql("""
-                DELETE FROM sync_logs
-                WHERE source_api LIKE N'%PayOS%';
-
                 DELETE failed
                 FROM sync_logs AS failed
                 WHERE failed.source_api = N'OpenAlex'

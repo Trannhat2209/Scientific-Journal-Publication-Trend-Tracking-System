@@ -1296,7 +1296,6 @@ public class AdminController : ControllerBase
 
     private IQueryable<SyncLog> GetVisibleSyncLogs() => _context.SyncLogs
         .Where(log => !log.SourceApi.StartsWith("Admin Audit:"))
-        .Where(log => !log.SourceApi.Contains("PayOS"))
         .Where(log => log.Status != SyncStatus.Failed ||
             !_context.SyncLogs.Any(later =>
                 later.SourceApi == log.SourceApi &&

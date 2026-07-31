@@ -101,12 +101,7 @@ const translations = {
   Connected: "Đã kết nối",
   "Compare-only": "Chỉ so sánh",
 
-  // Submission Rule
   "RESEARCHER WORKSPACE": "KHÔNG GIAN LÀM VIỆC NHÀ NGHIÊN CỨU",
-  "SUBMISSION RULE": "QUY TẮC NỘP BÀI",
-  "Papers must not exceed 50% similarity with an original source. If the similarity score is over 50%, the AI system will automatically cancel the submission and Admin will not approve it.":
-    "Bài viết không được vượt quá 50% độ tương đồng với nguồn gốc. Nếu điểm tương đồng trên 50%, hệ thống AI sẽ tự động hủy bài nộp và Quản trị viên sẽ không phê duyệt.",
-  "Max similarity: 50%": "Độ tương đồng tối đa: 50%",
 
   // More translations...
   Baseline: "Cơ sở",

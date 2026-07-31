@@ -18,7 +18,6 @@
 5. Notifications
 6. Trend tracking
 7. Reports generation
-8. Publication submission
 
 ### 🔴 **CẦN BỔ SUNG NGAY (CRITICAL):**
 
@@ -330,11 +329,9 @@
 1. Dashboard với system stats
 2. User management
 3. Publication management (approve/reject)
-4. Payment management
-5. Plan management
-6. Notification management
-7. System logs
-8. Sync management
+4. Notification management
+5. System logs
+6. Sync management
 
 ### 🔴 **CẦN BỔ SUNG (Critical Admin Features):**
 
@@ -467,7 +464,6 @@
   - OpenAlex API config
   - Google Scholar config
   - Email server (SMTP)
-  - Payment gateway (PayOS)
   - Cloud storage (AWS S3, etc.)
 
 #### **7. Compliance & Legal**
@@ -1074,43 +1070,6 @@ CREATE TABLE user_profiles (
 );
 ```
 
-#### **1.6 Publication Submissions API** (1 vị trí)
-
-```javascript
-// Backend APIs
-GET /api/submissions?status=pending|approved|rejected
-POST /api/submissions
-PUT /api/submissions/:id
-DELETE /api/submissions/:id
-PUT /api/submissions/:id/approve (admin only)
-PUT /api/submissions/:id/reject (admin only)
-```
-
-**Database Schema:**
-
-```sql
-CREATE TABLE publication_submissions (
-  id UUID PRIMARY KEY,
-  user_id UUID REFERENCES users(id),
-  title TEXT NOT NULL,
-  authors JSONB,
-  abstract TEXT,
-  keywords TEXT[],
-  doi TEXT,
-  journal_name TEXT,
-  submission_date DATE,
-  status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
-  reviewer_notes TEXT,
-  reviewed_by UUID REFERENCES users(id),
-  reviewed_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_submissions_status ON publication_submissions(status);
-CREATE INDEX idx_submissions_user ON publication_submissions(user_id);
-```
-
 #### **1.7 Reports API** (1 vị trí)
 
 ```javascript
@@ -1149,10 +1108,6 @@ DELETE /api/admin/users/:id
 GET /api/admin/logs?page=1&limit=100
 GET /api/admin/sync/status
 POST /api/admin/sync/trigger
-GET /api/admin/payments?status=completed|pending|failed
-GET /api/admin/plans
-POST /api/admin/plans
-PUT /api/admin/plans/:id
 ```
 
 ---

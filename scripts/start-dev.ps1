@@ -17,8 +17,8 @@ Write-Host "Starting .NET API on http://localhost:5227..."
 Start-Process -FilePath "dotnet" `
     -ArgumentList @("run", "--project", "ScientificJournalTrendSystem\ScientificJournal.API\ScientificJournal.API.csproj", "--launch-profile", "http") `
     -WorkingDirectory $root `
-    -RedirectStandardOutput "dotnet-5227.payos.out.log" `
-    -RedirectStandardError "dotnet-5227.payos.err.log" `
+    -RedirectStandardOutput "dotnet-5227.out.log" `
+    -RedirectStandardError "dotnet-5227.err.log" `
     -WindowStyle Hidden
 
 Write-Host "Starting Google OAuth helper on http://localhost:5173..."
@@ -33,8 +33,8 @@ Write-Host "Starting React app on http://localhost:5174..."
 Start-Process -FilePath "npm.cmd" `
     -ArgumentList @("run", "dev", "--", "--strictPort") `
     -WorkingDirectory $root `
-    -RedirectStandardOutput "vite-5174.payos.out.log" `
-    -RedirectStandardError "vite-5174.payos.err.log" `
+    -RedirectStandardOutput "vite-5174.out.log" `
+    -RedirectStandardError "vite-5174.err.log" `
     -WindowStyle Hidden
 
 Start-Sleep -Seconds 6
