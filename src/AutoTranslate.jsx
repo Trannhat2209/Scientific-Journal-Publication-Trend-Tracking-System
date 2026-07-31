@@ -122,8 +122,6 @@ const translations = {
   Running: "Đang chạy",
   Succeeded: "Thành công",
   Cancel: "Hủy",
-  "Upgrade to Pro": "Nâng cấp lên Pro",
-  "SCHOLARTREND PRO": "SCHOLARTREND PRO",
 };
 
 // Hook to auto-translate text

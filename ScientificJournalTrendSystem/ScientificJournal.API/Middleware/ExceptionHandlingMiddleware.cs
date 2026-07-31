@@ -81,10 +81,6 @@ public class ExceptionHandlingMiddleware
     private static string ResolveModule(string? path)
     {
         var value = (path ?? string.Empty).ToLowerInvariant();
-        if (value.Contains("payment") || value.Contains("payos") || value.Contains("plan"))
-        {
-            return "Payment Management";
-        }
         if (value.Contains("auth") || value.Contains("users"))
         {
             return "User Management";

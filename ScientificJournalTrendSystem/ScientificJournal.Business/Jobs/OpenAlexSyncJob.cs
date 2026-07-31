@@ -5,6 +5,7 @@ namespace ScientificJournal.Business.Jobs;
 
 public class OpenAlexSyncJob
 {
+    private static readonly SemaphoreSlim ExecutionGate = new(1, 1);
     private readonly ISyncService _syncService;
 
     public OpenAlexSyncJob(ISyncService syncService)
@@ -14,6 +15,14 @@ public class OpenAlexSyncJob
 
     public async Task ExecuteAsync()
     {
-        await _syncService.SyncFromOpenAlexAsync();
+        if (!await ExecutionGate.WaitAsync(0)) return;
+        try
+        {
+            await _syncService.SyncFromOpenAlexAsync();
+        }
+        finally
+        {
+            ExecutionGate.Release();
+        }
     }
 }

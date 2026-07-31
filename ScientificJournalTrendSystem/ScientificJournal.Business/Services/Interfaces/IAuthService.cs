@@ -17,5 +17,6 @@ public interface IAuthService
     Task VerifyEmailAsync(string email, string token);
     Task<UserProfileDto> GetProfileAsync(int userId);
     Task<UserProfileDto> UpdateProfileAsync(int userId, UpdateProfileRequestDto request);
+    Task<UserProfileDto> VerifyInstitutionalEmailAsync(int userId, string token);
     Task ChangePasswordAsync(int userId, ChangePasswordRequestDto request);
 }

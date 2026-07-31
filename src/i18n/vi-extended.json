@@ -114,23 +114,6 @@
     "profileSettings": "Cài đặt Hồ sơ",
     "saveSettings": "Lưu Cài đặt"
   },
-  "upgradeModal": {
-    "scholarTrendPro": "SCHOLARTREND PRO",
-    "upgradeTitle": "Nâng cấp lên Pro",
-    "unlockDeeper": "Mở khóa trí tuệ phân tích sâu hơn cho các ngành bạn theo dõi.",
-    "researcherAccuracy": "Độ chính xác tìm kiếm Nhà nghiên cứu",
-    "freeAccount": "Tài khoản miễn phí hiện tại. Nâng cấp PayOS trong Pro và cho phép quản trị viên quản lý kế hoạch tài khoản này.",
-    "monthly": "Hàng tháng",
-    "yearly": "Hàng năm",
-    "save2Percent": "Tiết kiệm 2%",
-    "perYear": "/ năm",
-    "unlimitedKeywords": "Từ khóa theo dõi Không giới hạn",
-    "priorityAlerts": "Cảnh báo xu hướng Ưu tiên",
-    "advancedCitation": "Trí tuệ trích dẫn Nâng cao",
-    "fullExport": "Bộ xuất báo cáo Đầy đủ",
-    "upgradeNow": "Nâng cấp Ngay",
-    "secureCheckout": "Thanh toán an toàn được xử lý bởi PayOS."
-  },
   "knowledgeGraph": {
     "title": "Đồ thị Tri thức",
     "listView": "Xem Danh sách",

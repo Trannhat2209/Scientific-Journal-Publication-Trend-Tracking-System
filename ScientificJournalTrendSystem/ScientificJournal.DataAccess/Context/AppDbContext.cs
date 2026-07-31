@@ -19,9 +19,10 @@ public class AppDbContext : DbContext
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<SyncLog> SyncLogs => Set<SyncLog>();
-    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
-    public DbSet<PublicationSubmission> PublicationSubmissions => Set<PublicationSubmission>();
     public DbSet<PublicationVersion> PublicationVersions => Set<PublicationVersion>();
+    public DbSet<PublicationReview> PublicationReviews => Set<PublicationReview>();
+    public DbSet<PublicationReviewReport> PublicationReviewReports => Set<PublicationReviewReport>();
+    public DbSet<PublicationReviewModerationEvent> PublicationReviewModerationEvents => Set<PublicationReviewModerationEvent>();
     public DbSet<AdminState> AdminStates => Set<AdminState>();
     public DbSet<AdminSupportTicket> AdminSupportTickets => Set<AdminSupportTicket>();
     public DbSet<SystemEventLog> SystemEventLogs => Set<SystemEventLog>();

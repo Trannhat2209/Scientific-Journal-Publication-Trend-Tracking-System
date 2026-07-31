@@ -29,9 +29,7 @@ const getSafeRecipientRoute = (path, role = "student") => {
         : "student";
 
   if (!route.startsWith("/admin-")) return getAcademicPath(route, rolePrefix);
-  if (/^\/admin-(payments|plans)/.test(route)) {
-    return `/${rolePrefix}-profile`;
-  }
+
   if (route === "/admin-publications") return `/${rolePrefix}-search`;
   if (route === "/admin-notifications") return `/${rolePrefix}-notifications`;
   if (route === "/admin-user-management") return `/${rolePrefix}-profile`;
@@ -101,35 +99,7 @@ const hasAdminBackendAccess = () => {
 
 const getStoredSession = () => {
   try {
-    const session = JSON.parse(
-      window.localStorage.getItem("scholartrend.session") || "{}",
-    );
-    const expiresAt = session.subscriptionExpiresAt
-      ? new Date(session.subscriptionExpiresAt).getTime()
-      : Number.NaN;
-    if (
-      session.isPro &&
-      Number.isFinite(expiresAt) &&
-      expiresAt <= Date.now()
-    ) {
-      const now = new Date().toISOString();
-      const expiredSession = {
-        ...session,
-        role: "Student",
-        route: "/student-dashboard",
-        isPro: false,
-        plan: "Free",
-        subscriptionStatus: "expired",
-        subscriptionExpiredAt: session.subscriptionExpiredAt || now,
-        subscriptionUpdatedAt: now,
-      };
-      window.localStorage.setItem(
-        "scholartrend.session",
-        JSON.stringify(expiredSession),
-      );
-      return expiredSession;
-    }
-    return session;
+    return JSON.parse(window.localStorage.getItem("scholartrend.session") || "{}");
   } catch {
     return {};
   }
@@ -162,7 +132,6 @@ const roleDashboardRoutes = {
 
 const STUDENT_REGISTRATION_ROLE = "Student";
 const REGISTERED_LOGIN_HINT_KEY = "scholartrend.registeredLoginHint";
-const upgradeRoleOptions = ["Researcher", "Lecturer"];
 
 const getRegisteredLoginHint = () => {
   try {
@@ -179,174 +148,6 @@ const getRegisteredLoginHint = () => {
   } catch {
     return null;
   }
-};
-
-const ADMIN_PLAN_SETTINGS_KEY = "scholartrend.adminPlanSettings";
-const PENDING_PAYOS_UPGRADE_KEY = "scholartrend.pendingPayosUpgrades";
-const defaultProPlanSettings = {
-  monthlyPrice: 5,
-  yearlyPrice: 49,
-  yearlySavingsPercent: 2,
-  checkoutHoldMinutes: 15,
-  freeAccuracy: {
-    Student: 15,
-    Lecturer: 15,
-    Researcher: 15,
-  },
-  proAccuracy: {
-    Student: 35,
-    Lecturer: 35,
-    Researcher: 35,
-  },
-};
-
-const mirrorStudentPackageAccuracy = (
-  policy = {},
-  fallback = defaultProPlanSettings.freeAccuracy,
-) => {
-  const studentAccuracy = Number(
-    policy.Student ?? policy.student ?? fallback.Student,
-  );
-  return {
-    Student: studentAccuracy,
-    Lecturer: studentAccuracy,
-    Researcher: studentAccuracy,
-  };
-};
-
-const getProPlanSettings = () => {
-  try {
-    const saved = JSON.parse(
-      window.localStorage.getItem(ADMIN_PLAN_SETTINGS_KEY) || "null",
-    );
-    const savedYearlyPrice =
-      saved?.yearlyPrice ??
-      (Number(saved?.yearlyMonthlyPrice) >= 20
-        ? Number(saved.yearlyMonthlyPrice)
-        : undefined);
-    return {
-      ...defaultProPlanSettings,
-      ...(saved || {}),
-      yearlyPrice: savedYearlyPrice || defaultProPlanSettings.yearlyPrice,
-      freeAccuracy: mirrorStudentPackageAccuracy(
-        {
-          ...defaultProPlanSettings.freeAccuracy,
-          ...(saved?.freeAccuracy || {}),
-        },
-        defaultProPlanSettings.freeAccuracy,
-      ),
-      proAccuracy: mirrorStudentPackageAccuracy(
-        {
-          ...defaultProPlanSettings.proAccuracy,
-          ...(saved?.proAccuracy || {}),
-        },
-        defaultProPlanSettings.proAccuracy,
-      ),
-    };
-  } catch {
-    return defaultProPlanSettings;
-  }
-};
-
-const setProPlanSettings = (settings) => {
-  window.localStorage.setItem(
-    ADMIN_PLAN_SETTINGS_KEY,
-    JSON.stringify(settings),
-  );
-};
-
-const normalizeAccuracyPolicy = (
-  policy = {},
-  fallback = defaultProPlanSettings.freeAccuracy,
-) => ({
-  Student: Number(policy.Student ?? policy.student ?? fallback.Student),
-  Lecturer: Number(policy.Lecturer ?? policy.lecturer ?? fallback.Lecturer),
-  Researcher: Number(
-    policy.Researcher ?? policy.researcher ?? fallback.Researcher,
-  ),
-});
-
-const normalizePlanPolicySettings = (policy = {}) => ({
-  ...defaultProPlanSettings,
-  monthlyPrice: Number(
-    policy.monthlyPrice || defaultProPlanSettings.monthlyPrice,
-  ),
-  yearlyPrice: Number(policy.yearlyPrice || defaultProPlanSettings.yearlyPrice),
-  monthlyAmountVnd: Number(
-    policy.monthlyAmountVnd ||
-      policy.monthlyPrice * 25000 ||
-      defaultProPlanSettings.monthlyPrice * 25000,
-  ),
-  yearlyAmountVnd: Number(
-    policy.yearlyAmountVnd ||
-      policy.yearlyPrice * 25000 ||
-      defaultProPlanSettings.yearlyPrice * 25000,
-  ),
-  yearlySavingsPercent: Number(
-    policy.yearlySavingsPercent ?? defaultProPlanSettings.yearlySavingsPercent,
-  ),
-  checkoutHoldMinutes: Number(
-    policy.checkoutHoldMinutes ?? defaultProPlanSettings.checkoutHoldMinutes,
-  ),
-  freeAccuracy: mirrorStudentPackageAccuracy(
-    normalizeAccuracyPolicy(
-      policy.freeAccuracy,
-      defaultProPlanSettings.freeAccuracy,
-    ),
-    defaultProPlanSettings.freeAccuracy,
-  ),
-  proAccuracy: mirrorStudentPackageAccuracy(
-    normalizeAccuracyPolicy(
-      policy.proAccuracy,
-      defaultProPlanSettings.proAccuracy,
-    ),
-    defaultProPlanSettings.proAccuracy,
-  ),
-});
-
-const syncPlanPolicyFromBackend = async () => {
-  if (!getStoredAuth().accessToken) {
-    return getProPlanSettings();
-  }
-
-  const policy = await apiFetch("/api/plans/policy");
-  const nextSettings = normalizePlanPolicySettings(policy);
-  setProPlanSettings(nextSettings);
-  return nextSettings;
-};
-
-const savePlanPolicyToBackend = async (settings) => {
-  const policy = normalizePlanPolicySettings({
-    ...settings,
-    monthlyAmountVnd: Number(settings.monthlyPrice) * 25000,
-    yearlyAmountVnd: Number(settings.yearlyPrice) * 25000,
-  });
-  const savedPolicy = await apiFetch("/api/plans/policy", {
-    method: "PUT",
-    auth: true,
-    body: policy,
-  });
-  const nextSettings = normalizePlanPolicySettings(savedPolicy);
-  setProPlanSettings(nextSettings);
-  return nextSettings;
-};
-
-const resetPlanPolicyOnBackend = async () => {
-  const savedPolicy = await apiFetch("/api/plans/policy/reset", {
-    method: "POST",
-    auth: true,
-  });
-  const nextSettings = normalizePlanPolicySettings(savedPolicy);
-  setProPlanSettings(nextSettings);
-  return nextSettings;
-};
-
-const getSearchAccuracyForAccount = (role, isPro = false) => {
-  const normalizedRole = normalizeRoleForUi(role);
-  if (normalizedRole === "Administrator") return 100;
-  const settings = getProPlanSettings();
-  const accuracyMap = isPro ? settings.proAccuracy : settings.freeAccuracy;
-  return accuracyMap[normalizedRole] ?? settings.freeAccuracy.Researcher;
 };
 
 const normalizePercentValue = (value) => {
@@ -382,19 +183,14 @@ const getExplicitRoleFromPath = () => {
 
 const getCurrentAccountPlan = () => {
   const session = getStoredSession();
-  const role = normalizeRoleForUi(
-    getExplicitRoleFromPath() || session.role || inferRoleFromPath(),
-  );
-  const isPro = Boolean(session.isPro || session.plan === "Pro");
   return {
     ...session,
-    role,
-    isPro,
-    plan: isPro ? "Pro" : "Free",
-    searchAccuracy: getSearchAccuracyForAccount(role, isPro),
+    role: normalizeRoleForUi(
+      getExplicitRoleFromPath() || session.role || inferRoleFromPath(),
+    ),
+    searchAccuracy: 100,
   };
 };
-
 const getSessionDisplayName = (
   session = {},
   fallback = "ScholarTrend User",
@@ -410,54 +206,11 @@ const getSessionDisplayName = (
   return name.includes("@") ? name.split("@")[0] : name;
 };
 
-const getPendingPayosUpgrades = () => {
-  try {
-    const saved = JSON.parse(
-      window.localStorage.getItem(PENDING_PAYOS_UPGRADE_KEY) || "{}",
-    );
-    return saved && typeof saved === "object" && !Array.isArray(saved)
-      ? saved
-      : {};
-  } catch {
-    return {};
-  }
-};
-
-const rememberPendingPayosUpgrade = (orderCode, targetRole) => {
-  if (!orderCode || !upgradeRoleOptions.includes(targetRole)) return;
-  const saved = getPendingPayosUpgrades();
-  window.localStorage.setItem(
-    PENDING_PAYOS_UPGRADE_KEY,
-    JSON.stringify({
-      ...saved,
-      [String(orderCode)]: {
-        targetRole,
-        createdAt: new Date().toISOString(),
-      },
-    }),
-  );
-};
-
-const getPendingPayosUpgradeRole = (orderCode) => {
-  const saved = getPendingPayosUpgrades();
-  const targetRole = saved[String(orderCode)]?.targetRole;
-  return upgradeRoleOptions.includes(targetRole) ? targetRole : "";
-};
-
-const clearPendingPayosUpgrade = (orderCode) => {
-  if (!orderCode) return;
-  const saved = getPendingPayosUpgrades();
-  delete saved[String(orderCode)];
-  window.localStorage.setItem(PENDING_PAYOS_UPGRADE_KEY, JSON.stringify(saved));
-};
-
 const CLIENT_SYSTEM_LOGS_KEY = "scholartrend.adminSystemLogs";
 
 const getClientLogModule = (path = "") => {
   const value = String(path).toLowerCase();
-  if (value.includes("/payments") || value.includes("payos")) {
-    return "Payment Management";
-  }
+
   if (value.includes("/auth") || value.includes("/admin/users")) {
     return "User Management";
   }
@@ -472,7 +225,6 @@ const getClientLogModule = (path = "") => {
 
 const getClientLogCode = (module, status = "WEB") => {
   const prefixMap = {
-    "Payment Management": "PAYMENT",
     "User Management": "USER",
     "Sync Management": "SYNC",
     "Notification Management": "NOTIFY",
@@ -545,6 +297,27 @@ const apiFetch = async (path, options = {}) => {
       },
       body: body ? JSON.stringify(body) : undefined,
     });
+
+    if (response.status === 401 && auth && getStoredAuth().refreshToken) {
+      try {
+        const refreshed = await refreshStoredAuth();
+        const refreshedToken = refreshed?.accessToken;
+        if (refreshedToken) {
+          response = await fetch(`${API_BASE_URL}${path}`, {
+            ...rest,
+            __skipClientAlert: true,
+            headers: {
+              ...(body ? { "Content-Type": "application/json" } : {}),
+              Authorization: `Bearer ${refreshedToken}`,
+              ...headers,
+            },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+        }
+      } catch {
+        clearAuth();
+      }
+    }
   } catch (error) {
     if (error?.name === "AbortError") {
       throw error;
@@ -682,77 +455,23 @@ const persistSession = (user) => {
   const role = normalizeRoleForUi(
     user.role || currentSession.role || inferRoleFromPath(),
   );
-  const isPro = Boolean(user.isPro || user.plan === "Pro");
   const email = user.email || currentSession.email || "";
   const displayName = String(
-    user.fullName ||
-      user.name ||
-      currentSession.fullName ||
-      currentSession.name ||
-      email,
+    user.fullName || user.name || currentSession.fullName || currentSession.name || email,
   ).trim();
-  window.localStorage.setItem(
-    "scholartrend.session",
-    JSON.stringify({
-      id: user.id || currentSession.id,
-      email,
-      fullName: displayName,
-      name: displayName,
-      picture: user.picture || currentSession.picture,
-      avatarUrl:
-        user.avatarUrl || user.picture || currentSession.avatarUrl || "",
-      institution: user.institution ?? currentSession.institution ?? "",
-      department: user.department ?? currentSession.department ?? "",
-      role,
-      isPro,
-      plan: isPro ? "Pro" : "Free",
-      subscriptionStatus:
-        user.subscriptionStatus ||
-        currentSession.subscriptionStatus ||
-        (isPro ? "active" : "free"),
-      subscriptionBillingCycle:
-        user.subscriptionBillingCycle ||
-        currentSession.subscriptionBillingCycle ||
-        "",
-      subscriptionStartedAt:
-        user.subscriptionStartedAt ||
-        currentSession.subscriptionStartedAt ||
-        "",
-      subscriptionExpiresAt:
-        user.subscriptionExpiresAt ||
-        currentSession.subscriptionExpiresAt ||
-        "",
-      subscriptionExpiredAt:
-        user.subscriptionExpiredAt ||
-        currentSession.subscriptionExpiredAt ||
-        "",
-      subscriptionUpdatedAt:
-        user.subscriptionUpdatedAt ||
-        currentSession.subscriptionUpdatedAt ||
-        "",
-      searchAccuracy:
-        user.searchAccuracy || getSearchAccuracyForAccount(role, isPro),
-      provider: user.provider || currentSession.provider || "Backend",
-      signedInAt:
-        user.lastLoginAt ||
-        currentSession.signedInAt ||
-        new Date().toISOString(),
-    }),
-  );
-
-  try {
-    upsertAdminManagedUserFromAccount({
-      ...user,
-      role,
-      isPro,
-      plan: isPro ? "Pro" : "Free",
-      signedInAt: user.lastLoginAt || new Date().toISOString(),
-    });
-  } catch {
-    // Admin list fallback should never block sign-in.
-  }
+  const session = {
+    ...currentSession,
+    ...user,
+    email,
+    fullName: displayName,
+    name: displayName,
+    role,
+    searchAccuracy: 100,
+    signedInAt: user.lastLoginAt || currentSession.signedInAt || new Date().toISOString(),
+  };
+  window.localStorage.setItem("scholartrend.session", JSON.stringify(session));
+  window.dispatchEvent(new Event("scholartrend:session-updated"));
 };
-
 const persistAuth = (authPayload) => {
   if (!authPayload || authPayload.requiresLogin) return;
 
@@ -1120,7 +839,7 @@ const buildExternalSourceLinks = (paper = {}) => {
       href: `https://www.researchgate.net/search/publication?q=${encodedTitle}`,
     },
     {
-      label: "Connected Papers",
+      label: "Explore graph on Connected Papers",
       href: `https://www.connectedpapers.com/search?q=${encodedTitle}`,
     },
   ].filter(Boolean);
@@ -1445,7 +1164,6 @@ const matchesSearchTerms = (value, terms) =>
   );
 
 const SIMILARITY_LIMIT_PERCENT = 50;
-const PUBLICATION_SUBMISSIONS_KEY = "scholartrend.publicationSubmissions";
 const PUBLISHED_PUBLICATIONS_KEY = "scholartrend.publishedPublications";
 const PUBLICATION_REVIEW_NOTIFICATIONS_KEY =
   "scholartrend.publicationReviewNotifications";
@@ -1542,219 +1260,6 @@ const checkPublicationSimilarityWithScholar = async (submission) => {
   });
 };
 
-const getPublicationSubmissions = () => [];
-const setPublicationSubmissions = () => {};
-
-const normalizePublicationSubmission = (submission) => ({
-  id: String(submission.id),
-  backendId: submission.backendId || "",
-  title: submission.title || "",
-  authors: submission.authors || submission.authorsText || "",
-  submitter: submission.submitter || submission.submitterEmail || "",
-  submitterName: submission.submitterName || "",
-  role: normalizeRoleForUi(
-    submission.role || submission.submitterRole || "Researcher",
-  ),
-  keywords: submission.keywords || submission.keywordsText || "",
-  abstract: submission.abstract || "",
-  fileName: submission.fileName || "",
-  submittedAt: submission.submittedAt || new Date().toISOString(),
-  similarityPercent: Number(submission.similarityPercent || 0),
-  matchedTitle: submission.matchedTitle || "No indexed match found",
-  matchedSource: submission.matchedSource || "Google Scholar indexed record",
-  matchedLink: submission.matchedLink || "",
-  candidates: Array.isArray(submission.candidates) ? submission.candidates : [],
-  status: String(submission.status || "pending").toLowerCase(),
-  decision: submission.decision || "Waiting for admin approval.",
-  rejectedReason: submission.rejectedReason || "",
-  rejectedEvidence: submission.rejectedEvidence || "",
-  reviewedAt: submission.reviewedAt || "",
-  publishedPublicationId: submission.publishedPublicationId || null,
-});
-
-const isBackendSubmissionId = (id) => /^\d+$/.test(String(id || ""));
-
-const createLocalReviewSubmission = (submission) =>
-  normalizePublicationSubmission({
-    ...submission,
-    backendId: isBackendSubmissionId(submission.id) ? submission.id : undefined,
-    id: isBackendSubmissionId(submission.id)
-      ? `local-submission-${submission.id}`
-      : submission.id || `local-submission-${Date.now()}`,
-  });
-
-const upsertPublicationSubmissionForAdminReview = (submission) => {
-  const nextSubmission = createLocalReviewSubmission(submission);
-  const currentSubmissions = getPublicationSubmissions();
-  const nextSubmissions = [
-    nextSubmission,
-    ...currentSubmissions.filter((item) => {
-      const sameId = String(item.id) === String(nextSubmission.id);
-      const sameBackendId =
-        nextSubmission.backendId &&
-        String(item.backendId || "") === String(nextSubmission.backendId);
-      return !sameId && !sameBackendId;
-    }),
-  ];
-  setPublicationSubmissions(nextSubmissions);
-  window.dispatchEvent(new Event("scholartrend:publication-submissions"));
-  return nextSubmission;
-};
-
-const mirrorPublicationSubmissionToAuthHelper = async (submission) => {
-  if (!GOOGLE_AUTH_BASE_URL) return null;
-  const response = await fetch(
-    `${GOOGLE_AUTH_BASE_URL}/api/publications/submissions/local`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(submission),
-    },
-  );
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      payload?.message ||
-        payload?.error ||
-        "Could not save submission to the local Admin queue.",
-    );
-  }
-  return normalizePublicationSubmission(payload.submission || payload);
-};
-
-const deletePublicationSubmissionFromAuthHelper = async (submission) => {
-  if (!GOOGLE_AUTH_BASE_URL || !submission?.id) return;
-  const response = await fetch(
-    `${GOOGLE_AUTH_BASE_URL}/api/admin/publication-submissions/${encodeURIComponent(
-      submission.id,
-    )}`,
-    {
-      method: "DELETE",
-      credentials: "include",
-    },
-  );
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(
-      payload?.message ||
-        payload?.error ||
-        "Could not delete submission from the local Admin queue.",
-    );
-  }
-};
-
-const submitPublicationToBackend = async (submission) => {
-  const payload = await apiFetch("/api/publications/submissions", {
-    method: "POST",
-    auth: true,
-    body: {
-      title: submission.title,
-      authors: submission.authors,
-      keywords: submission.keywords,
-      abstract: submission.abstract,
-      submitterEmail: submission.submitter,
-      submitterName: submission.submitterName,
-      role: submission.role,
-      fileName: submission.fileName,
-      fileContentType: submission.fileContentType,
-      fileContentBase64: submission.fileContentBase64,
-      fileText: submission.fileText,
-      similarityPercent: submission.similarityPercent,
-      matchedTitle: submission.matchedTitle,
-      matchedSource: submission.matchedSource,
-      matchedLink: submission.matchedLink,
-      overLimit: submission.similarityPercent > SIMILARITY_LIMIT_PERCENT,
-      decision: submission.decision,
-      candidates: submission.candidates || [],
-    },
-  });
-
-  return normalizePublicationSubmission(payload);
-};
-
-const fetchPublicationSubmissionsFromBackend = async () => {
-  const payload = await apiFetch("/api/publications/submissions/admin", {
-    auth: true,
-  });
-  return Array.isArray(payload.items)
-    ? payload.items.map(normalizePublicationSubmission)
-    : [];
-};
-
-const fetchPublicationSubmissionsFromAuthHelper = async () => {
-  if (!GOOGLE_AUTH_BASE_URL) return [];
-  const response = await fetch(
-    `${GOOGLE_AUTH_BASE_URL}/api/admin/publication-submissions`,
-    { credentials: "include" },
-  );
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      payload?.message ||
-        payload?.error ||
-        "Could not load local publication review queue.",
-    );
-  }
-  return Array.isArray(payload.items)
-    ? payload.items.map(normalizePublicationSubmission)
-    : [];
-};
-
-const approvePublicationSubmissionOnBackend = async (id) => {
-  const payload = await apiFetch(
-    `/api/publications/submissions/${id}/approve`,
-    {
-      method: "POST",
-      auth: true,
-    },
-  );
-  return normalizePublicationSubmission(payload.submission || payload);
-};
-
-const rejectPublicationSubmissionOnBackend = async (id, reason, evidence) => {
-  const payload = await apiFetch(`/api/publications/submissions/${id}/reject`, {
-    method: "POST",
-    auth: true,
-    body: { reason, evidence },
-  });
-  return normalizePublicationSubmission(payload.submission || payload);
-};
-
-const deletePublicationSubmissionOnBackend = async (id, reason, evidence) => {
-  return apiFetch(`/api/publications/submissions/${id}`, {
-    method: "DELETE",
-    auth: true,
-    body: { reason, evidence },
-  });
-};
-
-const submissionToPublishedPublication = (submission) => ({
-  id: `published-${submission.id}`,
-  submissionId: submission.id,
-  title: submission.title,
-  abstract: submission.abstract || "No abstract provided.",
-  authors: String(
-    submission.authors || submission.submitter || "Unknown author",
-  )
-    .split(",")
-    .map((author) => author.trim())
-    .filter(Boolean),
-  keywords: String(submission.keywords || "")
-    .split(",")
-    .map((keyword) => keyword.trim())
-    .filter(Boolean),
-  year: new Date(submission.submittedAt || Date.now()).getFullYear(),
-  journalName: "ScholarTrend Published",
-  citationCount: 0,
-  doi: "",
-  publishedAt: new Date().toISOString(),
-  submitter: submission.submitter,
-  role: submission.role,
-  matchedTitle: submission.matchedTitle,
-  similarityPercent: submission.similarityPercent,
-});
-
 const getStoredPublishedPublications = () => {
   try {
     const saved = JSON.parse(
@@ -1798,54 +1303,7 @@ const mergePublicationsByIdOrTitle = (...lists) => {
   });
 };
 
-const getPublishedPublications = () => {
-  const stored = getStoredPublishedPublications();
-  const approvedFromQueue = getPublicationSubmissions()
-    .filter((submission) => submission.status === "approved")
-    .map(submissionToPublishedPublication);
-  return mergePublicationsByIdOrTitle(stored, approvedFromQueue);
-};
-
-const publishApprovedSubmission = (submission) => {
-  const published = submissionToPublishedPublication(submission);
-  const current = getStoredPublishedPublications();
-  const next = [
-    published,
-    ...current.filter(
-      (paper) =>
-        String(paper.submissionId || paper.id) !== String(submission.id),
-    ),
-  ];
-  setStoredPublishedPublications(next);
-  return published;
-};
-
-const uploadApprovedSubmissionToBackend = async (submission) => {
-  if (!getStoredAuth().accessToken) return null;
-
-  const authors = String(submission.authors || submission.submitter || "")
-    .split(",")
-    .map((author) => author.trim())
-    .filter(Boolean);
-  const keywords = String(submission.keywords || "")
-    .split(",")
-    .map((keyword) => keyword.trim())
-    .filter(Boolean);
-
-  return apiFetch("/api/publications/upload", {
-    method: "POST",
-    auth: true,
-    body: {
-      title: submission.title,
-      abstract: submission.abstract || "No abstract provided.",
-      year: new Date(submission.submittedAt || Date.now()).getFullYear(),
-      DOI: "",
-      journalId: null,
-      Authors: authors,
-      Keywords: keywords,
-    },
-  });
-};
+const getPublishedPublications = () => getStoredPublishedPublications();
 
 const mapPublishedPublicationForCard = (paper) => ({
   id: paper.id,
@@ -2169,160 +1627,6 @@ const markLocalNotificationsReadOnAuthHelper = async () => {
       credentials: "include",
     },
   );
-};
-
-const addPublicationReviewNotification = (submission, reason, evidence) => {
-  const notification = {
-    id: `review-${submission.id}-${Date.now()}`,
-    recipientEmail: submission.submitter,
-    recipientRole: submission.role,
-    type: "PUBLICATION REJECTED",
-    title: "REJECTED:",
-    text: `Your publication "${submission.title}" was rejected. Reason: ${reason}. Evidence: ${evidence}`,
-    route:
-      submission.role === "Student"
-        ? "/student-submit-publication"
-        : submission.role === "Lecturer"
-          ? "/lecturer-submit-publication"
-          : "/researcher-submit-publication",
-    createdAt: new Date().toISOString(),
-    unread: true,
-  };
-  const next = persistLocalNotifications([
-    notification,
-    ...getPublicationReviewNotifications(),
-  ]);
-  mirrorLocalNotificationToAuthHelper(notification).catch(() => {});
-  return notification;
-};
-
-const createPublicationReviewMessage = (submission, reason, evidence) =>
-  `Your publication "${submission.title}" was rejected. Reason: ${reason}. Evidence: ${evidence}`;
-
-const sendPublicationReviewNotificationToBackend = async (
-  submission,
-  message,
-  notificationType = "SYSTEM",
-) =>
-  apiFetch("/api/notifications/review-result", {
-    method: "POST",
-    auth: true,
-    body: {
-      recipientEmail: submission.submitter,
-      message,
-      notificationType,
-    },
-  });
-
-const sendAdminAuditLog = (detail, module = "Admin", code = "ADMIN-AUDIT") =>
-  hasAdminBackendAccess()
-    ? apiFetch("/api/admin/audit-log", {
-        method: "POST",
-        auth: true,
-        body: {
-          module,
-          detail,
-          severity: "Success",
-          code,
-        },
-      }).catch(() => {})
-    : Promise.resolve(null);
-
-const sendPublicationReviewNotification = async (
-  submission,
-  reason,
-  evidence,
-) => {
-  const message = createPublicationReviewMessage(submission, reason, evidence);
-  try {
-    await sendPublicationReviewNotificationToBackend(
-      submission,
-      message,
-      "SYSTEM",
-    );
-  } catch {
-    addPublicationReviewNotification(submission, reason, evidence);
-  }
-};
-
-const addPublicationApprovedNotification = (submission) => {
-  const notification = {
-    id: `approved-${submission.id}-${Date.now()}`,
-    recipientEmail: submission.submitter,
-    recipientRole: submission.role,
-    type: "PUBLICATION APPROVED",
-    title: "APPROVED:",
-    text: `Your publication "${submission.title}" was approved and published on ScholarTrend.`,
-    route:
-      submission.role === "Student"
-        ? `/student-publication?id=${encodeURIComponent(`published-${submission.id}`)}`
-        : submission.role === "Lecturer"
-          ? `/lecturer-publication?id=${encodeURIComponent(`published-${submission.id}`)}`
-          : `/researcher-publication?id=${encodeURIComponent(`published-${submission.id}`)}`,
-    createdAt: new Date().toISOString(),
-    unread: true,
-  };
-  persistLocalNotifications([
-    notification,
-    ...getPublicationReviewNotifications(),
-  ]);
-  mirrorLocalNotificationToAuthHelper(notification).catch(() => {});
-  return notification;
-};
-
-const sendPublicationApprovedNotification = async (submission) => {
-  const message = `Your publication "${submission.title}" was approved and published on ScholarTrend.`;
-  try {
-    await sendPublicationReviewNotificationToBackend(
-      submission,
-      message,
-      "NEW_PUBLICATION",
-    );
-  } catch {
-    addPublicationApprovedNotification(submission);
-  }
-};
-
-const addPublicationDeleteNotification = (submission, reason, evidence) => {
-  const notification = {
-    id: `delete-${submission.id}-${Date.now()}`,
-    recipientEmail: submission.submitter,
-    recipientRole: submission.role,
-    type: "PUBLICATION DELETED",
-    title: "DELETED:",
-    text: `Your publication "${submission.title}" was deleted by admin. Reason: ${reason}. Evidence: ${evidence}`,
-    route:
-      submission.role === "Student"
-        ? "/student-submit-publication"
-        : submission.role === "Lecturer"
-          ? "/lecturer-submit-publication"
-          : "/researcher-submit-publication",
-    createdAt: new Date().toISOString(),
-    unread: true,
-  };
-  persistLocalNotifications([
-    notification,
-    ...getPublicationReviewNotifications(),
-  ]);
-  mirrorLocalNotificationToAuthHelper(notification).catch(() => {});
-  return notification;
-};
-
-const sendPublicationDeleteNotification = async (
-  submission,
-  reason,
-  evidence,
-) => {
-  const message = `Your publication "${submission.title}" was deleted by admin. Reason: ${reason}. Evidence: ${evidence}`;
-  try {
-    await sendPublicationReviewNotificationToBackend(
-      submission,
-      message,
-      "SYSTEM",
-    );
-  } catch {
-    addPublicationDeleteNotification(submission, reason, evidence);
-  }
 };
 
 function useApiResource(path, fallbackValue, options = {}) {
@@ -4814,6 +4118,9 @@ function RegisterPage() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [selectedRole, setSelectedRole] = React.useState(
+    STUDENT_REGISTRATION_ROLE,
+  );
   const [authFeedback, setAuthFeedback] = React.useState(null);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const [isRegistering, setIsRegistering] = React.useState(false);
@@ -4849,7 +4156,7 @@ function RegisterPage() {
           fullName: fullName.trim(),
           email: email.trim(),
           password,
-          role: normalizeRoleForApi(STUDENT_REGISTRATION_ROLE),
+          role: normalizeRoleForApi(selectedRole),
         },
       });
 
@@ -4857,7 +4164,7 @@ function RegisterPage() {
         .trim()
         .toLowerCase();
       const registeredRole = normalizeRoleForUi(
-        payload.user?.role || STUDENT_REGISTRATION_ROLE,
+        payload.user?.role || selectedRole,
       );
       await clearAuthCookie();
       clearAuth();
@@ -4896,7 +4203,7 @@ function RegisterPage() {
     });
 
     try {
-      await beginGoogleOAuth(STUDENT_REGISTRATION_ROLE);
+      await beginGoogleOAuth(selectedRole);
     } catch (error) {
       setIsGoogleLoading(false);
       setAuthFeedback({
@@ -4913,7 +4220,7 @@ function RegisterPage() {
       text: `Opening ${provider} authentication...`,
     });
     try {
-      await beginAcademicOAuth(provider, STUDENT_REGISTRATION_ROLE);
+      await beginAcademicOAuth(provider, selectedRole);
     } catch (error) {
       setSelectedAcademicProvider("");
       setAuthFeedback({ type: "error", text: error.message });
@@ -4965,6 +4272,26 @@ function RegisterPage() {
                 />
               </span>
             </label>
+            <fieldset className="register-role-field">
+              <legend>Register as</legend>
+              <div className="register-role-options">
+                {["Student", "Lecturer", "Researcher"].map((role) => (
+                  <label
+                    className={selectedRole === role ? "is-selected" : ""}
+                    key={role}
+                  >
+                    <input
+                      type="radio"
+                      name="registration-role"
+                      value={role}
+                      checked={selectedRole === role}
+                      onChange={() => setSelectedRole(role)}
+                    />
+                    <span>{role}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <label className="field">
               <span>Password</span>
               <span className="input-with-icon password-input">
@@ -6264,11 +5591,6 @@ const sidebarItems = [
     icon: "M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Zm5-1.5L20 20",
   },
   {
-    label: "Submit Paper",
-    route: "/student-submit-publication",
-    icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 12h6M9 15h4M12 9v6M9 12h6",
-  },
-  {
     label: "Bookmarks",
     route: "/student-bookmarks",
     icon: "M6 4.5h12v15L12 16l-6 3.5v-15Z",
@@ -6524,6 +5846,10 @@ const profileTabs = [
     icon: "M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6ZM8 9h8M8 13h6M18 7v2M16 8h4",
   },
   {
+    label: "Role Change Request",
+    icon: "M7 7h11m0 0-3-3m3 3-3 3M17 17H6m0 0 3-3m-3 3 3 3",
+  },
+  {
     label: "Change Password",
     icon: "M5 11h14v10H5V11ZM8 11V8a4 4 0 0 1 8 0v3M12 14v4",
   },
@@ -6574,11 +5900,6 @@ const researcherNavGroups = [
         icon: "M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6M8.2 10.5h4.6M10.5 8.2v4.6",
       },
       {
-        label: "Submit Paper",
-        route: "/researcher-submit-publication",
-        icon: "M6 4.5h9l3 3V20H6zM15 4.5V8h3M9 12h6M9 15h4M12 9v6M9 12h6",
-      },
-      {
         label: "Bookmarks",
         route: "/researcher-bookmarks",
         icon: "M6 4.5h12v15L12 16l-6 3.5v-15ZM9 8h6M9 11h5",
@@ -6609,10 +5930,6 @@ const researcherNavGroups = [
         icon: "M5 6h4v13H5zM15 4h4v15h-4zM10.5 10h3M10.5 14h3M4 20h16",
       },
     ],
-  },
-  {
-    heading: "Lecturer",
-    items: [],
   },
 ];
 
@@ -7445,7 +6762,6 @@ function MiniIcon({ path }) {
 
 function StudentSidebar({ activeRoute }) {
   const { t } = useTranslation();
-  const [upgradeOpen, setUpgradeOpen] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const session = getCurrentAccountPlan();
   const displayName = session.name || session.email || "Student Account";
@@ -7620,16 +6936,6 @@ function StudentSidebar({ activeRoute }) {
         </nav>
 
         <div className="student-sidebar-footer">
-          {!session.isPro ? (
-            <button
-              type="button"
-              className="student-upgrade-button"
-              onClick={() => setUpgradeOpen(true)}
-            >
-              <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-              <span>Upgrade to Pro</span>
-            </button>
-          ) : null}
           <a
             className={`sidebar-profile-card ${activeRoute === "/student-profile" ? "active" : ""}`}
             href="/student-profile"
@@ -7653,10 +6959,6 @@ function StudentSidebar({ activeRoute }) {
           </button>
         </div>
       </aside>
-      <UpgradeProModal
-        open={upgradeOpen}
-        onClose={() => setUpgradeOpen(false)}
-      />
     </>
   );
 }
@@ -7875,14 +7177,6 @@ function StudentDashboard() {
                 <span>{displayRole}</span> University of Applied Sciences
               </p>
             </div>
-            <button
-              type="button"
-              className="new-project"
-              onClick={navTo("/student-submit-publication")}
-            >
-              <MiniIcon path="M12 5v14M5 12h14M7.5 7.5l9 9M16.5 7.5l-9 9" />
-              <span>New Project</span>
-            </button>
           </div>
 
           <section className="student-stats" aria-label="Student metrics">
@@ -8001,9 +7295,7 @@ function ResearcherSidebar({
   mobileOpen = false,
   onClose,
   onToggleCollapse,
-  onUpgrade,
   onSettings,
-  showUpgrade = true,
 }) {
   const { t } = useTranslation();
   return (
@@ -8173,16 +7465,6 @@ function ResearcherSidebar({
       </nav>
 
       <div className="researcher-sidebar-footer">
-        {showUpgrade ? (
-          <button
-            type="button"
-            className="researcher-upgrade"
-            onClick={onUpgrade}
-          >
-            <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-            <span>Upgrade to Pro</span>
-          </button>
-        ) : null}
         <div className="researcher-footer-actions">
           <a
             href={getAcademicPath("/researcher-profile", role)}
@@ -8217,332 +7499,6 @@ const proPlanFeatures = [
   "Advanced citation intelligence",
   "Full report export suite",
 ];
-
-const upgradeRoleDetails = {
-  Researcher: {
-    title: "Researcher Pro",
-    description:
-      "For deep research work: citation intelligence, publication tracking, trend reports, and stronger search accuracy.",
-  },
-  Lecturer: {
-    title: "Lecturer Pro",
-    description:
-      "For teaching workflows: follow discipline trends, save papers, export reports, and prepare class-ready insights.",
-  },
-};
-
-const PAYOS_CHECKOUT_TIMEOUT_MS = 15000;
-
-function UpgradeProModal({ open, onClose }) {
-  const [billingCycle, setBillingCycle] = React.useState("yearly");
-  const [targetRole, setTargetRole] = React.useState("Researcher");
-  const [upgraded, setUpgraded] = React.useState(false);
-  const [paymentStatus, setPaymentStatus] = React.useState("idle");
-  const [paymentMessage, setPaymentMessage] = React.useState("");
-  const planSettings = getProPlanSettings();
-  const accountPlan = getCurrentAccountPlan();
-  const normalizedTargetRole = upgradeRoleOptions.includes(targetRole)
-    ? targetRole
-    : "Researcher";
-  const currentAccuracy = getSearchAccuracyForAccount(
-    accountPlan.role,
-    accountPlan.isPro,
-  );
-  const proAccuracy = getSearchAccuracyForAccount(normalizedTargetRole, true);
-
-  React.useEffect(() => {
-    if (!open) return undefined;
-
-    setTargetRole(
-      upgradeRoleOptions.includes(accountPlan.role)
-        ? accountPlan.role
-        : "Researcher",
-    );
-    setUpgraded(false);
-    setPaymentStatus("idle");
-    setPaymentMessage("");
-    syncPlanPolicyFromBackend().catch(() => {});
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  const isYearly = billingCycle === "yearly";
-  const finishUpgrade = (user) => {
-    const normalizedUser = {
-      ...(user || {}),
-      role: normalizeRoleForUi(user?.role || normalizedTargetRole),
-      isPro: true,
-      plan: "Pro",
-    };
-    persistSession(normalizedUser);
-    upsertAdminManagedUserFromAccount(normalizedUser);
-    setUpgraded(true);
-    setPaymentStatus("idle");
-    setPaymentMessage("");
-    window.setTimeout(() => {
-      goToRoute(
-        roleDashboardRoutes[normalizeRoleForUi(normalizedUser.role)] ||
-          "/student-dashboard",
-      );
-    }, 650);
-  };
-
-  const handleUpgrade = async () => {
-    setPaymentStatus("loading");
-    setPaymentMessage("");
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(
-      () => controller.abort(),
-      PAYOS_CHECKOUT_TIMEOUT_MS,
-    );
-
-    try {
-      const payload = await authServerFetch("/api/payments/payos/create", {
-        method: "POST",
-        signal: controller.signal,
-        body: {
-          billingCycle,
-          targetRole: normalizedTargetRole,
-          user: getStoredSession(),
-        },
-      });
-
-      if (payload.alreadyPro && payload.user) {
-        finishUpgrade(payload.user);
-        return;
-      }
-
-      if (!payload.checkoutUrl) {
-        throw new Error(
-          payload.error ||
-            "PayOS checkout is not available. Please contact admin.",
-        );
-      }
-
-      rememberPendingPayosUpgrade(payload.orderCode, normalizedTargetRole);
-      setPaymentStatus("redirecting");
-      window.location.assign(payload.checkoutUrl);
-    } catch (error) {
-      setPaymentStatus("error");
-      setPaymentMessage(
-        error.name === "AbortError"
-          ? "PayOS is taking too long to create the checkout link. Please try again in a moment."
-          : error.message,
-      );
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
-  };
-
-  const handleTestUpgrade = async () => {
-    setPaymentStatus("testing");
-    setPaymentMessage("");
-
-    try {
-      const payload = await authServerFetch(
-        "/api/payments/payos/test-activate",
-        {
-          method: "POST",
-          body: {
-            billingCycle,
-            targetRole: normalizedTargetRole,
-            user: getStoredSession(),
-          },
-        },
-      );
-
-      if (!payload.user) {
-        throw new Error(
-          payload.error || "Test upgrade did not return an activated account.",
-        );
-      }
-
-      finishUpgrade(payload.user);
-    } catch (error) {
-      setPaymentStatus("error");
-      setPaymentMessage(error.message);
-    }
-  };
-
-  return (
-    <div
-      className="upgrade-modal-backdrop"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
-    >
-      <section
-        className="upgrade-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="upgrade-modal-title"
-      >
-        <button
-          type="button"
-          className="upgrade-modal-close"
-          aria-label="Close upgrade dialog"
-          onClick={onClose}
-        >
-          <MiniIcon path="M6 6l12 12M18 6 6 18" />
-        </button>
-
-        <div className="upgrade-modal-mark" aria-hidden="true">
-          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-        </div>
-
-        <div className="upgrade-modal-heading">
-          <span>ScholarTrend Pro</span>
-          <h2 id="upgrade-modal-title">Upgrade to Pro</h2>
-          <p>
-            Choose the academic workspace you want, then complete PayOS
-            checkout.
-          </p>
-        </div>
-
-        <div className="upgrade-accuracy-card">
-          <span>
-            {accountPlan.role} {accountPlan.plan} to {normalizedTargetRole} Pro
-          </span>
-          <strong>
-            {currentAccuracy}% <i aria-hidden="true">-&gt;</i> {proAccuracy}%
-          </strong>
-          <p>
-            New accounts start as Student. This package upgrades your account to
-            a paid {normalizedTargetRole} workspace.
-          </p>
-        </div>
-
-        <div className="upgrade-role-picker" aria-label="Upgrade target role">
-          <span>Upgrade role</span>
-          <div>
-            {upgradeRoleOptions.map((role) => (
-              <button
-                key={role}
-                type="button"
-                className={normalizedTargetRole === role ? "active" : ""}
-                onClick={() => setTargetRole(role)}
-              >
-                {role}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="upgrade-billing-toggle" aria-label="Billing cycle">
-          <button
-            type="button"
-            className={!isYearly ? "active" : ""}
-            onClick={() => setBillingCycle("monthly")}
-          >
-            Monthly
-          </button>
-          <button
-            type="button"
-            className={isYearly ? "active" : ""}
-            onClick={() => setBillingCycle("yearly")}
-          >
-            Yearly <span>Save {planSettings.yearlySavingsPercent}%</span>
-          </button>
-        </div>
-
-        <div className="upgrade-price-row">
-          <strong>
-            ${isYearly ? planSettings.yearlyPrice : planSettings.monthlyPrice}
-          </strong>
-          <span>{isYearly ? "/ year" : "/ month"}</span>
-        </div>
-
-        <div
-          className="upgrade-plan-explainer"
-          aria-label="Pro package explanation"
-        >
-          {upgradeRoleOptions.map((role) => {
-            const detail = upgradeRoleDetails[role];
-            const accuracy = getSearchAccuracyForAccount(role, true);
-            const selected = normalizedTargetRole === role;
-
-            return (
-              <button
-                key={role}
-                type="button"
-                className={`upgrade-plan-card ${selected ? "active" : ""}`}
-                onClick={() => setTargetRole(role)}
-              >
-                <span>{detail.title}</span>
-                <strong>{accuracy}% search accuracy</strong>
-                <p>{detail.description}</p>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="upgrade-feature-list">
-          {proPlanFeatures.map((feature) => (
-            <div key={feature}>
-              <MiniIcon path="M5 12.5 9.5 17 19 7" />
-              <span>{feature}</span>
-            </div>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          className="upgrade-primary-action"
-          onClick={handleUpgrade}
-          disabled={
-            paymentStatus === "loading" ||
-            paymentStatus === "redirecting" ||
-            paymentStatus === "testing"
-          }
-        >
-          {paymentStatus === "loading"
-            ? "Creating PayOS Link..."
-            : paymentStatus === "redirecting"
-              ? "Opening PayOS..."
-              : paymentStatus === "testing"
-                ? "Activating Test Pro..."
-                : upgraded
-                  ? `${normalizedTargetRole} Pro Activated`
-                  : `Upgrade to ${normalizedTargetRole}`}
-        </button>
-
-        <button
-          type="button"
-          className="upgrade-test-action"
-          onClick={handleTestUpgrade}
-          disabled={
-            paymentStatus === "loading" ||
-            paymentStatus === "redirecting" ||
-            paymentStatus === "testing"
-          }
-        >
-          Test activate without payment
-        </button>
-
-        {paymentMessage ? (
-          <p className="upgrade-status error" role="alert">
-            {paymentMessage}
-          </p>
-        ) : upgraded ? (
-          <p className="upgrade-status" role="status">
-            Your {normalizedTargetRole} Pro workspace is ready.
-          </p>
-        ) : (
-          <p className="upgrade-note">Secure checkout is processed by PayOS.</p>
-        )}
-      </section>
-    </div>
-  );
-}
 
 const defaultAcademicWorkspaceSettings = {
   sources: {
@@ -8686,16 +7642,16 @@ function AcademicSettingsPanel({ open, onClose, role = "researcher" }) {
       "indigo",
     ],
     [
-      "crossref",
-      "Crossref",
-      "DOI metadata and publisher records",
+      "googleScholar",
+      "Google Scholar",
+      "Scholar results provided through SerpApi",
       "M7 4.5h7l3 3V20H7zM14 4.5V8h3M10 12h4M10 15h6M10 18h3M4 8v12h3",
       "emerald",
     ],
     [
-      "arxiv",
-      "arXiv",
-      "Preprint discovery for fast-moving fields",
+      "researchGate",
+      "ResearchGate",
+      "Publication pages discovered through Scholar lookup",
       "M12 3.5 20 8v8l-8 4.5L4 16V8l8-4.5ZM8.5 10.2l3.5 2 3.5-2M12 12.2v4.3",
       "amber",
     ],
@@ -9216,10 +8172,8 @@ function ResearcherShell({
   children,
 }) {
   const sidebar = useResearcherSidebarControls();
-  const [upgradeOpen, setUpgradeOpen] = React.useState(false);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const academicRole = getAcademicRole();
-  const accountPlan = getCurrentAccountPlan();
   const isLecturer = academicRole === "lecturer";
   const resolvedActiveRoute = getAcademicPath(activeRoute, academicRole);
   const TopbarComponent =
@@ -9272,13 +8226,7 @@ function ResearcherShell({
         mobileOpen={sidebar.mobileOpen}
         onClose={sidebar.closeMobile}
         onToggleCollapse={sidebar.toggleCollapse}
-        onUpgrade={() => setUpgradeOpen(true)}
         onSettings={() => setSettingsOpen(true)}
-        showUpgrade={!accountPlan.isPro && accountPlan.role === "Student"}
-      />
-      <UpgradeProModal
-        open={upgradeOpen}
-        onClose={() => setUpgradeOpen(false)}
       />
       <AcademicSettingsPanel
         open={settingsOpen}
@@ -12463,6 +11411,7 @@ function ResearcherPaperPanel({ selectedNode }) {
           </a>
         ))}
       </section>
+      <PublicationReviewPanel publication={selectedPaper} />
     </aside>
   );
 }
@@ -12751,6 +11700,7 @@ function ResearcherListDetail({ paper, onDownloadPaper }) {
         </div>
         <span>Vision Processing Simulation</span>
       </div>
+      <PublicationReviewPanel publication={paper} />
     </aside>
   );
 }
@@ -12789,7 +11739,7 @@ function ResearcherListViewPage() {
     listApiPath,
     [],
     {
-      allowUnauthenticated: true,
+      auth: true,
       clearOnLoad: false,
       select: (payload) =>
         unwrapList(payload).map((paper) =>
@@ -12881,10 +11831,6 @@ function ResearcherListViewPage() {
                     : `Search results for "${query.trim()}"`
                   : "DeepFruits: A Fruit Detection System"}
               </h1>
-              <p className="researcher-search-accuracy">
-                {accountPlan.plan} account: 1–{accountPlan.searchAccuracy}%
-                article accuracy range
-              </p>
               <p>
                 Knowledge Graph <span>&gt;</span> <strong>List View</strong>
               </p>
@@ -13041,7 +11987,7 @@ function ResearcherSearchPage() {
     graphApiPath,
     [],
     {
-      allowUnauthenticated: true,
+      auth: true,
       select: (payload) => unwrapList(payload),
     },
   );
@@ -13191,9 +12137,18 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
           />{" "}
           OpenAlex
         </label>
+        <label>
+          <input
+            type="radio"
+            name="source"
+            checked={filters.source === "ResearchGate"}
+            onChange={() => onChangeFilters({ source: "ResearchGate" })}
+          />{" "}
+          ResearchGate
+        </label>
       </section>
 
-      <section className="filter-card">
+      <section className="filter-card keyword-filter-card">
         <h3>
           <MiniIcon path="M20 13.5 13.5 20 4 10.5V4h6.5l9.5 9.5ZM8 8h.01" />
           Keywords
@@ -13217,6 +12172,19 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
               </button>
             </span>
           ))}
+        </div>
+        <div className="keyword-entry">
+          <MiniIcon path="M11 4a7 7 0 1 0 4.9 12l4.1 4" />
+          <input
+            type="search"
+            value={filters.keyword}
+            onChange={(event) =>
+              onChangeFilters({ keyword: event.target.value })
+            }
+            placeholder="Keyword..."
+            aria-label="Search keyword filter"
+            list="student-search-keyword-suggestions"
+          />
           <button
             type="button"
             onClick={() =>
@@ -13228,16 +12196,6 @@ function SearchFilterPanel({ filters, onChangeFilters, onClearFilters }) {
             <MiniIcon path="M12 5v14M5 12h14" />
             Add
           </button>
-          <input
-            type="search"
-            value={filters.keyword}
-            onChange={(event) =>
-              onChangeFilters({ keyword: event.target.value })
-            }
-            placeholder="Keyword..."
-            aria-label="Search keyword filter"
-            list="student-search-keyword-suggestions"
-          />
           <datalist id="student-search-keyword-suggestions">
             {filterSuggestions.map((suggestion) => (
               <option value={suggestion} key={suggestion} />
@@ -13273,15 +12231,6 @@ function SearchResultCard({ result, onToggleSave, onDownloadPaper }) {
       </a>
       <p className="result-authors">{result.authors}</p>
       <p className="result-abstract">{result.abstract}</p>
-      <div className="result-accuracy-row">
-        <span className={result.isPro ? "pro" : ""}>
-          {result.plan || "Free"} accuracy:{" "}
-          {Number(result.displayAccuracy ?? result.searchAccuracy ?? 0).toFixed(
-            1,
-          )}
-          %
-        </span>
-      </div>
       {result.externalLinks?.length ? (
         <div className="result-source-links" aria-label="External sources">
           {result.externalLinks.map((link) => (
@@ -13324,7 +12273,216 @@ function SearchResultCard({ result, onToggleSave, onDownloadPaper }) {
           )}
         </div>
       </div>
+      <PublicationReviewPanel publication={result} />
     </article>
+  );
+}
+
+function PublicationReviewPanel({ publication }) {
+  const publicationKey = String(
+    publication.doi || publication.id || publication.title,
+  ).trim();
+  const [open, setOpen] = React.useState(false);
+  const [rating, setRating] = React.useState(0);
+  const [comment, setComment] = React.useState("");
+  const [data, setData] = React.useState({
+    averageCredibility: 0,
+    reviewCount: 0,
+    reviews: [],
+  });
+  const [status, setStatus] = React.useState("idle");
+  const [message, setMessage] = React.useState("");
+  const [reviewReactions, setReviewReactions] = React.useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem("scholartrend.reviewReactions") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const loadReviews = React.useCallback(async () => {
+    if (!publicationKey) return;
+    if (!getStoredAuth().accessToken) {
+      setStatus("idle");
+      return;
+    }
+    setStatus("loading");
+    try {
+      const payload = await apiFetch(
+        `/api/publication-reviews?publicationKey=${encodeURIComponent(publicationKey)}`,
+        { auth: true, __skipClientAlert: true },
+      );
+      setData(payload);
+      setStatus("ready");
+    } catch {
+      setStatus("error");
+    }
+  }, [publicationKey]);
+
+  React.useEffect(() => {
+    loadReviews();
+  }, [loadReviews]);
+
+  const submitReview = async (event) => {
+    event.preventDefault();
+    if (!getStoredAuth().accessToken) {
+      setMessage("Please sign in to publish a review.");
+      return;
+    }
+    if (!rating) {
+      setMessage("Choose a credibility score from 1 to 5.");
+      return;
+    }
+    if (comment.trim().length < 3) {
+      setMessage("Write a comment with at least 3 characters.");
+      return;
+    }
+    setStatus("saving");
+    try {
+      await apiFetch("/api/publication-reviews", {
+        method: "POST",
+        auth: true,
+        body: {
+          publicationKey,
+          publicationTitle: publication.title,
+          publicationAuthors:
+            typeof publication.authors === "string"
+              ? publication.authors
+              : (publication.authors || [])
+                  .map((author) => author.name || author.fullName || author)
+                  .join(", "),
+          publicationAbstract:
+            publication.abstract || publication.summary || "",
+          publicationSource:
+            publication.source ||
+            publication.venue ||
+            publication.journalName ||
+            "",
+          publicationYear: Number(publication.year) || null,
+          publicationDoi: publication.doi || "",
+          publicationUrl:
+            publication.externalLinks?.[0]?.href ||
+            publication.accessPoints?.[0]?.href ||
+            publication.sourceUrl ||
+            "",
+          credibilityRating: rating,
+          comment: comment.trim(),
+        },
+      });
+      setComment("");
+      setMessage("Your review is now visible to other users.");
+      await loadReviews();
+    } catch (error) {
+      setStatus("ready");
+      setMessage(error.message);
+    }
+  };
+
+  const reactToReview = (reviewId, reaction) => {
+    setReviewReactions((current) => {
+      const next = {
+        ...current,
+        [reviewId]: current[reviewId] === reaction ? null : reaction,
+      };
+      window.localStorage.setItem(
+        "scholartrend.reviewReactions",
+        JSON.stringify(next),
+      );
+      return next;
+    });
+  };
+
+  return (
+    <section className="publication-review-panel">
+      <button
+        type="button"
+        className="review-summary-button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <span className="review-star" aria-hidden="true">★</span>
+        <strong>
+          {data.reviewCount
+            ? `${Number(data.averageCredibility).toFixed(1)}/5 credibility`
+            : "Not rated yet"}
+        </strong>
+        <span>
+          {data.reviewCount} {data.reviewCount === 1 ? "review" : "reviews"}
+        </span>
+        <b>{open ? "Hide" : "View & review"}</b>
+      </button>
+      {open ? (
+        <div className="review-panel-content">
+          <form className="review-compose" onSubmit={submitReview}>
+            <div>
+              <strong>How credible is this paper?</strong>
+              <span>Rate the source quality and research reliability.</span>
+            </div>
+            <div className="credibility-rating" aria-label="Credibility rating">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  type="button"
+                  className={value <= rating ? "active" : ""}
+                  aria-label={`${value} out of 5`}
+                  onClick={() => setRating(value)}
+                  key={value}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={comment}
+              maxLength={2000}
+              placeholder="Share why you consider this paper credible or what readers should verify..."
+              onChange={(event) => setComment(event.target.value)}
+            />
+            <div className="review-compose-footer">
+              <small>{comment.length}/2000</small>
+              <button type="submit" disabled={status === "saving"}>
+                {status === "saving" ? "Publishing..." : "Publish Review"}
+              </button>
+            </div>
+            {message ? <p>{message}</p> : null}
+          </form>
+          <div className="review-list">
+            {status === "loading" ? <p>Loading reviews...</p> : null}
+            {status !== "loading" && !data.reviews?.length ? (
+              <p>No comments yet. Be the first reviewer.</p>
+            ) : null}
+            {(data.reviews || []).map((review) => (
+              <article key={review.id}>
+                <header>
+                  <strong>{review.reviewerName}</strong>
+                  <span>{review.reviewerRole}</span>
+                  <b>{review.credibilityRating}/5 ★</b>
+                </header>
+                <p>{review.comment}</p>
+                <time>{formatAdminDateTime(review.updatedAt, "")}</time>
+                <div className="review-reaction-controls">
+                  <button
+                    type="button"
+                    className={reviewReactions[review.id] === "like" ? "active like" : ""}
+                    aria-pressed={reviewReactions[review.id] === "like"}
+                    onClick={() => reactToReview(review.id, "like")}
+                  >
+                    <span aria-hidden="true">👍</span> Like
+                  </button>
+                  <button
+                    type="button"
+                    className={reviewReactions[review.id] === "dislike" ? "active dislike" : ""}
+                    aria-pressed={reviewReactions[review.id] === "dislike"}
+                    onClick={() => reactToReview(review.id, "dislike")}
+                  >
+                    <span aria-hidden="true">👎</span> Dislike
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -13396,7 +12554,7 @@ function StudentSearchPage() {
     searchApiPath,
     { items: [], totalCount: 0, totalPages: 1, page: 1, pageSize: 10 },
     {
-      allowUnauthenticated: true,
+      auth: true,
       clearOnLoad: false,
       select: (payload) => ({
         items: unwrapList(payload).map(mapPublicationForCard),
@@ -13458,7 +12616,6 @@ function StudentSearchPage() {
       ...result,
       saved: hasLocalBookmark(result, localBookmarks),
       plan: accountPlan.plan,
-      isPro: accountPlan.isPro,
       searchAccuracy: accountPlan.searchAccuracy,
       displayAccuracy: getPolicyScopedSearchAccuracy(
         result,
@@ -13471,8 +12628,6 @@ function StudentSearchPage() {
     filteredPublishedSearchResults,
     localBookmarks,
     filters.keyword,
-    accountPlan.plan,
-    accountPlan.isPro,
     accountPlan.searchAccuracy,
   ]);
 
@@ -13557,17 +12712,6 @@ function StudentSearchPage() {
 
         <div className="student-content search-content">
           <h1 className="search-page-title">Publication Search</h1>
-          <div className="search-accuracy-banner">
-            <span>{accountPlan.plan} account</span>
-            <strong>
-              1–{accountPlan.searchAccuracy}% article accuracy range
-            </strong>
-            <p>
-              Free results range from 1–15%. Pro results range from 1–35%,
-              based on each paper's relevance.
-            </p>
-          </div>
-
           <div className="search-layout">
             <SearchFilterPanel
               filters={filters}
@@ -14469,7 +13613,6 @@ const extraNotificationItems = [
 const getNotificationTypeLabel = (type) => {
   const normalized = String(type || "SYSTEM").toUpperCase();
   if (normalized === "NEW_PUBLICATION") return "PUBLICATION NOTICE";
-  if (normalized === "PAYMENT") return "PAYMENT NOTICE";
   if (normalized === "PLAN_UPDATE") return "PLAN UPDATE";
   if (normalized === "SYSTEM") return "SYSTEM ALERT";
   return normalized.replaceAll("_", " ");
@@ -14981,7 +14124,12 @@ function ProfilePage({ role = "student" }) {
     .trim()
     .toLowerCase();
   const accountRole = normalizeRoleForUi(accountSession.role || role);
-  const [activeTab, setActiveTab] = React.useState("Personal Info");
+  const [activeTab, setActiveTab] = React.useState(() =>
+    new URLSearchParams(window.location.search).get("tab") ===
+    "academic-identity"
+      ? "Academic Identity"
+      : "Personal Info",
+  );
   const [identityConnections, setIdentityConnections] = React.useState(() => {
     const saved = window.localStorage.getItem(
       `scholartrend.${role}.identityConnections`,
@@ -15034,6 +14182,16 @@ function ProfilePage({ role = "student" }) {
       department: accountSession.department || "",
       roleBadge: accountRole,
       avatarUrl: accountSession.avatarUrl || accountSession.picture || "",
+    },
+    academicIdentity: {
+      institution: accountSession.institution || "",
+      department: accountSession.department || "",
+      institutionalEmail: "",
+      identifier: "",
+      programOrField: "",
+      evidenceUrl: "",
+      verificationStatus: "not_submitted",
+      requestedRole: "",
     },
     interests: [
       "Deep Learning",
@@ -15090,6 +14248,10 @@ function ProfilePage({ role = "student" }) {
           ...(parsed.notifications || {}),
         },
         privacy: { ...defaultProfileData.privacy, ...(parsed.privacy || {}) },
+        academicIdentity: {
+          ...defaultProfileData.academicIdentity,
+          ...(parsed.academicIdentity || {}),
+        },
         interests: Array.isArray(parsed.interests)
           ? parsed.interests
           : defaultProfileData.interests,
@@ -15100,8 +14262,41 @@ function ProfilePage({ role = "student" }) {
   }, [storageKey, accountEmail, accountRole]);
   const [profileData, setProfileData] = React.useState(loadProfileData);
   const [savedProfileData, setSavedProfileData] = React.useState(profileData);
+  const [roleChangeDraft, setRoleChangeDraft] = React.useState(() => ({
+    institution: "",
+    department: "",
+    institutionalEmail: "",
+    identifier: "",
+    programOrField: "",
+    evidenceUrl: "",
+    requestedRole: accountRole === "Researcher" ? "Lecturer" : "Researcher",
+  }));
+
+  React.useEffect(() => {
+    const pendingRole = profileData.academicIdentity.requestedRole;
+    if (!pendingRole) return;
+    setRoleChangeDraft({
+      institution: profileData.academicIdentity.institution || "",
+      department: profileData.academicIdentity.department || "",
+      institutionalEmail:
+        profileData.academicIdentity.institutionalEmail || "",
+      identifier: profileData.academicIdentity.identifier || "",
+      programOrField: profileData.academicIdentity.programOrField || "",
+      evidenceUrl: profileData.academicIdentity.evidenceUrl || "",
+      requestedRole: pendingRole,
+    });
+  }, [
+    profileData.academicIdentity.requestedRole,
+    profileData.academicIdentity.institution,
+    profileData.academicIdentity.department,
+    profileData.academicIdentity.institutionalEmail,
+    profileData.academicIdentity.identifier,
+    profileData.academicIdentity.programOrField,
+    profileData.academicIdentity.evidenceUrl,
+  ]);
   const [newInterest, setNewInterest] = React.useState("");
   const [profileMessage, setProfileMessage] = React.useState("");
+  const [institutionalEmailCode, setInstitutionalEmailCode] = React.useState("");
   const [passwords, setPasswords] = React.useState({
     current: "",
     next: "",
@@ -15131,7 +14326,52 @@ function ProfilePage({ role = "student" }) {
               avatarUrl: backendProfile.avatarUrl ?? current.personal.avatarUrl,
               roleBadge: normalizeRoleForUi(backendProfile.role),
             },
+            academicIdentity: {
+              ...current.academicIdentity,
+              ...(backendProfile.academicIdentity || {}),
+              institution:
+                backendProfile.academicIdentity?.institution ||
+                backendProfile.institution ||
+                current.academicIdentity.institution,
+              department:
+                backendProfile.academicIdentity?.department ||
+                backendProfile.department ||
+                current.academicIdentity.department,
+              institutionalEmail:
+                backendProfile.academicIdentity?.institutionalEmail ||
+                backendProfile.institutionalEmail ||
+                current.academicIdentity.institutionalEmail,
+              identifier:
+                backendProfile.academicIdentity?.identifier ||
+                backendProfile.academicIdentifier ||
+                current.academicIdentity.identifier,
+              programOrField:
+                backendProfile.academicIdentity?.programOrField ||
+                backendProfile.programOrField ||
+                current.academicIdentity.programOrField,
+              evidenceUrl:
+                backendProfile.academicIdentity?.evidenceUrl ||
+                backendProfile.evidenceUrl ||
+                current.academicIdentity.evidenceUrl,
+              verificationStatus:
+                backendProfile.verificationStatus ||
+                current.academicIdentity.verificationStatus,
+              requestedRole:
+                backendProfile.requestedRole ??
+                current.academicIdentity.requestedRole ??
+                "",
+            },
           };
+          window.localStorage.setItem(storageKey, JSON.stringify(next));
+          persistSession({
+            ...getStoredSession(),
+            fullName: next.personal.fullName,
+            name: next.personal.fullName,
+            role: next.personal.roleBadge,
+            academicIdentity: next.academicIdentity,
+            verificationStatus: next.academicIdentity.verificationStatus,
+            requestedRole: next.academicIdentity.requestedRole || "",
+          });
           setSavedProfileData(next);
           return next;
         });
@@ -15157,6 +14397,21 @@ function ProfilePage({ role = "student" }) {
       [group]: { ...current[group], [field]: value },
     }));
     setProfileMessage("");
+  };
+
+  const handleRequestedRoleChange = (nextRole) => {
+    setRoleChangeDraft((current) => ({
+      ...current,
+        requestedRole: nextRole === accountRole ? "" : nextRole,
+      identifier: "",
+      programOrField: "",
+      evidenceUrl: "",
+    }));
+    setProfileMessage(
+      nextRole === accountRole
+        ? `The current ${accountRole} role will be kept.`
+        : `Enter the ${nextRole} identifier, field, and verification evidence before saving.`,
+    );
   };
 
   const handleProfileAvatarUpload = (event) => {
@@ -15223,13 +14478,49 @@ function ProfilePage({ role = "student" }) {
       }
     }
 
+    const isRoleChangeRequest = activeTab === "Role Change Request";
+    const isIdentitySubmission =
+      activeTab === "Academic Identity" || isRoleChangeRequest;
+    const identity = isRoleChangeRequest
+      ? roleChangeDraft
+      : profileData.academicIdentity;
+    if (
+      isIdentitySubmission &&
+      (!identity.institution ||
+        !identity.department ||
+        !identity.institutionalEmail ||
+        !identity.identifier ||
+        !identity.programOrField ||
+        !identity.evidenceUrl)
+    ) {
+      setProfileMessage(
+        "Institution, department, official email, role identifier, program or field, and evidence URL are required for verification.",
+      );
+      return;
+    }
+
     try {
       let nextProfileData = profileData;
       if (getStoredAuth().accessToken) {
         const backendProfile = await apiFetch("/api/auth/profile", {
           method: "PUT",
           auth: true,
-          body: { fullName: profileData.personal.fullName },
+          body: {
+            fullName: profileData.personal.fullName,
+            ...(isIdentitySubmission
+              ? {
+                  institution: identity.institution,
+                  department: identity.department,
+                  institutionalEmail: identity.institutionalEmail,
+                  academicIdentifier: identity.identifier,
+                  programOrField: identity.programOrField,
+                  evidenceUrl: identity.evidenceUrl,
+                  requestedRole: isRoleChangeRequest
+                    ? identity.requestedRole
+                    : accountRole,
+                }
+              : {}),
+          },
         });
         if (passwords.current && passwords.next) {
           await apiFetch("/api/auth/change-password", {
@@ -15249,6 +14540,44 @@ function ProfilePage({ role = "student" }) {
             email: backendProfile.email || profileData.personal.email,
             roleBadge: normalizeRoleForUi(backendProfile.role),
           },
+          academicIdentity: {
+            ...(isRoleChangeRequest ? identity : profileData.academicIdentity),
+            ...(backendProfile.academicIdentity || {}),
+            institution:
+              backendProfile.institution ??
+              (isRoleChangeRequest
+                ? identity.institution
+                : profileData.academicIdentity.institution),
+            department:
+              backendProfile.department ??
+              (isRoleChangeRequest
+                ? identity.department
+                : profileData.academicIdentity.department),
+            institutionalEmail:
+              backendProfile.institutionalEmail ??
+              (isRoleChangeRequest
+                ? identity.institutionalEmail
+                : profileData.academicIdentity.institutionalEmail),
+            identifier:
+              backendProfile.academicIdentifier ??
+              (isRoleChangeRequest
+                ? identity.identifier
+                : profileData.academicIdentity.identifier),
+            programOrField:
+              backendProfile.programOrField ??
+              (isRoleChangeRequest
+                ? identity.programOrField
+                : profileData.academicIdentity.programOrField),
+            evidenceUrl:
+              backendProfile.evidenceUrl ??
+              (isRoleChangeRequest
+                ? identity.evidenceUrl
+                : profileData.academicIdentity.evidenceUrl),
+            verificationStatus:
+              backendProfile.verificationStatus ||
+              profileData.academicIdentity.verificationStatus,
+            requestedRole: backendProfile.requestedRole || "",
+          },
         };
       } else {
         const backendProfile = await authServerFetch("/api/auth/profile", {
@@ -15258,6 +14587,16 @@ function ProfilePage({ role = "student" }) {
             institution: profileData.personal.institution,
             department: profileData.personal.department,
             avatarUrl: profileData.personal.avatarUrl,
+            ...(isIdentitySubmission
+              ? {
+                  academicIdentity: {
+                    ...identity,
+                    requestedRole: isRoleChangeRequest
+                      ? identity.requestedRole
+                      : accountRole,
+                  },
+                }
+              : {}),
           },
         });
         nextProfileData = {
@@ -15274,6 +14613,17 @@ function ProfilePage({ role = "student" }) {
         };
       }
 
+      if (!getStoredAuth().accessToken && isIdentitySubmission) {
+        nextProfileData = {
+          ...nextProfileData,
+          academicIdentity: {
+            ...nextProfileData.academicIdentity,
+            ...(nextProfileData.academicIdentity || {}),
+            verificationStatus: "pending",
+          },
+        };
+      }
+
       window.localStorage.setItem(storageKey, JSON.stringify(nextProfileData));
       persistSession({
         ...getStoredSession(),
@@ -15283,12 +14633,20 @@ function ProfilePage({ role = "student" }) {
         avatarUrl: nextProfileData.personal.avatarUrl,
         institution: nextProfileData.personal.institution,
         department: nextProfileData.personal.department,
+        academicIdentity: nextProfileData.academicIdentity,
+        verificationStatus:
+          nextProfileData.academicIdentity.verificationStatus,
+        requestedRole: nextProfileData.academicIdentity.requestedRole || "",
         role: nextProfileData.personal.roleBadge,
       });
       setProfileData(nextProfileData);
       setSavedProfileData(nextProfileData);
       setPasswords({ current: "", next: "", confirm: "" });
-      setProfileMessage("Profile changes saved successfully.");
+      setProfileMessage(
+        isRoleChangeRequest
+          ? `Role change request to ${identity.requestedRole} was sent to Admin successfully.`
+          : "Profile changes saved successfully.",
+      );
     } catch (error) {
       setProfileMessage(error.message);
     }
@@ -15296,6 +14654,16 @@ function ProfilePage({ role = "student" }) {
 
   const cancelProfileChanges = () => {
     setProfileData(savedProfileData);
+    setRoleChangeDraft({
+      institution: "",
+      department: "",
+      institutionalEmail: "",
+      identifier: "",
+      programOrField: "",
+      evidenceUrl: "",
+      requestedRole:
+        accountRole === "Researcher" ? "Lecturer" : "Researcher",
+    });
     setPasswords({ current: "", next: "", confirm: "" });
     setNewInterest("");
     setProfileMessage("Unsaved changes were discarded.");
@@ -15323,6 +14691,57 @@ function ProfilePage({ role = "student" }) {
       "Sync queued: ScholarTrend is refreshing author IDs, citations, and topic fingerprints.",
     );
   };
+
+  const verifyInstitutionalEmail = async () => {
+    try {
+      const backendProfile = await apiFetch(
+        "/api/auth/verify-institutional-email",
+        { method: "POST", auth: true, body: { token: institutionalEmailCode } },
+      );
+      setProfileData((current) => ({
+        ...current,
+        academicIdentity: {
+          ...current.academicIdentity,
+          verificationStatus: backendProfile.verificationStatus,
+          isInstitutionalEmailVerified:
+            backendProfile.isInstitutionalEmailVerified,
+        },
+      }));
+      setInstitutionalEmailCode("");
+      setProfileMessage("Institutional email verified. Your request is now pending Admin review.");
+    } catch (error) {
+      setProfileMessage(error.message);
+    }
+  };
+
+  const identityRoleConfig = {
+    Student: {
+      institution: "University / College",
+      identifier: "Student ID",
+      program: "Program / Major",
+      hint: "Use your official student ID and school email.",
+    },
+    Lecturer: {
+      institution: "University / Institution",
+      identifier: "Staff / Faculty ID",
+      program: "Faculty / Teaching Department",
+      hint: "Use your faculty ID and official institutional email.",
+    },
+    Researcher: {
+      institution: "Research Institution / University",
+      identifier: "ORCID or Researcher ID",
+      program: "Research Field / Laboratory",
+      hint: "Use an ORCID or researcher ID that Admin can verify.",
+    },
+  };
+  const requestedIdentityRole =
+    roleChangeDraft.requestedRole ||
+    profileData.academicIdentity.requestedRole ||
+    (accountRole === "Researcher" ? "Lecturer" : "Researcher");
+  const identityConfig =
+    identityRoleConfig[requestedIdentityRole] || identityRoleConfig.Student;
+  const currentIdentityConfig =
+    identityRoleConfig[accountRole] || identityRoleConfig.Student;
 
   const pageContent = (
     <div
@@ -15406,16 +14825,6 @@ function ProfilePage({ role = "student" }) {
                 readOnly
                 locked
               />
-              <ProfileField
-                label="Institution"
-                value={profileData.personal.institution}
-                onChange={(value) => updatePersonalField("institution", value)}
-              />
-              <ProfileField
-                label="Department"
-                value={profileData.personal.department}
-                onChange={(value) => updatePersonalField("department", value)}
-              />
             </div>
           </section>
         )}
@@ -15427,9 +14836,108 @@ function ProfilePage({ role = "student" }) {
           >
             <div className="profile-card-header">
               <h2>Academic Identity</h2>
-              <span>Publication Sync</span>
+              <span
+                className={`identity-verification-status ${
+                  profileData.academicIdentity.requestedRole
+                    ? "verified"
+                    : profileData.academicIdentity.verificationStatus
+                }`}
+              >
+                {profileData.academicIdentity.requestedRole
+                  ? "Current Role Active"
+                  : profileData.academicIdentity.verificationStatus === "verified"
+                  ? "Admin Verified"
+                  : profileData.academicIdentity.verificationStatus ===
+                      "pending"
+                    ? "Pending Admin Review"
+                    : profileData.academicIdentity.verificationStatus ===
+                        "rejected"
+                      ? "Verification Rejected"
+                      : "Not Submitted"}
+              </span>
             </div>
 
+            <div className="academic-verification-intro">
+              <strong>{accountRole} identity verification</strong>
+              <p>
+                {currentIdentityConfig.hint} This section belongs to your
+                current role.
+              </p>
+            </div>
+
+            <div className="profile-form-grid academic-verification-grid">
+              <ProfileField
+                label={currentIdentityConfig.institution}
+                value={profileData.academicIdentity.institution}
+                onChange={(value) =>
+                  updateNestedProfileField(
+                    "academicIdentity",
+                    "institution",
+                    value,
+                  )
+                }
+              />
+              <ProfileField
+                label="Official Institutional Email"
+                value={profileData.academicIdentity.institutionalEmail}
+                type="email"
+                onChange={(value) =>
+                  updateNestedProfileField(
+                    "academicIdentity",
+                    "institutionalEmail",
+                    value,
+                  )
+                }
+              />
+              <ProfileField
+                label={currentIdentityConfig.identifier}
+                value={profileData.academicIdentity.identifier}
+                onChange={(value) =>
+                  updateNestedProfileField(
+                    "academicIdentity",
+                    "identifier",
+                    value,
+                  )
+                }
+              />
+              <ProfileField
+                label={currentIdentityConfig.program}
+                value={profileData.academicIdentity.programOrField}
+                onChange={(value) =>
+                  updateNestedProfileField(
+                    "academicIdentity",
+                    "programOrField",
+                    value,
+                  )
+                }
+              />
+              <ProfileField
+                label="Department / Unit"
+                value={profileData.academicIdentity.department}
+                onChange={(value) =>
+                  updateNestedProfileField(
+                    "academicIdentity",
+                    "department",
+                    value,
+                  )
+                }
+              />
+              <ProfileField
+                label="Verification URL (institution profile, ORCID, or directory)"
+                value={profileData.academicIdentity.evidenceUrl}
+                type="url"
+                onChange={(value) =>
+                  updateNestedProfileField(
+                    "academicIdentity",
+                    "evidenceUrl",
+                    value,
+                  )
+                }
+              />
+            </div>
+
+            {accountRole !== "Student" ? (
+              <>
             <div className="identity-summary-grid">
               <div>
                 <span>Verified Author IDs</span>
@@ -15538,6 +15046,129 @@ function ProfilePage({ role = "student" }) {
                 <MiniIcon path="M4 4v6h6M20 20v-6h-6M5 15a7 7 0 0 0 11.7 3.2M19 9A7 7 0 0 0 7.3 5.8" />
                 Sync Now
               </button>
+            </div>
+              </>
+            ) : null}
+          </section>
+        )}
+
+        {activeTab === "Role Change Request" && (
+          <section
+            className="profile-card academic-identity-card role-change-request-card"
+            aria-label="Role change request"
+          >
+            <div className="profile-card-header">
+              <div>
+                <h2>Role Change Request</h2>
+                <p>
+                  Current role: <strong>{accountRole}</strong>
+                </p>
+              </div>
+              {profileData.academicIdentity.requestedRole ? (
+                <span className="identity-verification-status pending">
+                  {profileData.academicIdentity.requestedRole} pending
+                </span>
+              ) : null}
+            </div>
+
+            <div className="academic-verification-intro">
+              <strong>Apply for another academic role</strong>
+              <p>
+                Select a new role and provide new evidence for that role. Your
+                current {accountRole} access remains unchanged until Admin
+                approves the request.
+              </p>
+            </div>
+
+            <div className="profile-field role-change-field">
+              <span>Choose the role you want to apply for</span>
+              <div
+                className="role-change-options"
+                role="group"
+                aria-label="Choose a new academic role"
+              >
+                {["Student", "Lecturer", "Researcher"]
+                  .filter((option) => option !== accountRole)
+                  .map((option) => (
+                    <button
+                      type="button"
+                      className={
+                        requestedIdentityRole === option ? "selected" : ""
+                      }
+                      aria-pressed={requestedIdentityRole === option}
+                      onClick={() => handleRequestedRoleChange(option)}
+                      key={option}
+                    >
+                      <strong>{option}</strong>
+                      <small>Apply for {option}</small>
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <div className="profile-form-grid academic-verification-grid role-change-evidence-grid">
+              <ProfileField
+                label={identityConfig.institution}
+                value={roleChangeDraft.institution}
+                onChange={(value) =>
+                  setRoleChangeDraft((current) => ({
+                    ...current,
+                    institution: value,
+                  }))
+                }
+              />
+              <ProfileField
+                label="Official Institutional Email"
+                value={roleChangeDraft.institutionalEmail}
+                type="email"
+                onChange={(value) =>
+                  setRoleChangeDraft((current) => ({
+                    ...current,
+                    institutionalEmail: value,
+                  }))
+                }
+              />
+              <ProfileField
+                label={identityConfig.identifier}
+                value={roleChangeDraft.identifier}
+                onChange={(value) =>
+                  setRoleChangeDraft((current) => ({
+                    ...current,
+                    identifier: value,
+                  }))
+                }
+              />
+              <ProfileField
+                label={identityConfig.program}
+                value={roleChangeDraft.programOrField}
+                onChange={(value) =>
+                  setRoleChangeDraft((current) => ({
+                    ...current,
+                    programOrField: value,
+                  }))
+                }
+              />
+              <ProfileField
+                label="Department / Unit"
+                value={roleChangeDraft.department}
+                onChange={(value) =>
+                  setRoleChangeDraft((current) => ({
+                    ...current,
+                    department: value,
+                  }))
+                }
+              />
+              <ProfileField
+                label="Verification URL (institution profile, ORCID, or directory)"
+                value={roleChangeDraft.evidenceUrl}
+                type="url"
+                onChange={(value) =>
+                  setRoleChangeDraft((current) => ({
+                    ...current,
+                    evidenceUrl: value,
+                  }))
+                }
+              />
             </div>
           </section>
         )}
@@ -16227,6 +15858,24 @@ function ProfilePage({ role = "student" }) {
       {profileMessage && (
         <p className="profile-status-message">{profileMessage}</p>
       )}
+      {profileData.academicIdentity.verificationStatus ===
+      "email_verification_required" ? (
+        <div className="profile-action-bar" role="group" aria-label="Verify institutional email">
+          <label className="profile-field">
+            <span>Institutional email verification code</span>
+            <input
+              value={institutionalEmailCode}
+              inputMode="numeric"
+              maxLength={6}
+              onChange={(event) => setInstitutionalEmailCode(event.target.value.replace(/\D/g, ""))}
+              placeholder="6-digit code"
+            />
+          </label>
+          <button type="button" className="profile-save" onClick={verifyInstitutionalEmail}>
+            Verify email
+          </button>
+        </div>
+      ) : null}
       <div className="profile-action-bar">
         <button
           type="button"
@@ -16241,7 +15890,9 @@ function ProfilePage({ role = "student" }) {
           onClick={saveProfileChanges}
         >
           <MiniIcon path="M5 5h14v14H5zM8 5v5h8V5M8 19v-5h8v5" />
-          Save Changes
+          {activeTab === "Role Change Request"
+            ? "Submit Role Change"
+            : "Save Changes"}
         </button>
       </div>
     </div>
@@ -16892,313 +16543,6 @@ function StudentPublicationDetailPage({ role = "student" }) {
   );
 }
 
-function PublicationSubmissionPage({ role = "Student" }) {
-  const session = React.useMemo(() => {
-    try {
-      return JSON.parse(
-        window.localStorage.getItem("scholartrend.session") || "{}",
-      );
-    } catch {
-      return {};
-    }
-  }, []);
-  const roleLabel =
-    role === "Lecturer"
-      ? "Lecturer"
-      : role === "Researcher"
-        ? "Researcher"
-        : "Student";
-  const [form, setForm] = React.useState({
-    title: "",
-    authors: session.name || "",
-    abstract: "",
-    keywords: "",
-    fileName: "",
-    fileContentType: "",
-    fileContentBase64: "",
-    fileText: "",
-  });
-  const [result, setResult] = React.useState(null);
-  const [isChecking, setIsChecking] = React.useState(false);
-  const [submissionError, setSubmissionError] = React.useState("");
-
-  const updateForm = (key, value) => {
-    setForm((current) => ({ ...current, [key]: value }));
-  };
-  const handleSubmissionFileChange = (file) => {
-    if (!file) {
-      updateForm("fileName", "");
-      updateForm("fileContentType", "");
-      updateForm("fileContentBase64", "");
-      updateForm("fileText", "");
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      fileName: file.name,
-      fileContentType: file.type || "application/octet-stream",
-    }));
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const value = String(reader.result || "");
-      setForm((current) => ({
-        ...current,
-        fileContentBase64: value.includes(",") ? value.split(",")[1] : value,
-      }));
-    };
-    reader.onerror = () => updateForm("fileContentBase64", "");
-    reader.readAsDataURL(file);
-
-    if (/\.(txt|md|csv)$/i.test(file.name)) {
-      file
-        .text()
-        .then((text) =>
-          setForm((current) => ({
-            ...current,
-            fileText: text,
-            abstract: current.abstract || text.slice(0, 6000),
-          })),
-        )
-        .catch(() => updateForm("fileText", ""));
-    }
-  };
-
-  const submitPublication = async (event) => {
-    event.preventDefault();
-    setIsChecking(true);
-    setSubmissionError("");
-    const abstractForReview = (form.abstract || form.fileText).trim();
-    let nextSubmission = null;
-    try {
-      const analysis = await checkPublicationSimilarityWithScholar({
-        ...form,
-        abstract: abstractForReview,
-      });
-      const isOverLimit =
-        analysis.overLimit ??
-        analysis.similarityPercent > SIMILARITY_LIMIT_PERCENT;
-      nextSubmission = {
-        title: form.title.trim(),
-        authors: form.authors.trim(),
-        submitter: session.email || `${roleLabel.toLowerCase()}@university.edu`,
-        submitterName: session.name || session.fullName || form.authors.trim(),
-        role: roleLabel,
-        keywords: form.keywords.trim(),
-        abstract: abstractForReview,
-        fileName: form.fileName,
-        fileContentType: form.fileContentType,
-        fileContentBase64: form.fileContentBase64,
-        fileText: form.fileText,
-        submittedAt: new Date().toISOString(),
-        ...analysis,
-        status: isOverLimit ? "cancelled" : "pending",
-        decision: isOverLimit
-          ? "Blocked automatically: over 50% similarity rule. Not sent to Admin."
-          : "Waiting for admin approval.",
-      };
-
-      if (isOverLimit) {
-        setResult(nextSubmission);
-        return;
-      }
-
-      const savedSubmission = await submitPublicationToBackend(nextSubmission);
-      const reviewSubmission =
-        upsertPublicationSubmissionForAdminReview(savedSubmission);
-      mirrorPublicationSubmissionToAuthHelper(reviewSubmission).catch(() => {});
-      setResult(reviewSubmission);
-    } catch (error) {
-      if (!nextSubmission) {
-        setSubmissionError(error.message);
-        return;
-      }
-      const isOverLimit =
-        nextSubmission.similarityPercent > SIMILARITY_LIMIT_PERCENT;
-      const localSubmission = upsertPublicationSubmissionForAdminReview({
-        ...nextSubmission,
-        id: `local-submission-${Date.now()}`,
-        status: isOverLimit ? "cancelled" : "pending",
-        decision: isOverLimit
-          ? "Auto cancelled locally: over 50% similarity rule."
-          : "Waiting for admin approval. Backend save was unavailable.",
-        matchedSource: `${nextSubmission.matchedSource} (local save: ${error.message})`,
-      });
-      mirrorPublicationSubmissionToAuthHelper(localSubmission).catch(() => {});
-      setResult(localSubmission);
-      setSubmissionError(
-        `Backend save unavailable, but this paper was saved to the local Admin review queue: ${error.message}`,
-      );
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  const isStudent = roleLabel === "Student";
-  const activeRoute = isStudent
-    ? "/student-submit-publication"
-    : getAcademicPath(
-        "/researcher-submit-publication",
-        roleLabel.toLowerCase(),
-      );
-  const formContent = (
-    <div className="submission-page-content">
-      <header className="submission-heading">
-        <div>
-          <p>{roleLabel} Workspace</p>
-          <h1>Submit Publication</h1>
-          <small>
-            AI similarity check runs before the paper can enter Admin review.
-          </small>
-        </div>
-        <span className="submission-rule-badge">Max similarity: 50%</span>
-      </header>
-
-      <section className="submission-policy">
-        <MiniIcon path="M12 3.5 20 7v5c0 4.2-3 7.2-8 8.5C7 19.2 4 16.2 4 12V7l8-3.5ZM9.4 12.2 11.2 14l3.7-4.2" />
-        <div>
-          <h2>SUBMISSION RULE</h2>
-          <p>
-            Papers must not exceed 50% similarity with an original source. If
-            the similarity score is over 50%, the AI system will automatically
-            cancel the submission and Admin will not approve it.
-          </p>
-        </div>
-      </section>
-
-      <form className="submission-form" onSubmit={submitPublication}>
-        <label>
-          <span>Publication Title</span>
-          <input
-            value={form.title}
-            onChange={(event) => updateForm("title", event.target.value)}
-            required
-            placeholder="Enter paper title"
-          />
-        </label>
-        <label>
-          <span>Authors</span>
-          <input
-            value={form.authors}
-            onChange={(event) => updateForm("authors", event.target.value)}
-            required
-            placeholder="Author names"
-          />
-        </label>
-        <label>
-          <span>Keywords</span>
-          <input
-            value={form.keywords}
-            onChange={(event) => updateForm("keywords", event.target.value)}
-            required
-            placeholder="machine learning, citations, trend analysis"
-          />
-        </label>
-        <label className="submission-full">
-          <span>Abstract / Paper Content</span>
-          <textarea
-            value={form.abstract}
-            onChange={(event) => updateForm("abstract", event.target.value)}
-            required
-            rows={8}
-            placeholder="Paste the abstract or main paper content for AI similarity checking..."
-          />
-        </label>
-        <label className="submission-file">
-          <span>Upload File</span>
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx,.txt"
-            onChange={(event) =>
-              handleSubmissionFileChange(event.target.files?.[0])
-            }
-          />
-          <small>
-            {form.fileName
-              ? form.fileText
-                ? `${form.fileName} text loaded`
-                : `${form.fileName} attached`
-              : "PDF, DOCX, or TXT accepted"}
-          </small>
-        </label>
-        <button
-          type="submit"
-          className="submission-submit"
-          disabled={isChecking}
-        >
-          <MiniIcon path="M4.5 17.5 9 13l3.2 2.6 6.3-7.1M15.5 8.5h3v3M5 20h14" />
-          {isChecking
-            ? "Checking Google Scholar..."
-            : "Check Similarity and Submit"}
-        </button>
-      </form>
-
-      {submissionError ? (
-        <section className="submission-result danger">
-          <div>
-            <span>Submission failed</span>
-            <strong>!</strong>
-          </div>
-          <p>{submissionError}</p>
-        </section>
-      ) : null}
-
-      {result ? (
-        <section
-          className={`submission-result ${result.similarityPercent > SIMILARITY_LIMIT_PERCENT ? "danger" : "safe"}`}
-        >
-          <div>
-            <span>AI similarity result</span>
-            <strong>{result.similarityPercent}%</strong>
-          </div>
-          <p>
-            Matched original: <b>{result.matchedTitle}</b> from{" "}
-            {result.matchedSource}.
-          </p>
-          {result.totalCandidatesScanned ? (
-            <p>
-              Checked <b>{result.totalCandidatesScanned}</b> unique papers
-              across{" "}
-              <b>
-                {(result.sourcesSearched || []).join(", ") || "available sources"}
-              </b>
-              .
-            </p>
-          ) : null}
-          <p>
-            {result.similarityPercent > SIMILARITY_LIMIT_PERCENT
-              ? "Over 50%: this paper was blocked automatically and was not sent to Admin."
-              : "Within rule: this paper is waiting for Admin approval."}
-          </p>
-        </section>
-      ) : null}
-    </div>
-  );
-
-  if (isStudent) {
-    return (
-      <main className="student-app">
-        <StudentSidebar activeRoute="/student-submit-publication" />
-        <section className="student-main">
-          <StudentTopbar crumb="Submit Publication" searchValue="" />
-          {formContent}
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <ResearcherShell
-      activeRoute={activeRoute}
-      current="Submit Publication"
-      pageClassName="submission-researcher-shell"
-    >
-      {formContent}
-    </ResearcherShell>
-  );
-}
-
 const adminNavItems = [
   {
     label: "admin.dashboard",
@@ -17216,24 +16560,9 @@ const adminNavItems = [
     icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
   },
   {
-    label: "admin.paymentManagement",
-    route: "/admin-payments",
-    icon: "M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9",
-  },
-  {
-    label: "admin.planManagement",
-    route: "/admin-plans",
-    icon: "M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2",
-  },
-  {
     label: "admin.notificationManagement",
     route: "/admin-notifications",
     icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4M18.5 5.5l1.7-1.7",
-  },
-  {
-    label: "admin.publicationManagement",
-    route: "/admin-publications",
-    icon: "M6 4.5h8.2L18 8.3v11.2H6zM13.8 4.8v4h4M8.8 12h6.4M8.8 15h6.4M8.8 18h3.8",
   },
   {
     label: "admin.systemLogs",
@@ -18727,7 +18056,10 @@ const isLegacyOpenAlexSeedHistoryRow = (row = {}) => {
 };
 
 const sanitizeAdminSyncHistory = (history = []) =>
-  history.filter((row) => !isLegacyOpenAlexSeedHistoryRow(row));
+  history.filter((row) => {
+    const source = String(row.source || row.sourceApi || row.SourceApi || "");
+    return !/payos/i.test(source) && !isLegacyOpenAlexSeedHistoryRow(row);
+  });
 
 const getAdminSyncConfig = () => {
   try {
@@ -18796,6 +18128,7 @@ const isRealSyncLog = (log) => {
   const source = log.sourceApi || log.SourceApi || log.source || "";
   return (
     !String(source).startsWith("Admin Audit:") &&
+    !/payos/i.test(String(source)) &&
     !isLegacyOpenAlexSeedHistoryRow(log)
   );
 };
@@ -19537,40 +18870,12 @@ function AdminDashboard() {
       icon: "M8.8 11.4a3.7 3.7 0 1 0 0-7.4 3.7 3.7 0 0 0 0 7.4ZM3.4 20a5.4 5.4 0 0 1 10.8 0M17 9.8a3 3 0 1 0 0-6M15.8 14.2a5.1 5.1 0 0 1 4.8 5.8",
     },
     {
-      title: "Payments",
-      detail: "Review PayOS checkouts and Pro upgrade activation.",
-      value: `${Number(adminOverview?.totalPaymentCount || 0)} payments`,
-      route: "/admin-payments",
-      icon: "M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9",
-    },
-    {
-      title: "Plans",
-      detail: "Manage Pro pricing, accuracy policy, and checkout expiry.",
-      value: adminOverview?.payosConfigured ? "PayOS configured" : "Setup required",
-      route: "/admin-plans",
-      icon: "M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2",
-    },
-    {
       title: "Notifications",
       detail:
         "Publish system notices for students, lecturers, and researchers.",
       value: `${Number(adminOverview?.unreadNotificationCount || 0)} unread`,
       route: "/admin-notifications",
       icon: "M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4",
-    },
-    {
-      title: "Publications",
-      detail: "Review similarity, approve, reject with reason, or delete.",
-      value: `${pendingPublicationCount} pending`,
-      route: "/admin-publications",
-      icon: "M6 4.5h8.2L18 8.3v11.2H6zM13.8 4.8v4h4M8.8 12h6.4M8.8 15h6.4M8.8 18h3.8",
-    },
-    {
-      title: "AI Policy",
-      detail: "Enforce the 50% similarity rule before publishing.",
-      value: `${blockedPublicationCount} blocked`,
-      route: "/admin-publications",
-      icon: "M12 3.5 19 6.5v5.2c0 4.2-2.8 7.3-7 8.8-4.2-1.5-7-4.6-7-8.8V6.5l7-3ZM9 12.2l2 2 4.2-4.6",
     },
     {
       title: "Sync & Logs",
@@ -19755,6 +19060,12 @@ const normalizeAdminManagedUser = (user) => {
     `admin-user-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   backendId: user.backendId || "",
   provider: user.provider || "",
+  academicIdentity: user.academicIdentity || {},
+  requestedRole:
+    user.requestedRole || user.academicIdentity?.requestedRole || "",
+  verificationStatus: user.verificationStatus || "not_submitted",
+  verificationSubmittedAt: user.verificationSubmittedAt || "",
+  verificationReviewedAt: user.verificationReviewedAt || "",
   name: user.name || user.fullName || "Unnamed User",
   email: user.email || "",
   role: managedRole,
@@ -19770,20 +19081,7 @@ const normalizeAdminManagedUser = (user) => {
     user.createdAt || user.createdOn,
     "Created date unavailable",
   ),
-  isPro: Boolean(user.isPro || user.plan === "Pro"),
-  plan: user.isPro || user.plan === "Pro" ? "Pro" : "Free",
-  subscriptionStatus:
-    user.subscriptionStatus ||
-    (user.isPro || user.plan === "Pro" ? "active" : "free"),
-  subscriptionBillingCycle: user.subscriptionBillingCycle || "",
-  subscriptionStartedAt: user.subscriptionStartedAt || "",
-  subscriptionExpiresAt: user.subscriptionExpiresAt || "",
-  subscriptionExpiredAt: user.subscriptionExpiredAt || "",
-  subscriptionUpdatedAt: user.subscriptionUpdatedAt || "",
-  searchAccuracy: getSearchAccuracyForAccount(
-    managedRole,
-    Boolean(user.isPro || user.plan === "Pro"),
-  ),
+  searchAccuracy: 100,
   avatar: user.avatar || getAdminUserInitials(user.name || user.fullName),
   avatarTone:
     user.avatarTone ||
@@ -19806,15 +19104,18 @@ const setAdminManagedUsers = () => {};
 
 const fetchAdminUsersFromAuthHelper = async () => {
   if (!GOOGLE_AUTH_BASE_URL) return [];
+  const token = getStoredAuth().accessToken;
+  if (!token) return [];
   const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/users`, {
     credentials: "include",
+    headers: { Authorization: `Bearer ${token}` },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(
       payload?.message ||
         payload?.error ||
-        "Could not load users from the auth/payment helper.",
+        "Could not load users from the authentication helper.",
     );
   }
   return Array.isArray(payload.items)
@@ -19836,9 +19137,6 @@ const upsertAdminManagedUserFromAccount = (account) => {
     email: normalizedEmail,
     role: normalizeRoleForUi(account.role),
     status: "Active",
-    isPro: Boolean(account.isPro || account.plan === "Pro"),
-    plan: account.plan,
-    subscriptionStatus: account.subscriptionStatus,
     searchAccuracy: account.searchAccuracy,
     lastLogin: account.lastLoginAt || account.signedInAt || "Just now",
     lastLoginAt:
@@ -19851,809 +19149,6 @@ const upsertAdminManagedUserFromAccount = (account) => {
       : [nextUser, ...users];
   setAdminManagedUsers(nextUsers);
 };
-
-function AdminSimilarityReviewPanel({
-  canUseAdminApi = hasAdminBackendAccess(),
-}) {
-  const [submissions, setSubmissions] = React.useState([]);
-  const [selectedSubmission, setSelectedSubmission] = React.useState(null);
-  const [rejectDialog, setRejectDialog] = React.useState(null);
-  const [deleteDialog, setDeleteDialog] = React.useState(null);
-  const [queueMessage, setQueueMessage] = React.useState("");
-  const [queueStatus, setQueueStatus] = React.useState("idle");
-  const [versionHistory, setVersionHistory] = React.useState([]);
-  const [versionMessage, setVersionMessage] = React.useState("");
-  const overLimit = submissions.filter(
-    (item) => item.similarityPercent > SIMILARITY_LIMIT_PERCENT,
-  );
-  const pending = submissions.filter((item) => item.status === "pending");
-  const approved = submissions.filter((item) => item.status === "approved");
-
-  React.useEffect(() => {
-    const publicationId = selectedSubmission?.publishedPublicationId;
-    if (!publicationId || !canUseAdminApi) {
-      setVersionHistory([]);
-      return;
-    }
-    let cancelled = false;
-    apiFetch(`/api/publications/${publicationId}/versions`, { auth: true })
-      .then((payload) => {
-        if (!cancelled) setVersionHistory(Array.isArray(payload.items) ? payload.items : []);
-      })
-      .catch((error) => {
-        if (!cancelled) setVersionMessage(`Could not load version history: ${error.message}`);
-      });
-    return () => { cancelled = true; };
-  }, [selectedSubmission?.publishedPublicationId, canUseAdminApi]);
-
-  const restorePublicationVersion = async (versionNumber) => {
-    const publicationId = selectedSubmission?.publishedPublicationId;
-    if (!publicationId) return;
-    try {
-      const payload = await apiFetch(`/api/publications/${publicationId}/versions/${versionNumber}/restore`, {
-        method: "POST", auth: true,
-      });
-      const refreshed = await apiFetch(`/api/publications/${publicationId}/versions`, { auth: true });
-      setVersionHistory(Array.isArray(refreshed.items) ? refreshed.items : []);
-      setVersionMessage(payload.message || `Version ${versionNumber} restored.`);
-    } catch (error) {
-      setVersionMessage(`Restore failed: ${error.message}`);
-    }
-  };
-
-  React.useEffect(() => {
-    let cancelled = false;
-    if (!canUseAdminApi) {
-      setSubmissions([]);
-      setQueueStatus("error");
-      setQueueMessage("Administrator backend access is required to load the publication queue.");
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setQueueStatus("loading");
-    fetchPublicationSubmissionsFromBackend()
-      .then((items) => {
-        if (cancelled) return;
-        // Trust backend data — filter out any IsDeleted items
-        const activeItems = items.filter((item) => !item.isDeleted);
-        setSubmissions(activeItems);
-        setQueueStatus("success");
-        if (!activeItems.length) {
-          setQueueMessage(
-            "Backend publication queue is empty. No pending submissions.",
-          );
-        } else {
-          setQueueMessage("");
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setQueueStatus("error");
-        setSubmissions([]);
-        setQueueMessage(`Backend publication queue unavailable: ${error.message}`);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [canUseAdminApi]);
-
-  const replaceSubmission = (nextSubmission) => {
-    setSubmissions((current) => {
-      const next = current.map((item) =>
-        String(item.id) === String(nextSubmission.id) ? nextSubmission : item,
-      );
-      setSelectedSubmission((currentSelection) =>
-        String(currentSelection?.id) === String(nextSubmission.id)
-          ? nextSubmission
-          : currentSelection,
-      );
-      return next;
-    });
-  };
-
-  const updateSubmissionStatus = async (id, status) => {
-    const targetSubmission = submissions.find((item) => item.id === id);
-    if (
-      status === "approved" &&
-      targetSubmission?.similarityPercent > SIMILARITY_LIMIT_PERCENT
-    ) {
-      return;
-    }
-
-    if (status === "approved" && isBackendSubmissionId(id)) {
-      if (!canUseAdminApi) {
-        setQueueMessage(
-          "Approving backend submissions requires an Administrator session.",
-        );
-        return;
-      }
-
-      try {
-        setQueueMessage("Approving submission...");
-        const approvedSubmission =
-          await approvePublicationSubmissionOnBackend(id);
-        replaceSubmission(approvedSubmission);
-        publishApprovedSubmission(approvedSubmission);
-        sendPublicationApprovedNotification(approvedSubmission);
-        sendAdminAuditLog(
-          `Approved publication "${approvedSubmission.title}" from ${approvedSubmission.submitter}.`,
-          "Publication Management",
-          "ADMIN-PUBLICATION-APPROVE",
-        );
-        setQueueMessage("Publication approved and saved to backend.");
-      } catch (error) {
-        setQueueMessage(error.message);
-      }
-      return;
-    }
-
-    const reviewedSubmission = targetSubmission
-      ? {
-          ...targetSubmission,
-          status,
-          reviewedAt: new Date().toISOString(),
-          decision:
-            status === "approved"
-              ? "Admin approved: within 50% similarity rule. Published on ScholarTrend."
-              : "Admin cancelled after review.",
-        }
-      : null;
-
-    setSubmissions((current) => {
-      const next = current.map((item) => {
-        if (item.id !== id) return item;
-
-        return reviewedSubmission || item;
-      });
-      setPublicationSubmissions(next);
-      setSelectedSubmission((currentSelection) =>
-        currentSelection?.id === id
-          ? next.find((item) => item.id === id) || currentSelection
-          : currentSelection,
-      );
-      return next;
-    });
-
-    if (status === "approved" && reviewedSubmission) {
-      publishApprovedSubmission(reviewedSubmission);
-      sendPublicationApprovedNotification(reviewedSubmission);
-      uploadApprovedSubmissionToBackend(reviewedSubmission).catch(() => {});
-      mirrorPublicationSubmissionToAuthHelper(reviewedSubmission).catch(
-        () => {},
-      );
-      sendAdminAuditLog(
-        `Approved publication "${reviewedSubmission.title}" from ${reviewedSubmission.submitter}.`,
-        "Publication Management",
-        "ADMIN-PUBLICATION-APPROVE",
-      );
-    } else if (reviewedSubmission) {
-      mirrorPublicationSubmissionToAuthHelper(reviewedSubmission).catch(
-        () => {},
-      );
-    }
-  };
-
-  const openDeleteDialog = (submission) => {
-    setDeleteDialog({
-      submission,
-      reason: "",
-      evidence:
-        submission.similarityPercent > SIMILARITY_LIMIT_PERCENT
-          ? `${submission.similarityPercent}% similarity with "${submission.matchedTitle}", above the website limit of ${SIMILARITY_LIMIT_PERCENT}%.`
-          : `Admin removed this publication from the approval queue after review.`,
-    });
-  };
-
-  const openRejectDialog = (submission) => {
-    const evidence = `${submission.similarityPercent}% similarity with "${submission.matchedTitle}", above the website limit of ${SIMILARITY_LIMIT_PERCENT}%.`;
-    setRejectDialog({
-      submission,
-      reason:
-        submission.similarityPercent > SIMILARITY_LIMIT_PERCENT
-          ? "Similarity exceeds the website policy limit."
-          : "",
-      evidence,
-    });
-  };
-
-  const submitReject = async (event) => {
-    event.preventDefault();
-    if (!rejectDialog) return;
-    const reason = rejectDialog.reason.trim();
-    const evidence = rejectDialog.evidence.trim();
-
-    if (!reason || !evidence) return;
-
-    const { submission } = rejectDialog;
-    if (isBackendSubmissionId(submission.id)) {
-      if (!canUseAdminApi) {
-        setQueueMessage(
-          "Rejecting backend submissions requires an Administrator session.",
-        );
-        return;
-      }
-
-      try {
-        const rejectedSubmission = await rejectPublicationSubmissionOnBackend(
-          submission.id,
-          reason,
-          evidence,
-        );
-        replaceSubmission(rejectedSubmission);
-        setQueueMessage("Submission rejected in backend.");
-      } catch (error) {
-        setQueueMessage(error.message);
-        return;
-      }
-    } else {
-      const rejectedSubmission = {
-        ...submission,
-        status: "rejected",
-        reviewedAt: new Date().toISOString(),
-        rejectedReason: reason,
-        rejectedEvidence: evidence,
-        decision: `Admin rejected: ${reason}`,
-      };
-      setSubmissions((current) => {
-        const next = current.map((item) =>
-          item.id === submission.id ? rejectedSubmission : item,
-        );
-        setPublicationSubmissions(next);
-        setSelectedSubmission((currentSelection) =>
-          currentSelection?.id === submission.id
-            ? next.find((item) => item.id === submission.id) || currentSelection
-            : currentSelection,
-        );
-        return next;
-      });
-      mirrorPublicationSubmissionToAuthHelper(rejectedSubmission).catch(
-        () => {},
-      );
-    }
-    await sendPublicationReviewNotification(submission, reason, evidence);
-    sendAdminAuditLog(
-      `Rejected publication "${submission.title}" from ${submission.submitter}. Reason: ${reason}.`,
-      "Publication Management",
-      "ADMIN-PUBLICATION-REJECT",
-    );
-    setRejectDialog(null);
-  };
-
-  const submitDelete = async (event) => {
-    event.preventDefault();
-    if (!deleteDialog) return;
-    const reason = deleteDialog.reason.trim();
-    const evidence = deleteDialog.evidence.trim();
-
-    if (!reason || !evidence) return;
-
-    const { submission } = deleteDialog;
-    if (isBackendSubmissionId(submission.id)) {
-      if (!canUseAdminApi) {
-        setQueueMessage(
-          "Deleting backend submissions requires an Administrator session.",
-        );
-        return;
-      }
-
-      try {
-        await deletePublicationSubmissionOnBackend(
-          submission.id,
-          reason,
-          evidence,
-        );
-        setQueueMessage("Submission deleted in backend.");
-      } catch (error) {
-        setQueueMessage(error.message);
-        return;
-      }
-    }
-
-    setSubmissions((current) => {
-      const next = current.filter((item) => item.id !== submission.id);
-      setPublicationSubmissions(next);
-      return next;
-    });
-    deletePublicationSubmissionFromAuthHelper(submission).catch(() => {});
-    await sendPublicationDeleteNotification(submission, reason, evidence);
-    sendAdminAuditLog(
-      `Deleted publication "${submission.title}" from ${submission.submitter}. Reason: ${reason}.`,
-      "Publication Management",
-      "ADMIN-PUBLICATION-DELETE",
-    );
-    if (selectedSubmission?.id === submission.id) setSelectedSubmission(null);
-    if (rejectDialog?.submission?.id === submission.id) setRejectDialog(null);
-    setDeleteDialog(null);
-  };
-
-  return (
-    <section className="admin-ai-review-panel">
-      <div className="admin-ai-review-heading">
-        <div>
-          <p>AI Similarity Control</p>
-          <h2>Publication Approval Queue</h2>
-          <small>
-            Rule: papers must not be more than 50% similar to the original
-            indexed publication.
-          </small>
-        </div>
-      </div>
-
-      {queueMessage ? (
-        <p
-          className={`admin-panel-note ${queueStatus === "error" ? "error" : ""}`}
-        >
-          {queueMessage}
-        </p>
-      ) : null}
-
-      <div className="admin-ai-review-metrics">
-        <article>
-          <span>Over 50% Rule</span>
-          <strong>{overLimit.length}</strong>
-          <p>Automatically cancelled</p>
-        </article>
-        <article>
-          <span>Waiting Approval</span>
-          <strong>{pending.length}</strong>
-          <p>Admin can approve</p>
-        </article>
-        <article>
-          <span>Approved</span>
-          <strong>{approved.length}</strong>
-          <p>Ready to publish</p>
-        </article>
-      </div>
-
-      <div className="admin-ai-review-list">
-        {!submissions.length ? (
-          <section className="admin-ai-empty-state">
-            <MiniIcon path="M6 4.5h12v15H6zM9 8h6M9 11h6M9 14h4" />
-            <div>
-              <h3>No publication submissions yet</h3>
-              <p>
-                Submitted papers from Student, Lecturer, or Researcher accounts
-                will appear here for similarity review.
-              </p>
-            </div>
-          </section>
-        ) : null}
-        {submissions.map((submission) => {
-          const blocked =
-            submission.similarityPercent > SIMILARITY_LIMIT_PERCENT ||
-            submission.status === "cancelled" ||
-            submission.status === "rejected";
-          const isApproved = submission.status === "approved";
-          const isRejected = submission.status === "rejected";
-          const isPending =
-            submission.status === "pending" &&
-            submission.similarityPercent <= SIMILARITY_LIMIT_PERCENT;
-          return (
-            <article
-              className={`admin-ai-review-item ${blocked ? "blocked" : ""} ${isApproved ? "approved" : ""}`}
-              key={submission.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setSelectedSubmission(submission)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setSelectedSubmission(submission);
-                }
-              }}
-            >
-              <div className="admin-ai-review-score">
-                <strong>{submission.similarityPercent}%</strong>
-                <span>{blocked ? "Over limit" : "Within rule"}</span>
-              </div>
-              <div className="admin-ai-review-copy">
-                <div>
-                  <h3>{submission.title}</h3>
-                  <span>
-                    {submission.role} upload by {submission.submitter}
-                  </span>
-                </div>
-                <p>
-                  Matched: <b>{submission.matchedTitle}</b>
-                </p>
-                <small>
-                  Source: {submission.matchedSource} | Status:{" "}
-                  {submission.status}
-                </small>
-              </div>
-              <div className="admin-ai-review-actions">
-                {isPending ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        updateSubmissionStatus(submission.id, "approved");
-                      }}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      className="reject"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openRejectDialog(submission);
-                      }}
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      className="delete"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openDeleteDialog(submission);
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span
-                      className={`admin-ai-status-badge ${submission.status}`}
-                    >
-                      {isApproved
-                        ? "Approved"
-                        : isRejected
-                          ? "Rejected"
-                          : "Cancelled"}
-                    </span>
-                    <button
-                      type="button"
-                      className="delete"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openDeleteDialog(submission);
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </div>
-
-      {selectedSubmission ? (
-        <div
-          className="admin-submission-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setSelectedSubmission(null);
-            }
-          }}
-        >
-          <section
-            className="admin-submission-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-submission-title"
-          >
-            <button
-              type="button"
-              className="admin-submission-modal-close"
-              aria-label="Close publication details"
-              onClick={() => setSelectedSubmission(null)}
-            >
-              <MiniIcon path="M6 6l12 12M18 6 6 18" />
-            </button>
-
-            <header className="admin-submission-modal-heading">
-              <div>
-                <p>{selectedSubmission.role} submission</p>
-                <h2 id="admin-submission-title">{selectedSubmission.title}</h2>
-                <span>
-                  {selectedSubmission.submitter} |{" "}
-                  {new Date(selectedSubmission.submittedAt).toLocaleString()}
-                </span>
-              </div>
-              <strong
-                className={
-                  selectedSubmission.similarityPercent >
-                  SIMILARITY_LIMIT_PERCENT
-                    ? "danger"
-                    : "safe"
-                }
-              >
-                {selectedSubmission.similarityPercent}%
-              </strong>
-            </header>
-
-            <div className="admin-submission-detail-grid">
-              <section>
-                <h3>Uploaded Paper</h3>
-                <p>
-                  <b>Authors:</b> {selectedSubmission.authors || "N/A"}
-                </p>
-                <p>
-                  <b>Keywords:</b> {selectedSubmission.keywords || "N/A"}
-                </p>
-                <p>
-                  <b>Status:</b> {selectedSubmission.status}
-                </p>
-                <p>
-                  <b>Decision:</b> {selectedSubmission.decision}
-                </p>
-              </section>
-              <section>
-                <h3>Matched Original</h3>
-                <p>
-                  <b>{selectedSubmission.matchedTitle}</b>
-                </p>
-                <p>{selectedSubmission.matchedSource}</p>
-                {selectedSubmission.matchedLink ? (
-                  <a
-                    href={selectedSubmission.matchedLink}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open matched paper
-                  </a>
-                ) : null}
-              </section>
-            </div>
-
-            <section className="admin-submission-abstract">
-              <h3>Abstract / Content</h3>
-              <p>{selectedSubmission.abstract || "No abstract provided."}</p>
-            </section>
-
-            {Array.isArray(selectedSubmission.candidates) &&
-            selectedSubmission.candidates.length ? (
-              <section className="admin-submission-candidates">
-                <h3>Matched-source analysis</h3>
-                {selectedSubmission.candidates.slice(0, 5).map((candidate) => (
-                  <article
-                    key={`${candidate.title}-${candidate.similarityPercent}`}
-                  >
-                    <strong>{candidate.similarityPercent}%</strong>
-                    <div>
-                      <p>{candidate.title}</p>
-                      <small>{candidate.source} · {candidate.similarityPercent >= 50 ? "high-risk match" : candidate.similarityPercent >= 25 ? "review recommended" : "low-risk match"}</small>
-                      {candidate.snippet || candidate.abstract ? (
-                        <p className="admin-candidate-snippet">{candidate.snippet || candidate.abstract}</p>
-                      ) : null}
-                      {candidate.segmentMatches?.length ? (
-                        <details className="admin-segment-matches">
-                          <summary>{candidate.segmentMatches.length} matching passages</summary>
-                          {candidate.segmentMatches.map((match, matchIndex) => (
-                            <div key={`${candidate.title}-segment-${matchIndex}`}>
-                              <p><mark>{match.submittedText}</mark></p>
-                              <p>{match.sourceText}</p>
-                              <strong>{match.similarityPercent}% passage similarity</strong>
-                            </div>
-                          ))}
-                        </details>
-                      ) : null}
-                      {candidate.link ? <a href={candidate.link} target="_blank" rel="noreferrer">Inspect source</a> : null}
-                    </div>
-                  </article>
-                ))}
-              </section>
-            ) : null}
-
-            {selectedSubmission.publishedPublicationId ? (
-              <React.Suspense fallback={<p>Loading version history…</p>}>
-                <PublicationVersionHistory
-                  versions={versionHistory}
-                  message={versionMessage}
-                  onRestore={restorePublicationVersion}
-                />
-              </React.Suspense>
-            ) : null}
-
-            <footer className="admin-submission-modal-actions">
-              {selectedSubmission.status === "pending" &&
-              selectedSubmission.similarityPercent <=
-                SIMILARITY_LIMIT_PERCENT ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateSubmissionStatus(selectedSubmission.id, "approved")
-                    }
-                  >
-                    Approve Publication
-                  </button>
-                  <button
-                    type="button"
-                    className="reject"
-                    onClick={() => openRejectDialog(selectedSubmission)}
-                  >
-                    Reject Publication
-                  </button>
-                  <button
-                    type="button"
-                    className="delete"
-                    onClick={() => openDeleteDialog(selectedSubmission)}
-                  >
-                    Delete Publication
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span>
-                    {selectedSubmission.status === "approved"
-                      ? "This publication has been approved."
-                      : selectedSubmission.status === "rejected"
-                        ? "This publication has been rejected and notification was sent."
-                        : "This publication is cancelled and cannot be approved."}
-                  </span>
-                  <button
-                    type="button"
-                    className="delete"
-                    onClick={() => openDeleteDialog(selectedSubmission)}
-                  >
-                    Delete Publication
-                  </button>
-                </>
-              )}
-            </footer>
-          </section>
-        </div>
-      ) : null}
-
-      {rejectDialog ? (
-        <div
-          className="admin-submission-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setRejectDialog(null);
-            }
-          }}
-        >
-          <form
-            className="admin-reject-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-reject-title"
-            onSubmit={submitReject}
-          >
-            <button
-              type="button"
-              className="admin-submission-modal-close"
-              aria-label="Close reject dialog"
-              onClick={() => setRejectDialog(null)}
-            >
-              <MiniIcon path="M6 6l12 12M18 6 6 18" />
-            </button>
-            <div className="admin-reject-heading">
-              <p>Reject Publication</p>
-              <h2 id="admin-reject-title">{rejectDialog.submission.title}</h2>
-              <span>
-                This reason will be sent to {rejectDialog.submission.submitter}.
-              </span>
-            </div>
-            <label>
-              <span>Reason</span>
-              <textarea
-                value={rejectDialog.reason}
-                onChange={(event) =>
-                  setRejectDialog((current) => ({
-                    ...current,
-                    reason: event.target.value,
-                  }))
-                }
-                rows={4}
-                required
-                placeholder="Explain why this publication is not approved..."
-              />
-            </label>
-            <label>
-              <span>Evidence</span>
-              <textarea
-                value={rejectDialog.evidence}
-                onChange={(event) =>
-                  setRejectDialog((current) => ({
-                    ...current,
-                    evidence: event.target.value,
-                  }))
-                }
-                rows={4}
-                required
-                placeholder="Similarity %, matched original paper, and policy evidence..."
-              />
-            </label>
-            <div className="admin-reject-actions">
-              <button type="button" onClick={() => setRejectDialog(null)}>
-                Cancel
-              </button>
-              <button type="submit" className="reject">
-                Send Reject Notice
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
-
-      {deleteDialog ? (
-        <div
-          className="admin-submission-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setDeleteDialog(null);
-            }
-          }}
-        >
-          <form
-            className="admin-reject-modal admin-delete-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="admin-delete-title"
-            onSubmit={submitDelete}
-          >
-            <button
-              type="button"
-              className="admin-submission-modal-close"
-              aria-label="Close delete dialog"
-              onClick={() => setDeleteDialog(null)}
-            >
-              <MiniIcon path="M6 6l12 12M18 6 6 18" />
-            </button>
-            <div className="admin-reject-heading">
-              <p>Delete Publication</p>
-              <h2 id="admin-delete-title">{deleteDialog.submission.title}</h2>
-              <span>
-                This delete reason will be sent to{" "}
-                {deleteDialog.submission.submitter}.
-              </span>
-            </div>
-            <label>
-              <span>Reason</span>
-              <textarea
-                value={deleteDialog.reason}
-                onChange={(event) =>
-                  setDeleteDialog((current) => ({
-                    ...current,
-                    reason: event.target.value,
-                  }))
-                }
-                rows={4}
-                required
-                placeholder="Explain why this publication is being deleted..."
-              />
-            </label>
-            <label>
-              <span>Evidence</span>
-              <textarea
-                value={deleteDialog.evidence}
-                onChange={(event) =>
-                  setDeleteDialog((current) => ({
-                    ...current,
-                    evidence: event.target.value,
-                  }))
-                }
-                rows={4}
-                required
-                placeholder="Similarity %, matched paper, policy violation, or admin evidence..."
-              />
-            </label>
-            <div className="admin-reject-actions">
-              <button type="button" onClick={() => setDeleteDialog(null)}>
-                Cancel
-              </button>
-              <button type="submit" className="delete">
-                Delete And Notify
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
-    </section>
-  );
-}
 
 function AdminPublicationManagementPage() {
   const canUseAdminApi = hasAdminBackendAccess();
@@ -20682,7 +19177,7 @@ function AdminPublicationManagementPage() {
             sign in with an admin account.
           </p>
         ) : null}
-        <AdminSimilarityReviewPanel canUseAdminApi={canUseAdminApi} />
+
       </div>
     </AdminShell>
   );
@@ -20696,9 +19191,9 @@ function AdminUserManagementPage() {
   const [page, setPage] = React.useState(1);
   const [users, setUsers] = React.useState(getAdminManagedUsers);
   const [editor, setEditor] = React.useState(null);
-  const [deleteCandidate, setDeleteCandidate] = React.useState(null);
   const [pendingAction, setPendingAction] = React.useState("");
   const [message, setMessage] = React.useState("");
+  const [saveConfirmation, setSaveConfirmation] = React.useState(null);
   const pageSize = 5;
   const adminAccessMessage =
     "Admin backend access required. Log out, choose Administrator, then sign in with admin.dev@scholartrend.test.";
@@ -20729,7 +19224,6 @@ function AdminUserManagementPage() {
     }
     return user.status === "Active";
   }).length;
-  const proCount = users.filter((user) => user.isPro).length;
   const roleCounts = adminRoleOptions.reduce(
     (acc, option) => ({
       ...acc,
@@ -20750,19 +19244,13 @@ function AdminUserManagementPage() {
       note: `${formatCount(users.length - activeCount)} inactive accounts`,
       icon: "M12 3.5 19 6.5v5.2c0 4.2-2.8 7.3-7 8.8-4.2-1.5-7-4.6-7-8.8V6.5l7-3ZM9 12.2l2 2 4.2-4.6",
     },
-    {
-      label: "Pro Accounts",
-      value: formatCount(proCount),
-      note: `${formatCount(users.length - proCount)} free accounts`,
-      icon: "M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2",
-    },
   ];
 
   React.useEffect(() => {
     setPage(1);
   }, [query, role, status]);
 
-  const loadBackendUsers = React.useCallback(async () => {
+  const loadBackendUsers = React.useCallback(async (options = {}) => {
     if (!hasAdminBackendAccess()) {
       setMessage(adminAccessMessage);
       return [];
@@ -20799,10 +19287,43 @@ function AdminUserManagementPage() {
       backendPage += 1;
     }
 
-    persistUsers(backendUsers);
-    setMessage("Users loaded from SQL Server.");
-    return backendUsers;
+    const helperUsers = await fetchAdminUsersFromAuthHelper().catch(() => []);
+    const helperByEmail = new Map(
+      helperUsers.map((user) => [String(user.email).toLowerCase(), user]),
+    );
+    const mergedUsers = backendUsers.map((user) => {
+      const helperUser = helperByEmail.get(String(user.email).toLowerCase());
+      const sqlHasIdentity = Object.values(user.academicIdentity || {}).some(
+        (value) => String(value || "").trim(),
+      );
+      const helperHasIdentity = Boolean(
+        helperUser &&
+          Object.values(helperUser.academicIdentity || {}).some((value) =>
+            String(value || "").trim(),
+          ),
+      );
+      return helperUser
+        ? normalizeAdminManagedUser({
+            ...user,
+            academicIdentity: !sqlHasIdentity && helperHasIdentity
+              ? helperUser.academicIdentity
+              : user.academicIdentity,
+            verificationStatus: user.verificationStatus,
+            verificationSubmittedAt: user.verificationSubmittedAt,
+            verificationReviewedAt: user.verificationReviewedAt,
+          })
+        : user;
+    });
+    persistUsers(mergedUsers);
+    if (!options.silent) setMessage("Users loaded from SQL Server.");
+    return mergedUsers;
   }, []);
+
+  React.useEffect(() => {
+    if (!saveConfirmation) return undefined;
+    const timeoutId = window.setTimeout(() => setSaveConfirmation(null), 6000);
+    return () => window.clearTimeout(timeoutId);
+  }, [saveConfirmation]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -20834,8 +19355,6 @@ function AdminUserManagementPage() {
       status: "Active",
       createdAt: new Date().toISOString(),
       lastLoginAt: "",
-      isPro: false,
-      plan: "Free",
       password: "",
     });
   };
@@ -20887,8 +19406,7 @@ function AdminUserManagementPage() {
               email: normalizedEmail,
               role: editor.role,
               isActive: editor.status === "Active",
-              isPro: editor.plan === "Pro",
-              plan: editor.plan,
+              verificationStatus: editor.verificationStatus,
             }),
           },
         );
@@ -20897,7 +19415,11 @@ function AdminUserManagementPage() {
           setMessage(payload.error || "Could not update this user.");
           return;
         }
-        const nextUser = normalizeAdminManagedUser(payload.user);
+        const nextUser = normalizeAdminManagedUser({
+          ...payload.user,
+          academicIdentity: editor.academicIdentity,
+          verificationStatus: editor.verificationStatus,
+        });
         persistUsers(
           users.map((user) => (user.id === editor.id ? nextUser : user)),
         );
@@ -20912,8 +19434,6 @@ function AdminUserManagementPage() {
           name: trimmedName,
           email: normalizedEmail,
           status: editor.status,
-          isPro: editor.plan === "Pro",
-          plan: editor.plan,
         });
         persistUsers(
           users.map((user) => (user.id === editor.id ? nextUser : user)),
@@ -20936,8 +19456,7 @@ function AdminUserManagementPage() {
             role: normalizeRoleForApi(editor.role),
             status: editor.status,
             isActive: editor.status === "Active",
-            isPro: editor.plan === "Pro",
-            plan: editor.plan,
+            verificationStatus: editor.verificationStatus,
           },
         });
         if (editor.password?.trim()) {
@@ -20947,39 +19466,59 @@ function AdminUserManagementPage() {
             body: { newPassword: editor.password },
           });
         }
-        const nextUser = normalizeAdminManagedUser(payload.user);
+        const nextUser = normalizeAdminManagedUser({
+          ...payload.user,
+          academicIdentity: editor.academicIdentity,
+          verificationStatus: editor.verificationStatus,
+        });
         persistUsers(
           users.map((user) => (user.id === editor.id ? nextUser : user)),
         );
-        setMessage(
-          editor.password?.trim()
-            ? "User updated and password reset in SQL Server. They can now sign in with the new password."
-            : "User updated in SQL Server.",
-        );
-        // Sync pro/plan to Node auth server so reload keeps changes
-        if (
-          GOOGLE_AUTH_BASE_URL &&
-          (editor.plan === "Pro" || payload.user?.isPro)
-        ) {
+        const verificationLabel =
+          editor.verificationStatus === "verified"
+            ? "Verified"
+            : editor.verificationStatus === "rejected"
+              ? "Rejected"
+              : editor.verificationStatus === "pending"
+                ? "Pending review"
+                : "Not submitted";
+        const confirmationText =
+          editor.verificationStatus === "verified"
+            ? `${trimmedName} (${normalizedEmail}) was verified as ${editor.role}. The account can use the ${editor.role} workspace.`
+            : `${trimmedName} (${normalizedEmail}) was saved with verification status: ${verificationLabel}.`;
+        setMessage(confirmationText);
+        setSaveConfirmation({
+          title:
+            editor.verificationStatus === "verified"
+              ? "Account verification successful"
+              : "Account changes saved",
+          text: confirmationText,
+          tone:
+            editor.verificationStatus === "rejected" ? "rejected" : "success",
+        });
+        if (GOOGLE_AUTH_BASE_URL && editor.academicIdentity) {
           try {
             await fetch(
-              `${GOOGLE_AUTH_BASE_URL}/api/admin/users/${encodeURIComponent(editor.id)}/pro`,
+              `${GOOGLE_AUTH_BASE_URL}/api/admin/users/${encodeURIComponent(editor.email)}`,
               {
                 method: "PUT",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  isPro: editor.plan === "Pro",
-                  plan: editor.plan,
+                  name: trimmedName,
+                  email: normalizedEmail,
+                  role: editor.role,
+                  isActive: editor.status === "Active",
+                  verificationStatus: editor.verificationStatus,
                 }),
               },
             );
           } catch {
-            // best-effort sync
+            // best-effort identity decision sync
           }
         }
         setEditor(null);
-        loadBackendUsers().catch(() => {});
+        loadBackendUsers({ silent: true }).catch(() => {});
       } catch (error) {
         setMessage(error.message);
       } finally {
@@ -21004,8 +19543,6 @@ function AdminUserManagementPage() {
           role: normalizeRoleForApi(editor.role),
           status: editor.status,
           isActive: editor.status === "Active",
-          isPro: editor.plan === "Pro",
-          plan: editor.plan,
           ...(editor.password?.trim()
             ? { password: editor.password }
             : {}),
@@ -21077,15 +19614,6 @@ function AdminUserManagementPage() {
           method: "PUT",
           auth: true,
         });
-      } else if (
-        Object.prototype.hasOwnProperty.call(patch, "isPro") ||
-        Object.prototype.hasOwnProperty.call(patch, "plan")
-      ) {
-        payload = await apiFetch(`/api/admin/users/${id}/toggle-pro`, {
-          method: "PUT",
-          auth: true,
-          body: { isPro: Boolean(patch.isPro) },
-        });
       }
       if (payload?.user) {
         const syncedUser = normalizeAdminManagedUser({
@@ -21116,45 +19644,6 @@ function AdminUserManagementPage() {
     }
   };
 
-  const requestDeleteUser = (user) => {
-    setMessage("");
-    setDeleteCandidate(user);
-  };
-
-  const closeDeleteDialog = () => {
-    if (pendingAction) return;
-    setDeleteCandidate(null);
-  };
-
-  const confirmDeleteUser = async () => {
-    const user = deleteCandidate;
-    if (!user) return;
-
-    const isSqlUser = Boolean(user.backendId);
-
-    try {
-      setPendingAction(`delete:${user.id}`);
-      if (!isSqlUser || !hasAdminBackendAccess())
-        throw new Error("Administrator SQL Server access is required to delete this account.");
-      await apiFetch(`/api/admin/users/${user.backendId}`, { method: "DELETE", auth: true });
-
-      const nextUsers = users.filter(
-        (item) =>
-          item.id !== user.id &&
-          item.email.toLowerCase() !== user.email.toLowerCase(),
-      );
-      persistUsers(nextUsers);
-      setMessage(`${user.name} deleted from SQL Server.`);
-      setDeleteCandidate(null);
-      if (hasAdminBackendAccess()) {
-        loadBackendUsers().catch(() => {});
-      }
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setPendingAction("");
-    }
-  };
 
   const refreshUsers = () => {
     loadBackendUsers()
@@ -21169,8 +19658,7 @@ function AdminUserManagementPage() {
   };
 
   const downloadUsers = () => {
-    const header =
-      "Name,Email,Role,Status,Plan,Search Accuracy,Created At,Last Login";
+    const header = "Name,Email,Role,Status,Created At,Last Login";
     const csvEscape = (value) =>
       `"${String(value || "").replaceAll('"', '""')}"`;
     const body = visibleUsers
@@ -21180,8 +19668,6 @@ function AdminUserManagementPage() {
           user.email,
           user.role,
           user.status,
-          user.plan,
-          `${user.searchAccuracy}%`,
           user.createdLabel,
           user.lastLogin,
         ]
@@ -21202,6 +19688,25 @@ function AdminUserManagementPage() {
   return (
     <AdminShell activeRoute="/admin-user-management" current="User Management">
       <div className="admin-users-content">
+        {saveConfirmation ? (
+          <aside
+            className={`admin-save-confirmation ${saveConfirmation.tone}`}
+            role="status"
+            aria-live="polite"
+          >
+            <div>
+              <strong>{saveConfirmation.title}</strong>
+              <span>{saveConfirmation.text}</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Close confirmation"
+              onClick={() => setSaveConfirmation(null)}
+            >
+              <MiniIcon path="M6 6l12 12M18 6 6 18" />
+            </button>
+          </aside>
+        ) : null}
         <header className="admin-users-heading">
           <div>
             <p>
@@ -21322,8 +19827,6 @@ function AdminUserManagementPage() {
                   <th>User</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Plan</th>
-                  <th>Accuracy</th>
                   <th>Account Timeline</th>
                   <th>Actions</th>
                 </tr>
@@ -21353,10 +19856,7 @@ function AdminUserManagementPage() {
                           onChange={(event) =>
                             updateUser(user.id, {
                               role: event.target.value,
-                              searchAccuracy: getSearchAccuracyForAccount(
-                                event.target.value,
-                                user.isPro,
-                              ),
+                              searchAccuracy: 100,
                               updatedAt: new Date().toISOString(),
                             })
                           }
@@ -21390,35 +19890,6 @@ function AdminUserManagementPage() {
                       </label>
                     </td>
                     <td>
-                      <label
-                        className={`admin-user-plan-toggle ${user.isPro ? "pro" : "free"}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={user.isPro}
-                          disabled={pendingAction === `update:${user.id}`}
-                          onChange={(event) =>
-                            updateUser(user.id, {
-                              isPro: event.target.checked,
-                              plan: event.target.checked ? "Pro" : "Free",
-                              searchAccuracy: getSearchAccuracyForAccount(
-                                user.role,
-                                event.target.checked,
-                              ),
-                            })
-                          }
-                          aria-label={`Toggle Pro plan for ${user.name}`}
-                        />
-                        <span aria-hidden="true"></span>
-                        <strong>{user.plan}</strong>
-                      </label>
-                    </td>
-                    <td>
-                      {user.isSystemAdministrator
-                        ? "N/A"
-                        : `${user.searchAccuracy}%`}
-                    </td>
-                    <td>
                       <span className="admin-user-timeline">
                         <strong>{user.lastLogin}</strong>
                         <small>Created {user.createdLabel}</small>
@@ -21435,22 +19906,12 @@ function AdminUserManagementPage() {
                       >
                         <MiniIcon path="M4.5 19.5h4L18.2 9.8a2 2 0 0 0-2.8-2.8L5.7 16.7l-1.2 2.8ZM14.4 8l2.6 2.6M12 19.5h7.5" />
                       </button>
-                      <button
-                        type="button"
-                        className="admin-user-action delete"
-                        aria-label={`Delete ${user.name}`}
-                        onClick={() => requestDeleteUser(user)}
-                        disabled={Boolean(pendingAction) || user.isSystemAdministrator}
-                        title={user.isSystemAdministrator ? "System administrator accounts cannot be deleted here" : "Delete account"}
-                      >
-                        <MiniIcon path="M5 7h14M10 10.5v6M14 10.5v6M8.5 7l1-3h5l1 3M7.2 7l.8 13h8l.8-13" />
-                      </button>
                     </td>
                   </tr>
                 ))}
                 {!pagedUsers.length ? (
                   <tr>
-                    <td colSpan="7" className="admin-users-empty">
+                    <td colSpan="5" className="admin-users-empty">
                       No users on this page yet.
                     </td>
                   </tr>
@@ -21573,6 +20034,79 @@ function AdminUserManagementPage() {
                   }
                 />
               </label>
+              {editor.mode === "edit" ? (
+                <section className="admin-academic-identity-review">
+                  <header>
+                    <span>Academic identity evidence</span>
+                    <strong>
+                      {editor.requestedRole && editor.requestedRole !== editor.role
+                        ? `${editor.role} → ${editor.requestedRole}`
+                        : `${editor.role} verification`}
+                    </strong>
+                  </header>
+                  {editor.requestedRole && editor.requestedRole !== editor.role ? (
+                    <p className="admin-role-change-notice">
+                      Role change requested. Selecting Verified will change this
+                      account to {editor.requestedRole}.
+                    </p>
+                  ) : null}
+                  <dl>
+                    <div>
+                      <dt>Institution</dt>
+                      <dd>{editor.academicIdentity?.institution || "Not provided"}</dd>
+                    </div>
+                    <div>
+                      <dt>Official email</dt>
+                      <dd>{editor.academicIdentity?.institutionalEmail || "Not provided"}</dd>
+                    </div>
+                    <div>
+                      <dt>Role identifier</dt>
+                      <dd>{editor.academicIdentity?.identifier || "Not provided"}</dd>
+                    </div>
+                    <div>
+                      <dt>Program / field</dt>
+                      <dd>{editor.academicIdentity?.programOrField || "Not provided"}</dd>
+                    </div>
+                    <div>
+                      <dt>Department / unit</dt>
+                      <dd>{editor.academicIdentity?.department || "Not provided"}</dd>
+                    </div>
+                    <div>
+                      <dt>Evidence</dt>
+                      <dd>
+                        {editor.academicIdentity?.evidenceUrl ? (
+                          <a
+                            href={editor.academicIdentity.evidenceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open verification source
+                          </a>
+                        ) : (
+                          "Not provided"
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                  <label>
+                    <span>Admin verification decision</span>
+                    <select
+                      value={editor.verificationStatus || "not_submitted"}
+                      onChange={(event) =>
+                        setEditor((current) => ({
+                          ...current,
+                          verificationStatus: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="not_submitted">Not submitted</option>
+                      <option value="pending">Pending review</option>
+                      <option value="verified">Verified</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </label>
+                </section>
+              ) : null}
               <div className="admin-user-modal-grid">
                 <label>
                   <span>Role</span>
@@ -21610,33 +20144,6 @@ function AdminUserManagementPage() {
                     ))}
                   </select>
                 </label>
-                <label>
-                  <span>Plan</span>
-                  <select
-                    value={editor.plan || (editor.isPro ? "Pro" : "Free")}
-                    onChange={(event) =>
-                      setEditor((current) => ({
-                        ...current,
-                        plan: event.target.value,
-                        isPro: event.target.value === "Pro",
-                      }))
-                    }
-                  >
-                    <option>Free</option>
-                    <option>Pro</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Search accuracy</span>
-                  <input
-                    readOnly
-                    value={`${getSearchAccuracyForAccount(
-                      editor.role,
-                      (editor.plan || (editor.isPro ? "Pro" : "Free")) ===
-                        "Pro",
-                    )}%`}
-                  />
-                </label>
               </div>
               <footer>
                 <button
@@ -21658,801 +20165,6 @@ function AdminUserManagementPage() {
           </div>
         ) : null}
 
-        {deleteCandidate ? (
-          <div
-            className="admin-user-modal-backdrop"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) closeDeleteDialog();
-            }}
-          >
-            <section
-              className="admin-user-modal admin-delete-modal"
-              role="dialog"
-              aria-modal="true"
-            >
-              <button
-                type="button"
-                className="admin-user-modal-close"
-                aria-label="Close delete confirmation"
-                onClick={closeDeleteDialog}
-                disabled={Boolean(pendingAction)}
-              >
-                <MiniIcon path="M6 6l12 12M18 6 6 18" />
-              </button>
-              <header>
-                <span>Delete Account</span>
-                <h2>Delete {deleteCandidate.name}?</h2>
-                <p>
-                  This removes the account from the SQL Server user list. The
-                  action is applied immediately.
-                </p>
-              </header>
-              <div className="admin-delete-summary">
-                <strong>{deleteCandidate.email}</strong>
-                <span>
-                  {deleteCandidate.role} / {deleteCandidate.status}
-                </span>
-              </div>
-              <footer>
-                <button
-                  type="button"
-                  onClick={closeDeleteDialog}
-                  disabled={Boolean(pendingAction)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="admin-delete-confirm"
-                  onClick={confirmDeleteUser}
-                  disabled={Boolean(pendingAction)}
-                >
-                  {pendingAction ? "Deleting..." : "Delete User"}
-                </button>
-              </footer>
-            </section>
-          </div>
-        ) : null}
-      </div>
-    </AdminShell>
-  );
-}
-
-const formatPaymentAmount = (amount, currency = "VND") => {
-  const numericAmount = Number(amount);
-  if (!Number.isFinite(numericAmount) || numericAmount <= 0) return "";
-  return `${numericAmount.toLocaleString("vi-VN")} ${currency || "VND"}`;
-};
-
-const normalizeAdminPayment = (payment) => {
-  const billingCycle = payment.billingCycle || "yearly";
-  const currency = payment.currency || "VND";
-  const amount = Number(payment.amount || 0);
-
-  return {
-    orderCode: payment.orderCode,
-    paymentLinkId: payment.paymentLinkId || "",
-    checkoutUrl: payment.checkoutUrl || "",
-    billingCycle,
-    plan: payment.plan || "Pro",
-    amount,
-    currency,
-    priceLabel:
-      payment.priceLabel ||
-      formatPaymentAmount(amount, currency) ||
-      (billingCycle === "monthly" ? "$5 / month" : "$49 / year"),
-    status: payment.status || "PENDING",
-    email: payment.email || "",
-    userName:
-      payment.userName || payment.name || payment.email || "Unknown user",
-    role: normalizeRoleForUi(payment.role || "Researcher"),
-    createdAt: payment.createdAt || "",
-    expiresAt: payment.expiresAt || "",
-    expiresInSeconds: Number(payment.expiresInSeconds || 0),
-    paidAt: payment.paidAt || "",
-    updatedAt: payment.updatedAt || "",
-    payosReference: payment.payosReference || "",
-  };
-};
-
-const getAdminPayments = () => [];
-const setAdminPayments = () => {};
-
-const fetchAdminPaymentsFromAuthHelper = async () => {
-  if (!GOOGLE_AUTH_BASE_URL) return [];
-  const response = await fetch(`${GOOGLE_AUTH_BASE_URL}/api/admin/payments`, {
-    credentials: "include",
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      payload?.message ||
-        payload?.error ||
-        "Could not load PayOS payments from the auth helper.",
-    );
-  }
-  return Array.isArray(payload.items)
-    ? payload.items.map(normalizeAdminPayment)
-    : [];
-};
-
-function AdminPaymentManagementPage() {
-  const canUseAdminApi = hasAdminBackendAccess();
-  const [payments, setPayments] = React.useState(getAdminPayments);
-  const [statusFilter, setStatusFilter] = React.useState("All Statuses");
-  const [query, setQuery] = React.useState("");
-  const [message, setMessage] = React.useState("");
-  const [isLoadingPayments, setIsLoadingPayments] = React.useState(false);
-  const [isReconciling, setIsReconciling] = React.useState(false);
-  const [lastPaymentSyncAt, setLastPaymentSyncAt] = React.useState(null);
-  const [loadingOrderCode, setLoadingOrderCode] = React.useState(null);
-  const [paymentActionNotes, setPaymentActionNotes] = React.useState({});
-
-  const persistPayments = React.useCallback((nextPayments) => {
-    const normalizedPayments = nextPayments.map(normalizeAdminPayment);
-    setPayments(normalizedPayments);
-    setAdminPayments(normalizedPayments);
-    return normalizedPayments;
-  }, []);
-
-  const loadPayments = React.useCallback(() => {
-    if (!canUseAdminApi) {
-      persistPayments([]);
-      setMessage("Administrator backend access is required to load payments.");
-      return Promise.resolve([]);
-    }
-
-    setIsLoadingPayments(true);
-    setMessage("");
-    return apiFetch("/api/admin/payments", { auth: true })
-      .then((payload) => {
-        const nextPayments = Array.isArray(payload.items)
-          ? payload.items.map(normalizeAdminPayment)
-          : [];
-        persistPayments(nextPayments);
-        setLastPaymentSyncAt(new Date());
-        return nextPayments;
-      })
-      .catch((error) => {
-        persistPayments([]);
-        setMessage(`SQL Server payment data is unavailable: ${error.message}`);
-        return [];
-      })
-      .finally(() => {
-        setIsLoadingPayments(false);
-      });
-  }, [canUseAdminApi, persistPayments]);
-
-  React.useEffect(() => {
-    loadPayments();
-  }, [loadPayments]);
-
-  const visiblePayments = payments.filter((payment) => {
-    const matchesQuery =
-      `${payment.orderCode} ${payment.email} ${payment.userName}`
-        .toLowerCase()
-        .includes(query.toLowerCase());
-    const matchesStatus =
-      statusFilter === "All Statuses" || payment.status === statusFilter;
-    return matchesQuery && matchesStatus;
-  });
-
-  const paymentCounts = payments.reduce(
-    (acc, payment) => ({
-      ...acc,
-      [payment.status]: (acc[payment.status] || 0) + 1,
-    }),
-    {},
-  );
-
-  const canOpenPayment = (payment) => Boolean(payment.checkoutUrl);
-  const canVerifyPayment = (payment) => Boolean(payment.orderCode);
-  const canCancelPayment = (payment) => payment.status !== "PAID";
-
-  const openPaymentLink = (payment) => {
-    if (!canOpenPayment(payment)) {
-      setMessage(`Payment ${payment.orderCode} does not have a checkout link.`);
-      return;
-    }
-
-    const popup = window.open(
-      payment.checkoutUrl,
-      "_blank",
-      "noopener,noreferrer",
-    );
-    setMessage(
-      popup
-        ? `Opened PayOS checkout for payment ${payment.orderCode}.`
-        : "Your browser blocked the PayOS popup. Allow popups or copy the checkout link.",
-    );
-  };
-
-  const runPaymentAction = async (payment, action) => {
-    if (!canUseAdminApi) {
-      setMessage("Payment actions require an Administrator session.");
-      return;
-    }
-
-    if (action === "cancel" && !canCancelPayment(payment)) {
-      setMessage(
-        `Payment ${payment.orderCode} is PAID; it cannot be cancelled.`,
-      );
-      setPaymentActionNotes((current) => ({
-        ...current,
-        [payment.orderCode]: "Paid payments cannot be cancelled.",
-      }));
-      return;
-    }
-
-    setLoadingOrderCode(payment.orderCode);
-    setMessage("");
-    setPaymentActionNotes((current) => ({
-      ...current,
-      [payment.orderCode]:
-        action === "verify" ? "Checking PayOS..." : "Cancelling...",
-    }));
-    try {
-      const payload = await apiFetch(
-        `/api/admin/payments/${payment.orderCode}/${action}`,
-        {
-          method: "POST",
-          auth: true,
-        },
-      );
-
-      setPayments((current) =>
-        current.map((item) =>
-          item.orderCode === payment.orderCode
-            ? normalizeAdminPayment(payload.payment)
-            : item,
-        ),
-      );
-      const nextStatus = payload.payment?.status || payment.status;
-      const nextMessage =
-        action === "verify"
-          ? nextStatus === "PAID"
-            ? `Payment ${payment.orderCode} is PAID. Pro was activated.`
-            : `Payment ${payment.orderCode} is still ${nextStatus}.`
-          : `Payment ${payment.orderCode} is ${nextStatus}.`;
-      setMessage(nextMessage);
-      setPaymentActionNotes((current) => ({
-        ...current,
-        [payment.orderCode]:
-          action === "verify"
-            ? `Status: ${nextStatus}`
-            : nextStatus === "CANCELLED"
-              ? "Cancelled"
-              : `Status: ${nextStatus}`,
-      }));
-      sendAdminAuditLog(
-        action === "verify"
-          ? `Verified payment ${payment.orderCode} for ${payment.email}.`
-          : `Cancelled payment ${payment.orderCode} for ${payment.email}.`,
-        "Payment Management",
-        action === "verify" ? "ADMIN-PAYMENT-VERIFY" : "ADMIN-PAYMENT-CANCEL",
-      );
-    } catch (error) {
-      setMessage(error.message);
-      setPaymentActionNotes((current) => ({
-        ...current,
-        [payment.orderCode]: error.message,
-      }));
-    } finally {
-      setLoadingOrderCode(null);
-    }
-  };
-
-  const reconcilePendingPayments = async () => {
-    if (!canUseAdminApi || isReconciling) return;
-    const pendingPayments = payments.filter((payment) =>
-      ["PENDING", "PROCESSING"].includes(payment.status),
-    );
-    if (!pendingPayments.length) {
-      setMessage("There are no pending payments to reconcile.");
-      return;
-    }
-
-    setIsReconciling(true);
-    setMessage(`Reconciling ${pendingPayments.length} payment(s) with PayOS...`);
-    const results = await Promise.allSettled(
-      pendingPayments.map((payment) =>
-        apiFetch(`/api/admin/payments/${payment.orderCode}/verify`, {
-          method: "POST",
-          auth: true,
-        }),
-      ),
-    );
-    const failedCount = results.filter((result) => result.status === "rejected").length;
-    await loadPayments();
-    setMessage(
-      failedCount
-        ? `Reconciliation completed with ${failedCount} failure(s).`
-        : `Successfully reconciled ${pendingPayments.length} payment(s).`,
-    );
-    setIsReconciling(false);
-  };
-
-  return (
-    <AdminShell activeRoute="/admin-payments" current="Payment Management">
-      <div className="admin-users-content admin-payments-content">
-        <header className="admin-users-heading">
-          <div>
-            <p>
-              Dashboard <span>/</span> <strong>Payment Management</strong>
-            </p>
-            <h1>Payment Management</h1>
-            <small>
-              Manage PayOS Pro upgrades, payment statuses, and plan activation
-            </small>
-          </div>
-        </header>
-
-        {message ? (
-          <p className="admin-users-message" role="status">
-            {message}
-          </p>
-        ) : null}
-        <p className="admin-users-message" role="status">
-          Last synchronized: {lastPaymentSyncAt ? lastPaymentSyncAt.toLocaleString() : "Not yet"}
-        </p>
-
-        <section className="admin-users-summary-grid admin-payment-summary-grid">
-          {[
-            ["Total Payments", payments.length, "All PayOS checkout links"],
-            ["Paid", paymentCounts.PAID || 0, "Activated Pro accounts"],
-            ["Pending", paymentCounts.PENDING || 0, "Waiting for checkout"],
-            [
-              "Expired",
-              paymentCounts.EXPIRED || 0,
-              "15 minute checkout window",
-            ],
-          ].map(([label, value, note]) => (
-            <article className="admin-user-summary-card" key={label}>
-              <div>
-                <span>{label}</span>
-                <MiniIcon path="M5.5 7.5h13v9h-13zM7.5 10h9M8.5 14h3M15.5 14h1M7.5 5.5h9" />
-              </div>
-              <strong>
-                {typeof value === "number" ? formatCount(value) : value}
-              </strong>
-              <p>{note}</p>
-            </article>
-          ))}
-        </section>
-
-        <section className="admin-users-panel">
-          <div className="admin-users-toolbar">
-            <label className="admin-users-search">
-              <MiniIcon path="M10.5 16.5a6 6 0 1 1 0-12 6 6 0 0 1 0 12Zm4.4-1.6 4.6 4.6" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                type="search"
-                placeholder="Search order, user, or email..."
-              />
-            </label>
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              aria-label="Filter payments by status"
-            >
-              <option>All Statuses</option>
-              <option>PENDING</option>
-              <option>PAID</option>
-              <option>CANCELLED</option>
-              <option>EXPIRED</option>
-              <option>FAILED</option>
-            </select>
-            <button
-              type="button"
-              onClick={loadPayments}
-              disabled={isLoadingPayments || isReconciling}
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={reconcilePendingPayments}
-              disabled={isReconciling || isLoadingPayments}
-            >
-              {isReconciling ? "Reconciling..." : "Reconcile Pending"}
-            </button>
-          </div>
-
-          <div className="admin-users-table-wrap">
-            <table className="admin-users-table admin-payments-table">
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>User</th>
-                  <th>Plan</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Expires</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visiblePayments.map((payment) => (
-                  <tr key={payment.orderCode}>
-                    <td>
-                      <span>
-                        <strong>#{payment.orderCode}</strong>
-                        <small>{payment.paymentLinkId || "PayOS link"}</small>
-                      </span>
-                    </td>
-                    <td>
-                      <span>
-                        <strong>{payment.userName}</strong>
-                        <small>
-                          {payment.email} | {payment.role}
-                        </small>
-                      </span>
-                    </td>
-                    <td>
-                      <span className="admin-payment-plan">
-                        {payment.plan} - {payment.priceLabel}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className={`admin-payment-status ${payment.status.toLowerCase()}`}
-                      >
-                        {payment.status}
-                      </span>
-                    </td>
-                    <td>
-                      {payment.createdAt
-                        ? new Date(payment.createdAt).toLocaleString()
-                        : "N/A"}
-                    </td>
-                    <td>
-                      {payment.status === "PENDING" &&
-                      payment.expiresInSeconds > 0
-                        ? `${Math.ceil(payment.expiresInSeconds / 60)} min left`
-                        : payment.expiresAt
-                          ? new Date(payment.expiresAt).toLocaleString()
-                          : "N/A"}
-                    </td>
-                    <td>
-                      <div className="admin-payment-actions">
-                        <button
-                          type="button"
-                          className="admin-payment-link"
-                          disabled={!canOpenPayment(payment)}
-                          onClick={() => openPaymentLink(payment)}
-                          title={
-                            canOpenPayment(payment)
-                              ? "Open PayOS checkout link"
-                              : "No checkout link available"
-                          }
-                        >
-                          Open
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-user-action edit"
-                          disabled={
-                            loadingOrderCode === payment.orderCode ||
-                            !canVerifyPayment(payment)
-                          }
-                          onClick={() => runPaymentAction(payment, "verify")}
-                          title="Check payment status"
-                          aria-label={`Check payment ${payment.orderCode}`}
-                        >
-                          {loadingOrderCode === payment.orderCode ? (
-                            <span
-                              className="admin-payment-action-spinner"
-                              aria-hidden="true"
-                            />
-                          ) : (
-                            <MiniIcon path="M20 12a8 8 0 1 1-2.34-5.66M8.5 12.5l2.3 2.3L16 9" />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-user-action delete"
-                          disabled={
-                            loadingOrderCode === payment.orderCode ||
-                            !canCancelPayment(payment)
-                          }
-                          onClick={() => runPaymentAction(payment, "cancel")}
-                          title="Cancel payment"
-                          aria-label={`Cancel payment ${payment.orderCode}`}
-                        >
-                          <MiniIcon path="M6 6l12 12M18 6 6 18" />
-                        </button>
-                      </div>
-                      {paymentActionNotes[payment.orderCode] ? (
-                        <small className="admin-payment-action-note">
-                          {paymentActionNotes[payment.orderCode]}
-                        </small>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-                {!visiblePayments.length ? (
-                  <tr>
-                    <td colSpan="7" className="admin-users-empty">
-                      {isLoadingPayments
-                        ? "Loading real PayOS payments..."
-                        : canUseAdminApi
-                          ? "No PayOS payments match the current filters."
-                          : "Sign in as Administrator to view real PayOS payments."}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </AdminShell>
-  );
-}
-
-function AdminPlanManagementPage() {
-  const canUseAdminApi = hasAdminBackendAccess();
-  const [settings, setSettings] = React.useState(getProPlanSettings);
-  const [message, setMessage] = React.useState("");
-  const [isSaving, setIsSaving] = React.useState(false);
-  const accuracyPackages = [
-    {
-      role: "Student",
-      label: "Student package",
-      note: "Applied to Student Free and Student Pro pricing.",
-      inherited: false,
-    },
-    {
-      role: "Lecturer",
-      label: "Lecturer workspace",
-      note: "Inherits the Student package accuracy after upgrade.",
-      inherited: true,
-    },
-    {
-      role: "Researcher",
-      label: "Researcher workspace",
-      note: "Inherits the Student package accuracy after upgrade.",
-      inherited: true,
-    },
-  ];
-
-  React.useEffect(() => {
-    syncPlanPolicyFromBackend()
-      .then((policy) => setSettings(policy))
-      .catch(() => {});
-  }, []);
-
-  const updateField = (field, value) => {
-    setSettings((current) => ({
-      ...current,
-      [field]: Number(value),
-    }));
-    setMessage("");
-  };
-
-  const updateAccuracy = (tier, role, value) => {
-    setSettings((current) => ({
-      ...current,
-      [tier]: mirrorStudentPackageAccuracy(
-        {
-          ...current[tier],
-          [role]: Number(value),
-        },
-        defaultProPlanSettings[tier],
-      ),
-    }));
-    setMessage("");
-  };
-
-  const saveSettings = async (event) => {
-    event.preventDefault();
-    if (!canUseAdminApi) {
-      setMessage("Administrator backend access is required to save plan policy.");
-      return;
-    }
-
-    setIsSaving(true);
-    setMessage("");
-
-    try {
-      const savedSettings = await savePlanPolicyToBackend(settings);
-      setSettings(savedSettings);
-      setMessage(
-        "Plan policy saved to backend and will be used for pricing, checkout expiry, and enforced accuracy.",
-      );
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const resetSettings = async () => {
-    if (!canUseAdminApi) {
-      setMessage("Administrator backend access is required to reset plan policy.");
-      return;
-    }
-
-    setIsSaving(true);
-    setMessage("");
-
-    try {
-      const savedSettings = await resetPlanPolicyOnBackend();
-      setSettings(savedSettings);
-      setMessage("Plan policy reset to backend defaults.");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <AdminShell activeRoute="/admin-plans" current="Plan Management">
-      <div className="admin-users-content admin-plans-content">
-        <header className="admin-users-heading">
-          <div>
-            <p>
-              Dashboard <span>/</span> <strong>Plan Management</strong>
-            </p>
-            <h1>Plan Management</h1>
-            <small>
-              Manage Pro pricing display, role accuracy, and checkout expiry
-              policy
-            </small>
-          </div>
-        </header>
-
-        {message ? (
-          <p className="admin-users-message" role="status">
-            {message}
-          </p>
-        ) : null}
-        {!canUseAdminApi ? (
-          <p className="admin-users-message" role="status">
-            Admin backend access required to save plan policy changes to the
-            backend.
-          </p>
-        ) : null}
-
-        <section className="admin-users-summary-grid admin-plan-summary-grid">
-          {[
-            ["Monthly", `$${settings.monthlyPrice}`, "Displayed monthly price"],
-            [
-              "Yearly",
-              `$${settings.yearlyPrice}`,
-              `${settings.yearlySavingsPercent}% yearly saving label`,
-            ],
-            [
-              "Checkout Hold",
-              `${settings.checkoutHoldMinutes}m`,
-              "Pending payment window",
-            ],
-          ].map(([label, value, note]) => (
-            <article className="admin-user-summary-card" key={label}>
-              <div>
-                <span>{label}</span>
-                <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-              </div>
-              <strong>{value}</strong>
-              <p>{note}</p>
-            </article>
-          ))}
-        </section>
-
-        <form className="admin-plan-panel" onSubmit={saveSettings}>
-          <section>
-            <h2>Pricing Display</h2>
-            <div className="admin-plan-grid">
-              <label>
-                <span>Monthly price ($)</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={settings.monthlyPrice}
-                  onChange={(event) =>
-                    updateField("monthlyPrice", event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                <span>Yearly price ($)</span>
-                <input
-                  type="number"
-                  min="20"
-                  value={settings.yearlyPrice}
-                  onChange={(event) =>
-                    updateField("yearlyPrice", event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                <span>Yearly saving label (%)</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="90"
-                  value={settings.yearlySavingsPercent}
-                  onChange={(event) =>
-                    updateField("yearlySavingsPercent", event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                <span>Checkout hold window (minutes)</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={settings.checkoutHoldMinutes}
-                  onChange={(event) =>
-                    updateField("checkoutHoldMinutes", event.target.value)
-                  }
-                />
-              </label>
-            </div>
-          </section>
-
-          <section>
-            <h2>Search Accuracy Policy</h2>
-            <p className="admin-plan-note">
-              Accuracy is managed from the Student package. Lecturer and
-              Researcher workspaces inherit these Student package limits after a
-              paid upgrade.
-            </p>
-            <div className="admin-plan-accuracy-table">
-              <div className="admin-plan-accuracy-head">
-                <span>Package</span>
-                <span>Free</span>
-                <span>Pro</span>
-              </div>
-              {accuracyPackages.map(({ role, label, note, inherited }) => (
-                <div className="admin-plan-accuracy-row" key={role}>
-                  <strong>
-                    {label}
-                    <small>{note}</small>
-                  </strong>
-                  <label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={settings.freeAccuracy[role]}
-                      disabled={inherited}
-                      onChange={(event) =>
-                        updateAccuracy("freeAccuracy", role, event.target.value)
-                      }
-                    />
-                    <span>%</span>
-                  </label>
-                  <label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={settings.proAccuracy[role]}
-                      disabled={inherited}
-                      onChange={(event) =>
-                        updateAccuracy("proAccuracy", role, event.target.value)
-                      }
-                    />
-                    <span>%</span>
-                  </label>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <footer className="admin-plan-actions">
-            <button type="button" onClick={resetSettings} disabled={isSaving}>
-              Reset Defaults
-            </button>
-            <button type="submit" disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Plan Policy"}
-            </button>
-          </footer>
-        </form>
       </div>
     </AdminShell>
   );
@@ -22801,7 +20513,9 @@ function AdminNotificationManagementPage() {
                 <span>{label}</span>
                 <MiniIcon path="M18 16H6l1.4-2.2V10a4.6 4.6 0 0 1 9.2 0v3.8L18 16ZM10 19h4" />
               </div>
-              <strong>{formatCount(value)}</strong>
+              <strong>
+                {typeof value === "number" ? formatCount(value) : value}
+              </strong>
               <p>{note}</p>
             </article>
           ))}
@@ -23140,7 +20854,6 @@ function AdminSystemLogsPage() {
     `${log.event} ${log.detail} ${log.module} ${log.actor} ${log.code}`.toLowerCase();
   const getLogRoute = (log) => {
     const text = getLogSearchText(log);
-    if (/payment|payos|checkout|plan/.test(text)) return "/admin-payments";
     if (/user|auth|login|role|account/.test(text))
       return "/admin-user-management";
     if (/sync|semantic scholar|openalex|worker/.test(text)) {
@@ -23581,6 +21294,110 @@ function AdminSystemLogsPage() {
   );
 }
 
+
+function AdminReviewManagementPage() {
+  const [reviews, setReviews] = React.useState([]);
+  const [message, setMessage] = React.useState("");
+  const [category, setCategory] = React.useState("");
+  const [selectedReview, setSelectedReview] = React.useState(null);
+  const loadReviews = React.useCallback(async () => {
+    try {
+      const query = category ? `?reportCategory=${encodeURIComponent(category)}` : "";
+      const payload = await apiFetch(`/api/publication-reviews/admin/all${query}`, { auth: true });
+      setReviews(payload.items || []);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  }, [category]);
+  React.useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  const moderate = async (review, action) => {
+    const requests = {
+      hide: [`/api/publication-reviews/admin/${review.id}/hide`, "POST", null],
+      restore: [`/api/publication-reviews/admin/${review.id}/restore`, "POST", null],
+      resolve: [`/api/publication-reviews/admin/${review.id}/resolve-reports`, "POST", { resolution: "Resolved by Administrator" }],
+      restrict: [`/api/publication-reviews/admin/users/${review.reviewerUserId}/restrict`, "POST", { days: 7 }],
+    };
+    const [path, method, body] = requests[action];
+    try {
+      await apiFetch(path, { method, auth: true, body });
+      setMessage("Moderation action completed.");
+      await loadReviews();
+    } catch (error) { setMessage(error.message); }
+  };
+
+  const reviewSourceUrl = (review) => {
+    if (review.publicationUrl) return review.publicationUrl;
+    if (review.publicationDoi) {
+      const doi = String(review.publicationDoi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, "");
+      return `https://doi.org/${doi}`;
+    }
+    if (review.publicationTitle) {
+      return `https://scholar.google.com/scholar?q=${encodeURIComponent(review.publicationTitle)}`;
+    }
+    return "";
+  };
+
+  const hasDirectReviewSource = (review) => Boolean(review.publicationUrl || review.publicationDoi);
+
+  const visibleCount = reviews.filter((review) => !review.isHidden).length;
+  const reportedCount = reviews.filter((review) => (review.reportCount || 0) > 0 && review.moderationStatus !== "resolved").length;
+  const averageRating = reviews.length
+    ? (reviews.reduce((total, review) => total + Number(review.credibilityRating || 0), 0) / reviews.length).toFixed(1)
+    : "0.0";
+
+  return (
+    <AdminShell activeRoute="/admin-reviews" current="Review Management">
+      <div className="admin-users-content admin-review-page">
+        <header className="admin-review-heading">
+          <div><span>Trust &amp; safety</span><h1>Review Management</h1><p>Inspect academic feedback, resolve reports, and protect publication quality.</p></div>
+          <label className="admin-review-category"><span>Violation category</span><select value={category} onChange={(event) => setCategory(event.target.value)}>
+            <option value="">All categories</option><option value="spam">Spam</option><option value="harassment">Harassment</option><option value="misinformation">Misinformation</option><option value="conflict_of_interest">Conflict of interest</option><option value="off_topic">Off-topic</option><option value="plagiarism">Plagiarism</option><option value="other">Other</option>
+          </select></label>
+        </header>
+
+        <section className="admin-review-metrics" aria-label="Review summary">
+          <article><span>Total reviews</span><strong>{reviews.length}</strong><small>In the current view</small></article>
+          <article><span>Visible</span><strong>{visibleCount}</strong><small>Available to readers</small></article>
+          <article className={reportedCount ? "attention" : ""}><span>Needs attention</span><strong>{reportedCount}</strong><small>Unresolved reports</small></article>
+          <article><span>Average rating</span><strong>{averageRating}<em>/5</em></strong><small>Credibility score</small></article>
+        </section>
+
+        {message ? <p className="admin-review-notice" role="status">{message}</p> : null}
+        <section className="admin-review-list" aria-label="Publication reviews">
+          <header><div><strong>All reviews</strong><span>{reviews.length} results</span></div><small>Newest activity first</small></header>
+          {reviews.length ? reviews.map((review) => {
+            const status = review.moderationStatus || (review.isHidden ? "hidden" : "visible");
+            const sourceUrl = reviewSourceUrl(review);
+            return <article className={`admin-review-row ${review.isHidden ? "is-hidden" : ""}`} key={review.id}>
+              <div className="admin-review-score" aria-label={`${review.credibilityRating} out of 5`}><strong>{review.credibilityRating}</strong><span>/ 5</span><small>rating</small></div>
+              <div className="admin-review-copy">
+                <div className="admin-review-meta"><span className={`admin-review-status ${status}`}>{status}</span>{review.reportCount ? <span className="admin-review-report-count">{review.reportCount} report{review.reportCount > 1 ? "s" : ""}</span> : null}<time>{review.updatedAt ? new Date(review.updatedAt).toLocaleDateString() : ""}</time></div>
+                <button type="button" className="admin-review-title" onClick={() => setSelectedReview(review)}>{review.publicationTitle}</button>
+                <p>{review.comment}</p>
+                <div className="admin-review-byline"><span className="admin-review-avatar">{String(review.reviewerName || "U").slice(0, 1).toUpperCase()}</span><span><strong>{review.reviewerName}</strong><small>{review.reviewerRole} · {review.reviewerEmail}</small></span></div>
+              </div>
+              <div className="admin-review-actions">
+                <button type="button" className="review-action-primary" onClick={() => setSelectedReview(review)}>View details</button>
+                {sourceUrl ? <a href={sourceUrl} target="_blank" rel="noreferrer">{hasDirectReviewSource(review) ? "Open source ↗" : "Find publication ↗"}</a> : <span className="source-unavailable">Source unavailable</span>}
+                <div><button type="button" onClick={() => moderate(review, review.isHidden ? "restore" : "hide")}>{review.isHidden ? "Restore" : "Hide"}</button>{review.reportCount && status !== "resolved" ? <button type="button" onClick={() => moderate(review, "resolve")}>Resolve</button> : null}<button type="button" className="danger" onClick={() => moderate(review, "restrict")}>Restrict</button></div>
+              </div>
+            </article>;
+          }) : <div className="admin-review-empty"><strong>No reviews found</strong><p>There are no reviews matching this violation category.</p></div>}
+        </section>
+
+        {selectedReview ? <div className="admin-review-paper-modal" role="dialog" aria-modal="true" aria-labelledby="review-paper-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedReview(null); }}><section>
+          <header><div><span>Reviewed publication</span><h2 id="review-paper-title">{selectedReview.publicationTitle}</h2></div><button type="button" aria-label="Close" onClick={() => setSelectedReview(null)}>×</button></header>
+          <div className="admin-reviewed-paper-meta">{selectedReview.publicationSource ? <span>{selectedReview.publicationSource}</span> : null}{selectedReview.publicationYear ? <span>{selectedReview.publicationYear}</span> : null}{selectedReview.publicationAuthors ? <span>{selectedReview.publicationAuthors}</span> : null}</div>
+          <section className="admin-reviewed-paper-abstract"><h3>Abstract</h3><p>{selectedReview.publicationAbstract || "No abstract was stored with this review."}</p></section>
+          <div className="admin-reviewed-paper-links">{reviewSourceUrl(selectedReview) ? <a href={reviewSourceUrl(selectedReview)} target="_blank" rel="noreferrer">{hasDirectReviewSource(selectedReview) ? "Open original publication ↗" : "Find publication on Google Scholar ↗"}</a> : null}{selectedReview.publicationDoi ? <a href={`https://doi.org/${String(selectedReview.publicationDoi).replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")}`} target="_blank" rel="noreferrer">View DOI ↗</a> : null}</div>
+          <section className="admin-review-detail"><header><div><span className="admin-review-avatar">{String(selectedReview.reviewerName || "U").slice(0, 1).toUpperCase()}</span><span><strong>{selectedReview.reviewerName}</strong><small>{selectedReview.reviewerEmail}</small></span></div><strong>{selectedReview.credibilityRating}/5</strong></header><p>{selectedReview.comment}</p></section>
+        </section></div> : null}
+      </div>
+    </AdminShell>
+  );
+}
+
 function AdminSectionPage({ activeRoute, title }) {
   return (
     <AdminShell activeRoute={activeRoute} current={title}>
@@ -23590,104 +21407,6 @@ function AdminSectionPage({ activeRoute, title }) {
         <p>This Admin module is ready for its detailed workflow.</p>
       </div>
     </AdminShell>
-  );
-}
-
-function PaymentReturnPage() {
-  const [status, setStatus] = React.useState("checking");
-  const [message, setMessage] = React.useState("Checking PayOS payment...");
-  const params = new URLSearchParams(window.location.search);
-  const orderCode = params.get("orderCode");
-  const cancelled = params.get("cancelled") === "1";
-
-  React.useEffect(() => {
-    if (cancelled) {
-      setStatus("cancelled");
-      setMessage(
-        "Payment was cancelled. Your account is still on the Free plan.",
-      );
-      clearPendingPayosUpgrade(orderCode);
-      return;
-    }
-
-    if (!orderCode) {
-      setStatus("error");
-      setMessage("Missing PayOS order code.");
-      return;
-    }
-
-    let cancelledEffect = false;
-    authServerFetch(
-      `/api/payments/payos/verify?orderCode=${encodeURIComponent(orderCode)}`,
-    )
-      .then((payload) => {
-        if (cancelledEffect) return;
-        if (payload.status === "PAID" && payload.user) {
-          const responseRole = normalizeRoleForUi(payload.user.role);
-          const pendingRole = getPendingPayosUpgradeRole(orderCode);
-          const upgradedRole = upgradeRoleOptions.includes(responseRole)
-            ? responseRole
-            : pendingRole || responseRole;
-          const upgradedAccuracy = getSearchAccuracyForAccount(
-            upgradedRole,
-            true,
-          );
-          const upgradedUser = {
-            ...payload.user,
-            role: upgradedRole,
-            isPro: true,
-            plan: "Pro",
-            searchAccuracy: upgradedAccuracy,
-          };
-          persistSession(upgradedUser);
-          upsertAdminManagedUserFromAccount(upgradedUser);
-          clearPendingPayosUpgrade(orderCode);
-          setStatus("success");
-          setMessage(
-            `${upgradedRole} Pro activated. Your search accuracy is now ${upgradedAccuracy}%.`,
-          );
-          return;
-        }
-
-        setStatus("pending");
-        setMessage(
-          `Payment status is ${payload.status || "pending"}. Please refresh after PayOS confirms the transaction.`,
-        );
-      })
-      .catch((error) => {
-        if (cancelledEffect) return;
-        setStatus("error");
-        setMessage(error.message);
-      });
-
-    return () => {
-      cancelledEffect = true;
-    };
-  }, [cancelled, orderCode]);
-
-  const dashboardPath =
-    roleDashboardRoutes[getCurrentAccountPlan().role] || "/student-dashboard";
-
-  return (
-    <main className="payment-return-page">
-      <section className={`payment-return-card ${status}`}>
-        <div className="upgrade-modal-mark" aria-hidden="true">
-          <MiniIcon path="M12 13.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM9.6 13.1 8.8 19l3.2-1.9 3.2 1.9-.8-5.9M10.5 9.5l1 1 2-2" />
-        </div>
-        <span>PayOS Checkout</span>
-        <h1>
-          {status === "success"
-            ? "Upgrade Complete"
-            : status === "checking"
-              ? "Verifying Payment"
-              : "Payment Not Completed"}
-        </h1>
-        <p>{message}</p>
-        <button type="button" onClick={navTo(dashboardPath)}>
-          Back to Dashboard
-        </button>
-      </section>
-    </main>
   );
 }
 
@@ -23746,6 +21465,129 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
+function AcademicVerificationReminder() {
+  const [, refresh] = React.useReducer((value) => value + 1, 0);
+  const path = window.location.pathname;
+  const session = getStoredSession();
+  const role = normalizeRoleForUi(session.role || getStoredAuthRole());
+  const status =
+    session.verificationStatus ||
+    session.academicIdentity?.verificationStatus ||
+    "not_submitted";
+  const requestedRole =
+    session.requestedRole || session.academicIdentity?.requestedRole || "";
+  const hasAuthenticatedSession = Boolean(getStoredAuth().accessToken);
+  const isAcademicWorkspace =
+    path.startsWith("/student-") ||
+    path.startsWith("/lecturer-") ||
+    path.startsWith("/researcher-");
+  const isProfile = path.endsWith("-profile");
+  const rolePrefix = String(role || "Student").toLowerCase();
+  const profilePath = `/${rolePrefix}-profile?tab=academic-identity`;
+
+  React.useEffect(() => {
+    window.addEventListener("scholartrend:navigate", refresh);
+    window.addEventListener("scholartrend:session-updated", refresh);
+    window.addEventListener("popstate", refresh);
+    return () => {
+      window.removeEventListener("scholartrend:navigate", refresh);
+      window.removeEventListener("scholartrend:session-updated", refresh);
+      window.removeEventListener("popstate", refresh);
+    };
+  }, []);
+
+  if (
+    !hasAuthenticatedSession ||
+    !isAcademicWorkspace ||
+    isProfile ||
+    role === "Administrator" ||
+    status === "verified"
+  ) {
+    return null;
+  }
+
+  return (
+    <aside className={`verification-reminder ${status}`} role="status">
+      <div>
+        <strong>
+          {status === "pending"
+            ? `${role} verification is pending`
+            : status === "rejected"
+              ? `${role} verification needs changes`
+              : `You are previewing the ${role} workspace`}
+        </strong>
+        <span>
+          {status === "pending"
+            ? requestedRole
+              ? `Your request to change to ${requestedRole} is pending. You can continue using your current ${role} workspace.`
+              : "You can preview the Dashboard while Admin reviews your Academic Identity."
+            : status === "rejected"
+              ? "Update your Academic Identity to restore access to role features."
+              : "Only Dashboard preview is available. Complete Academic Identity to unlock role features."}
+        </span>
+      </div>
+      <a href={profilePath} onClick={navTo(profilePath)}>
+        {status === "pending" ? "View verification" : "Verify identity"}
+      </a>
+    </aside>
+  );
+}
+
+function AcademicFeatureLocked({ role, status }) {
+  const rolePrefix = String(role || "Student").toLowerCase();
+  const profilePath = `/${rolePrefix}-profile?tab=academic-identity`;
+  const dashboardPath = `/${rolePrefix}-dashboard`;
+  const isPending = status === "pending";
+  const isRejected = status === "rejected";
+
+  return (
+    <main className="verification-gate">
+      <section className="verification-gate-card" aria-labelledby="gate-title">
+        <span className="verification-gate-icon" aria-hidden="true">
+          <MiniIcon path="M12 3 4.5 6v5.6c0 4.7 3.2 8.1 7.5 9.4 4.3-1.3 7.5-4.7 7.5-9.4V6L12 3Zm0 5v5m0 3h.01" />
+        </span>
+        <p className="verification-gate-eyebrow">
+          {role} workspace access
+        </p>
+        <h1 id="gate-title">
+          {isPending
+            ? "Waiting for Admin verification"
+            : isRejected
+              ? "Your identity information needs changes"
+              : "Complete your Academic Identity first"}
+        </h1>
+        <p>
+          {isPending
+            ? "Your information has been submitted. Until Admin verifies it, you can only preview the Dashboard and manage your Profile."
+            : isRejected
+              ? "Admin could not verify the submitted information. Update the requested details and submit them again."
+              : "Search, publication details, trends, reports, year comparison, sync, Bookmarks, and Notifications are locked until Admin verifies your role."}
+        </p>
+        <div className="verification-gate-actions">
+          <a
+            className="verification-gate-primary"
+            href={profilePath}
+            onClick={navTo(profilePath)}
+          >
+            {isPending ? "View submitted information" : "Update Academic Identity"}
+          </a>
+          <a
+            className="verification-gate-secondary"
+            href={dashboardPath}
+            onClick={navTo(dashboardPath)}
+          >
+            Back to Dashboard
+          </a>
+        </div>
+        <small>
+          Full role access is enabled only after Admin changes the verification
+          status to Verified.
+        </small>
+      </section>
+    </main>
+  );
+}
+
 function AppRoutes() {
   const [, forceRender] = React.useReducer((value) => value + 1, 0);
   const path = window.location.pathname;
@@ -23753,6 +21595,15 @@ function AppRoutes() {
   const sessionRole = normalizeRoleForUi(
     getStoredSession().role || getStoredAuthRole(),
   );
+  const currentSession = getStoredSession();
+  const verificationStatus =
+    currentSession.verificationStatus ||
+    currentSession.academicIdentity?.verificationStatus ||
+    "not_submitted";
+  const requestedRole =
+    currentSession.requestedRole ||
+    currentSession.academicIdentity?.requestedRole ||
+    "";
   const nonAdminRolePrefix =
     sessionRole === "Lecturer"
       ? "lecturer"
@@ -23769,6 +21620,49 @@ function AppRoutes() {
     window.history.replaceState({}, "", safeRoute);
     window.dispatchEvent(new Event("scholartrend:navigate"));
   }, [path, isKnownNonAdminSession, nonAdminRolePrefix]);
+
+  React.useEffect(() => {
+    if (
+      !isKnownNonAdminSession ||
+      path.endsWith("-profile")
+    ) {
+      return;
+    }
+    if (!getStoredAuth().accessToken) return;
+    const profileRequest = apiFetch("/api/auth/profile", { auth: true });
+    profileRequest
+      .then((profile) => {
+        const nextStatus = profile.verificationStatus || "not_submitted";
+        const nextRole = normalizeRoleForUi(profile.role || sessionRole);
+        if (nextStatus === verificationStatus && nextRole === sessionRole) return;
+        persistSession({
+          ...getStoredSession(),
+          role: nextRole,
+          verificationStatus: nextStatus,
+          requestedRole: profile.requestedRole || "",
+          academicIdentity: {
+            ...(getStoredSession().academicIdentity || {}),
+            ...(profile.academicIdentity || {}),
+            verificationStatus: nextStatus,
+            requestedRole: profile.requestedRole || "",
+          },
+        });
+        if (nextRole !== sessionRole) {
+          window.history.replaceState(
+            {},
+            "",
+            roleDashboardRoutes[nextRole] || "/student-dashboard",
+          );
+        }
+        forceRender();
+      })
+      .catch(() => {});
+  }, [
+    isKnownNonAdminSession,
+    path,
+    sessionRole,
+    verificationStatus,
+  ]);
 
   React.useEffect(() => {
     if (
@@ -23937,11 +21831,13 @@ function AppRoutes() {
     };
 
     window.addEventListener("scholartrend:navigate", forceRender);
+    window.addEventListener("scholartrend:session-updated", forceRender);
     window.addEventListener("popstate", forceRender);
     window.addEventListener("error", handleClientError);
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
     return () => {
       window.removeEventListener("scholartrend:navigate", forceRender);
+      window.removeEventListener("scholartrend:session-updated", forceRender);
       window.removeEventListener("popstate", forceRender);
       window.removeEventListener("error", handleClientError);
       window.removeEventListener(
@@ -23955,7 +21851,12 @@ function AppRoutes() {
 
   if (path === "/register") return <RegisterPage />;
   if (path === "/login") return <LoginPage />;
-  if (path === "/payment-return") return <PaymentReturnPage />;
+  if (path === "/") return <LandingPage />;
+
+  const hasAuthenticatedSession = Boolean(getStoredAuth().accessToken);
+  if (!hasAuthenticatedSession) {
+    return <LoginPage message="Please sign in to access ScholarTrend." />;
+  }
 
   const isAdminRoute = path.startsWith("/admin-");
   if (isAdminRoute && isKnownNonAdminSession) {
@@ -24018,12 +21919,67 @@ function AppRoutes() {
   if (path === "/admin-dashboard") return <AdminDashboard />;
   if (path === "/admin-sync-management") return <AdminSyncManagementPage />;
   if (path === "/admin-user-management") return <AdminUserManagementPage />;
-  if (path === "/admin-payments") return <AdminPaymentManagementPage />;
-  if (path === "/admin-plans") return <AdminPlanManagementPage />;
+  if (path === "/admin-reviews") return <AdminDashboard />;
   if (path === "/admin-notifications")
     return <AdminNotificationManagementPage />;
-  if (path === "/admin-publications") return <AdminPublicationManagementPage />;
+  if (path === "/admin-publications") return <AdminDashboard />;
   if (path === "/admin-system-logs") return <AdminSystemLogsPage />;
+
+  const isAcademicRoute =
+    path.startsWith("/student-") ||
+    path.startsWith("/lecturer-") ||
+    path.startsWith("/researcher-");
+  const academicRoutePrefix = path.startsWith("/lecturer-")
+    ? "lecturer"
+    : path.startsWith("/researcher-")
+      ? "researcher"
+      : path.startsWith("/student-")
+        ? "student"
+        : "";
+  if (
+    isAcademicRoute &&
+    (!isKnownNonAdminSession || academicRoutePrefix !== nonAdminRolePrefix)
+  ) {
+    const dashboardPath = nonAdminRolePrefix
+      ? `/${nonAdminRolePrefix}-dashboard`
+      : "/login";
+    return (
+      <main className="student-app">
+        <section className="student-main">
+          <div className="student-content" style={{ padding: "4rem 2rem" }}>
+            <section
+              className="search-results-area"
+              style={{ textAlign: "center", padding: "4rem 2rem" }}
+            >
+              <h1>Role access denied</h1>
+              <p style={{ marginBottom: "1.5rem" }}>
+                This page belongs to a different academic role.
+              </p>
+              <a className="new-project" href={dashboardPath}>
+                Back to your dashboard
+              </a>
+            </section>
+          </div>
+        </section>
+      </main>
+    );
+  }
+  const isPreviewAllowedRoute =
+    path.endsWith("-dashboard") || path.endsWith("-profile");
+  if (
+    isAcademicRoute &&
+    isKnownNonAdminSession &&
+    verificationStatus !== "verified" &&
+    !isPreviewAllowedRoute
+  ) {
+    return (
+      <AcademicFeatureLocked
+        role={sessionRole}
+        status={verificationStatus}
+      />
+    );
+  }
+
   if (path === "/lecturer-dashboard") return <LecturerDashboard />;
   if (path === "/lecturer-trend-tracking")
     return <TrendTrackingDashboardPage />;
@@ -24033,8 +21989,6 @@ function AppRoutes() {
   if (path === "/lecturer-year-comparison") return <YearComparisonPage />;
   if (path === "/lecturer-sync-management") return <SyncManagementPage />;
   if (path === "/lecturer-search") return <ResearcherSearchPage />;
-  if (path === "/lecturer-submit-publication")
-    return <PublicationSubmissionPage role="Lecturer" />;
   if (path === "/lecturer-publication")
     return <StudentPublicationDetailPage role="lecturer" />;
   if (path === "/lecturer-bookmarks") return <BookmarksPage role="lecturer" />;
@@ -24050,8 +22004,6 @@ function AppRoutes() {
   if (path === "/researcher-year-comparison") return <YearComparisonPage />;
   if (path === "/researcher-sync-management") return <SyncManagementPage />;
   if (path === "/researcher-search") return <ResearcherSearchPage />;
-  if (path === "/researcher-submit-publication")
-    return <PublicationSubmissionPage role="Researcher" />;
   if (path === "/researcher-publication")
     return <StudentPublicationDetailPage role="researcher" />;
   if (path === "/researcher-bookmarks")
@@ -24061,8 +22013,6 @@ function AppRoutes() {
   if (path === "/researcher-profile") return <ProfilePage role="researcher" />;
   if (path === "/student-dashboard") return <StudentDashboard />;
   if (path === "/student-search") return <StudentSearchPage />;
-  if (path === "/student-submit-publication")
-    return <PublicationSubmissionPage role="Student" />;
   if (path === "/student-bookmarks") return <BookmarksPage />;
   if (path === "/student-notifications") return <NotificationsPage />;
   if (path === "/student-profile") return <ProfilePage />;
@@ -24091,6 +22041,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
+      <AcademicVerificationReminder />
       <AppRoutes />
     </AppErrorBoundary>
   );

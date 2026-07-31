@@ -12,6 +12,7 @@ namespace ScientificJournal.API.Controllers;
 [ApiController]
 [Route("api/notifications")]
 [Authorize]
+[VerifiedAcademicUser]
 public class NotificationsController : ControllerBase
 {
     private readonly INotificationService _notificationService;

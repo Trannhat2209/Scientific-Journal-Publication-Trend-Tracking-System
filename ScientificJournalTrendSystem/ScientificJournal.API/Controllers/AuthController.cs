@@ -170,6 +170,15 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("verify-institutional-email")]
+    [Authorize]
+    public async Task<IActionResult> VerifyInstitutionalEmail([FromBody] VerifyInstitutionalEmailRequest request)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var result = await _authService.VerifyInstitutionalEmailAsync(userId, request.Token);
+        return Ok(result);
+    }
+
     [HttpPost("change-password")]
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequestDto request)
@@ -188,4 +197,9 @@ public class AuthController : ControllerBase
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         return int.TryParse(userIdValue, out userId);
     }
+}
+
+public sealed class VerifyInstitutionalEmailRequest
+{
+    public string Token { get; set; } = string.Empty;
 }

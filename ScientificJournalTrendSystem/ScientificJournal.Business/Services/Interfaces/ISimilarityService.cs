@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using ScientificJournal.Common.Enums;
 
 namespace ScientificJournal.Business.Services.Interfaces;
 
@@ -18,5 +17,5 @@ public interface ISimilarityService
     double CalculateSimilarity(string text1, string text2);
     Task<double> GetSimilarityScoreAsync(int pubId1, int pubId2);
     Task<bool> IsDuplicateRiskAsync(int pubId1, int pubId2);
-    Task<CappedSimilarityDto> GetCappedSimilarityAsync(int pubId1, int pubId2, UserRole role, bool isPro);
+    Task<CappedSimilarityDto> GetSimilarityResultAsync(int pubId1, int pubId2);
 }

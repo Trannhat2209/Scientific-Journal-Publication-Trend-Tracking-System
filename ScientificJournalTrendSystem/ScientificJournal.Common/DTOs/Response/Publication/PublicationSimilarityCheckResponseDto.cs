@@ -1,5 +1,3 @@
-using ScientificJournal.Common.DTOs.Request.Publication;
-
 namespace ScientificJournal.Common.DTOs.Response.Publication;
 
 public class PublicationSimilarityCheckResponseDto
@@ -25,4 +23,11 @@ public class PublicationSimilarityCandidateDto
     public string? Snippet { get; set; }
     public int SimilarityPercent { get; set; }
     public List<PublicationSimilaritySegmentDto> SegmentMatches { get; set; } = new();
+}
+
+public class PublicationSimilaritySegmentDto
+{
+    public string SubmittedText { get; set; } = string.Empty;
+    public string SourceText { get; set; } = string.Empty;
+    public int SimilarityPercent { get; set; }
 }

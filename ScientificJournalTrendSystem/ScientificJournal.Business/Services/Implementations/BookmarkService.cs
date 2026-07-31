@@ -23,25 +23,31 @@ public class BookmarkService : IBookmarkService
     {
         var bookmarks = await _context.Bookmarks
             .AsNoTracking()
-            .Include(b => b.Publication).ThenInclude(p => p.Journal)
-            .Include(b => b.Publication).ThenInclude(p => p.PublicationAuthors).ThenInclude(pa => pa.Author)
-            .Include(b => b.Publication).ThenInclude(p => p.PublicationKeywords).ThenInclude(pk => pk.Keyword)
+            .Include(b => b.Publication).ThenInclude(p => p!.Journal)
+            .Include(b => b.Publication).ThenInclude(p => p!.PublicationAuthors).ThenInclude(pa => pa.Author)
+            .Include(b => b.Publication).ThenInclude(p => p!.PublicationKeywords).ThenInclude(pk => pk.Keyword)
             .Where(b => b.UserId == userId && b.Publication != null && !b.Publication.IsDeleted)
             .ToListAsync();
 
-        return bookmarks.Select(b => new PublicationDto
+        return bookmarks
+            .Where(b => b.Publication is not null)
+            .Select(b =>
         {
-            Id = b.Publication!.Id,
-            Title = b.Publication.Title,
-            Abstract = b.Publication.Abstract,
-            Year = b.Publication.Year,
-            DOI = b.Publication.DOI,
-            JournalName = b.Publication.Journal?.Name ?? string.Empty,
-            SourceApi = b.Publication.SourceApi,
-            SourceUrl = b.Publication.SourceUrl,
-            CitationCount = b.Publication.CitationCount,
-            Authors = b.Publication.PublicationAuthors?.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList() ?? new List<string>(),
-            Keywords = b.Publication.PublicationKeywords?.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList() ?? new List<string>()
+            var publication = b.Publication!;
+            return new PublicationDto
+            {
+                Id = publication.Id,
+                Title = publication.Title,
+                Abstract = publication.Abstract,
+                Year = publication.Year,
+                DOI = publication.DOI,
+                JournalName = publication.Journal?.Name ?? string.Empty,
+                SourceApi = publication.SourceApi,
+                SourceUrl = publication.SourceUrl,
+                CitationCount = publication.CitationCount,
+                Authors = publication.PublicationAuthors?.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList() ?? new List<string>(),
+                Keywords = publication.PublicationKeywords?.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList() ?? new List<string>()
+            };
         }).ToList();
     }
 

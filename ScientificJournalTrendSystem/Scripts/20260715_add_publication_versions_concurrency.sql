@@ -7,12 +7,6 @@ SET ARITHABORT ON;
 SET NUMERIC_ROUNDABORT OFF;
 GO
 
-IF COL_LENGTH('publication_submissions', 'row_version') IS NULL
-BEGIN
-    ALTER TABLE publication_submissions ADD row_version ROWVERSION NOT NULL;
-END;
-GO
-
 IF OBJECT_ID('publication_versions', 'U') IS NULL
 BEGIN
     CREATE TABLE publication_versions

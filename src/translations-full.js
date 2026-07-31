@@ -180,7 +180,6 @@ export const translationMap = {
 
   // Upgrade Modal
   "SCHOLARTREND PRO": "SCHOLARTREND PRO",
-  "Upgrade to Pro": "Nâng cấp lên Pro",
   "Unlock deeper analytical intelligence for your tracked disciplines.":
     "Mở khóa trí tuệ phân tích sâu hơn cho các ngành bạn theo dõi.",
   "Researcher search accuracy": "Độ chính xác tìm kiếm Nhà nghiên cứu",
@@ -194,8 +193,6 @@ export const translationMap = {
   "Advanced citation intelligence": "Trí tuệ trích dẫn Nâng cao",
   "Full report export suite": "Bộ xuất báo cáo Đầy đủ",
   "Upgrade Now": "Nâng cấp Ngay",
-  "Secure checkout is processed by PayOS.":
-    "Thanh toán an toàn được xử lý bởi PayOS.",
 
   // Report Generation
   "Step 1: Select Scope": "Bước 1: Chọn Phạm vi",

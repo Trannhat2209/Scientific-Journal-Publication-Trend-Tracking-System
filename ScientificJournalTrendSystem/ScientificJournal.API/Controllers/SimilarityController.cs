@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.DataAccess.Context;
 
@@ -12,6 +13,7 @@ namespace ScientificJournal.API.Controllers;
 [ApiController]
 [Route("api/publications")]
 [Authorize]
+[VerifiedAcademicUser]
 public class SimilarityController : ControllerBase
 {
     private readonly IRecommendationService _recommendationService;
@@ -45,7 +47,7 @@ public class SimilarityController : ControllerBase
 
         foreach (var r in related)
         {
-            var capped = await _similarityService.GetCappedSimilarityAsync(id, r.PublicationId, dbUser.Role, dbUser.IsPro);
+            var capped = await _similarityService.GetSimilarityResultAsync(id, r.PublicationId);
             resultList.Add(new
             {
                 r.PublicationId,

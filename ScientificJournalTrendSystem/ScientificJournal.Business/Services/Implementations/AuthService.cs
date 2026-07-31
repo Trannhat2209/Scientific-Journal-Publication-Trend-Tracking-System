@@ -1,4 +1,7 @@
 using System;
+using System.Net.Mail;
+using Microsoft.IdentityModel.Tokens;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -11,7 +14,6 @@ using ScientificJournal.Common.DTOs.Response.Auth;
 using ScientificJournal.Common.DTOs.Response.User;
 using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Helpers;
-using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
 
@@ -23,6 +25,8 @@ public class AuthService : IAuthService
     private readonly JwtSettings _jwtSettings;
     private readonly IEmailService _emailService;
     private readonly ILogger<AuthService> _logger;
+    private readonly OrcidValidationClient? _orcidValidationClient;
+    private readonly IConfiguration _configuration;
     private readonly bool _requireEmailVerification;
 
     public AuthService(
@@ -30,12 +34,15 @@ public class AuthService : IAuthService
         IOptions<JwtSettings> jwtSettings,
         IEmailService emailService,
         IConfiguration configuration,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        OrcidValidationClient? orcidValidationClient = null)
     {
         _dbContext = dbContext;
         _jwtSettings = jwtSettings.Value;
         _emailService = emailService;
         _logger = logger;
+        _orcidValidationClient = orcidValidationClient;
+        _configuration = configuration;
         _requireEmailVerification = !string.Equals(
             configuration["Auth:RequireEmailVerification"],
             "false",
@@ -55,16 +62,18 @@ public class AuthService : IAuthService
         var verificationToken = _requireEmailVerification
             ? new Random().Next(100000, 999999).ToString()
             : null;
+        var registrationRole = request.Role is UserRole.Student or UserRole.Lecturer or UserRole.Researcher
+            ? request.Role
+            : UserRole.Student;
 
         var user = new User
         {
             Email = email,
             FullName = fullName,
             PasswordHash = PasswordHasher.HashPassword(request.Password),
-            Role = UserRole.Student,
+            Role = registrationRole,
             IsActive = true,
             IsDeleted = false,
-            Plan = "Free",
             IsEmailVerified = !_requireEmailVerification,
             EmailVerificationToken = verificationToken,
             EmailVerificationTokenExpiresAt = DateTime.UtcNow.AddHours(24),
@@ -105,14 +114,19 @@ public class AuthService : IAuthService
     {
         var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Email == request.Email && !u.IsDeleted);
 
-        if (user == null || !PasswordHasher.VerifyPassword(request.Password, user.PasswordHash))
+        if (user == null)
         {
             throw new UnauthorizedAccessException("Invalid email or password.");
         }
 
         if (!user.IsActive)
         {
-            throw new UnauthorizedAccessException("Account is disabled.");
+            throw new UnauthorizedAccessException("This account has been banned. Please contact an administrator for assistance.");
+        }
+
+        if (!PasswordHasher.VerifyPassword(request.Password, user.PasswordHash))
+        {
+            throw new UnauthorizedAccessException("Invalid email or password.");
         }
 
         if (_requireEmailVerification && !user.IsEmailVerified)
@@ -136,7 +150,7 @@ public class AuthService : IAuthService
             {
                 throw new UnauthorizedAccessException(
                     user.Role == UserRole.Student
-                        ? "This account is currently a Student account. Upgrade your plan before signing in as Researcher or Lecturer."
+                        ? "This account is currently a Student account. Submit a role-change request and academic identity evidence for Admin approval."
                         : $"This account is registered as {(user.Role == UserRole.Admin ? "Administrator" : user.Role)}. Please select the matching role.");
             }
         }
@@ -146,7 +160,20 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponseDto> RefreshTokenAsync(string refreshToken)
     {
-        var principal = JwtHelper.ValidateToken(refreshToken, _jwtSettings.Secret);
+        System.Security.Claims.ClaimsPrincipal principal;
+        try
+        {
+            principal = JwtHelper.ValidateToken(refreshToken, _jwtSettings.Secret);
+        }
+        catch (SecurityTokenException)
+        {
+            throw new UnauthorizedAccessException("Invalid or expired refresh token.");
+        }
+        catch (ArgumentException)
+        {
+            throw new UnauthorizedAccessException("Invalid or expired refresh token.");
+        }
+
         var tokenType = principal.FindFirst("token_type")?.Value;
         if (!string.Equals(tokenType, "refresh", StringComparison.OrdinalIgnoreCase))
         {
@@ -193,8 +220,96 @@ public class AuthService : IAuthService
         }
 
         user.FullName = request.FullName.Trim();
+        if (request.Institution != null)
+        {
+            var requestedRole = request.RequestedRole?.Trim();
+            if (string.Equals(requestedRole, "Lecture", StringComparison.OrdinalIgnoreCase))
+            {
+                requestedRole = "Lecturer";
+            }
+            if (!Enum.TryParse<UserRole>(requestedRole, true, out var parsedRequestedRole) ||
+                parsedRequestedRole == UserRole.Admin)
+            {
+                parsedRequestedRole = user.Role;
+            }
+            var normalizedRequestedRole = parsedRequestedRole == user.Role
+                ? null
+                : parsedRequestedRole.ToString();
+            var institution = request.Institution.Trim();
+            var department = request.Department?.Trim();
+            var institutionalEmail = request.InstitutionalEmail?.Trim().ToLowerInvariant();
+            var academicIdentifier = request.AcademicIdentifier?.Trim();
+            var programOrField = request.ProgramOrField?.Trim();
+            var evidenceUrl = request.EvidenceUrl?.Trim();
+            ValidateAcademicIdentity(
+                parsedRequestedRole,
+                institution,
+                department,
+                institutionalEmail,
+                academicIdentifier,
+                programOrField,
+                evidenceUrl);
+            if (parsedRequestedRole == UserRole.Researcher &&
+                _orcidValidationClient != null &&
+                !await _orcidValidationClient.IsValidAsync(academicIdentifier!))
+            {
+                throw new InvalidOperationException("ORCID could not be verified against the public ORCID registry.");
+            }
+            var identityChanged =
+                !string.Equals(user.Institution, institution, StringComparison.Ordinal) ||
+                !string.Equals(user.Department, department, StringComparison.Ordinal) ||
+                !string.Equals(user.InstitutionalEmail, institutionalEmail, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(user.AcademicIdentifier, academicIdentifier, StringComparison.Ordinal) ||
+                !string.Equals(user.ProgramOrField, programOrField, StringComparison.Ordinal) ||
+                !string.Equals(user.EvidenceUrl, evidenceUrl, StringComparison.Ordinal) ||
+                !string.Equals(user.RequestedRole, normalizedRequestedRole, StringComparison.OrdinalIgnoreCase);
+
+            user.Institution = institution;
+            user.Department = department;
+            user.InstitutionalEmail = institutionalEmail;
+            user.AcademicIdentifier = academicIdentifier;
+            user.ProgramOrField = programOrField;
+            user.EvidenceUrl = evidenceUrl;
+            user.RequestedRole = normalizedRequestedRole;
+            if (identityChanged)
+            {
+                var verificationToken = Random.Shared.Next(100000, 999999).ToString();
+                user.IsInstitutionalEmailVerified = false;
+                user.InstitutionalEmailVerificationToken = verificationToken;
+                user.InstitutionalEmailVerificationTokenExpiresAt = DateTime.UtcNow.AddMinutes(15);
+                user.VerificationStatus = "email_verification_required";
+                user.VerificationSubmittedAt = null;
+                user.VerificationReviewedAt = null;
+                await _emailService.SendEmailAsync(
+                    institutionalEmail!,
+                    "Verify your ScholarTrend institutional email",
+                    $"Your ScholarTrend Academic Identity verification code is {verificationToken}. It expires in 15 minutes.");
+            }
+        }
         await _dbContext.SaveChangesAsync();
 
+        return MapProfile(user);
+    }
+
+    public async Task<UserProfileDto> VerifyInstitutionalEmailAsync(int userId, string token)
+    {
+        var user = await _dbContext.Users.FirstOrDefaultAsync(item => item.Id == userId && !item.IsDeleted)
+            ?? throw new KeyNotFoundException("User profile not found.");
+        var normalizedToken = token?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedToken) ||
+            !string.Equals(user.InstitutionalEmailVerificationToken, normalizedToken, StringComparison.Ordinal) ||
+            user.InstitutionalEmailVerificationTokenExpiresAt <= DateTime.UtcNow)
+        {
+            throw new InvalidOperationException("The institutional email verification code is invalid or expired.");
+        }
+
+        user.IsInstitutionalEmailVerified = true;
+        user.InstitutionalEmailVerificationToken = null;
+        user.InstitutionalEmailVerificationTokenExpiresAt = null;
+        user.VerificationStatus = "pending";
+        user.VerificationSubmittedAt = DateTime.UtcNow;
+        user.VerificationReviewedAt = null;
+        await _dbContext.SaveChangesAsync();
         return MapProfile(user);
     }
 
@@ -310,9 +425,17 @@ public class AuthService : IAuthService
             Email = user.Email,
             FullName = user.FullName,
             Role = user.Role,
-            IsPro = user.IsPro,
-            Plan = string.IsNullOrWhiteSpace(user.Plan) ? (user.IsPro ? "Pro" : "Free") : user.Plan,
-            SearchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro)
+            Institution = user.Institution ?? string.Empty,
+            Department = user.Department ?? string.Empty,
+            InstitutionalEmail = user.InstitutionalEmail ?? string.Empty,
+            IsInstitutionalEmailVerified = user.IsInstitutionalEmailVerified,
+            AcademicIdentifier = user.AcademicIdentifier ?? string.Empty,
+            ProgramOrField = user.ProgramOrField ?? string.Empty,
+            EvidenceUrl = user.EvidenceUrl ?? string.Empty,
+            VerificationStatus = user.VerificationStatus,
+            RequestedRole = user.RequestedRole ?? string.Empty,
+            VerificationSubmittedAt = user.VerificationSubmittedAt,
+            VerificationReviewedAt = user.VerificationReviewedAt
         };
     }
 
@@ -321,5 +444,95 @@ public class AuthService : IAuthService
         var user = await _dbContext.Users.FirstOrDefaultAsync(item => item.Id == userId && item.IsActive && !item.IsDeleted)
             ?? throw new UnauthorizedAccessException("External user is not active.");
         return BuildAuthResponse(user);
+    }
+
+    private void ValidateAcademicIdentity(
+        UserRole role,
+        string institution,
+        string? department,
+        string? institutionalEmail,
+        string? academicIdentifier,
+        string? programOrField,
+        string? evidenceUrl)
+    {
+        if (string.IsNullOrWhiteSpace(institution) ||
+            string.IsNullOrWhiteSpace(department) ||
+            string.IsNullOrWhiteSpace(institutionalEmail) ||
+            string.IsNullOrWhiteSpace(academicIdentifier) ||
+            string.IsNullOrWhiteSpace(programOrField) ||
+            string.IsNullOrWhiteSpace(evidenceUrl))
+        {
+            throw new InvalidOperationException(
+                $"Complete all {role} academic identity fields before submitting for Admin review.");
+        }
+
+        if (!MailAddress.TryCreate(institutionalEmail, out var address) ||
+            IsConsumerEmailDomain(address.Host))
+        {
+            throw new InvalidOperationException(
+                "Use an official institutional email address, not a personal email provider.");
+        }
+
+        ValidateInstitutionPolicy(role, institution, address.Host, academicIdentifier);
+
+        if (!Uri.TryCreate(evidenceUrl, UriKind.Absolute, out var evidenceUri) ||
+            evidenceUri.Scheme is not ("http" or "https"))
+        {
+            throw new InvalidOperationException(
+                "Verification URL must be a valid HTTP or HTTPS institutional profile, directory, or ORCID link.");
+        }
+
+        var identifierPattern = new Regex("^[A-Za-z0-9][A-Za-z0-9._-]{3,31}$", RegexOptions.CultureInvariant);
+        if (role is UserRole.Student or UserRole.Lecturer && !identifierPattern.IsMatch(academicIdentifier))
+        {
+            throw new InvalidOperationException("Academic identifier must contain 4-32 letters, numbers, dots, underscores, or hyphens.");
+        }
+
+        if (role == UserRole.Researcher)
+        {
+            var orcidCandidate = academicIdentifier.Trim().Replace("https://orcid.org/", string.Empty, StringComparison.OrdinalIgnoreCase);
+            if (!Regex.IsMatch(orcidCandidate, "^\\d{4}-\\d{4}-\\d{4}-\\d{3}[\\dX]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                throw new InvalidOperationException("Researcher Academic Identity requires a valid ORCID identifier.");
+            }
+        }
+    }
+
+    private void ValidateInstitutionPolicy(UserRole role, string institution, string emailDomain, string academicIdentifier)
+    {
+        var normalizedInstitution = institution.Trim().ToLowerInvariant();
+        var normalizedDomain = emailDomain.Trim().ToLowerInvariant();
+        var policy = _configuration.GetSection("AcademicIdentity:Institutions").GetChildren()
+            .FirstOrDefault(item => item.GetSection("Aliases").GetChildren()
+                .Select(alias => alias.Value)
+                .Where(alias => !string.IsNullOrWhiteSpace(alias))
+                .Any(alias => normalizedInstitution.Contains(alias!.Trim().ToLowerInvariant(), StringComparison.Ordinal)));
+        if (policy == null) return;
+
+        var domains = policy.GetSection("EmailDomains").GetChildren()
+            .Select(item => item.Value?.Trim().ToLowerInvariant())
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Cast<string>()
+            .ToArray();
+        if (domains.Length == 0 || !domains.Any(domain => normalizedDomain == domain || normalizedDomain.EndsWith('.' + domain, StringComparison.Ordinal)))
+            throw new InvalidOperationException("Institutional email domain does not match the selected institution.");
+
+        var rolePattern = policy[$"{role}IdentifierPattern"];
+        if (rolePattern != null && !Regex.IsMatch(academicIdentifier, rolePattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            throw new InvalidOperationException($"Academic identifier does not match the {institution} {role} format.");
+    }
+
+    private static bool IsConsumerEmailDomain(string domain)
+    {
+        var normalized = domain.Trim().ToLowerInvariant();
+        return normalized is
+            "gmail.com" or
+            "googlemail.com" or
+            "yahoo.com" or
+            "outlook.com" or
+            "hotmail.com" or
+            "icloud.com" or
+            "proton.me" or
+            "protonmail.com";
     }
 }

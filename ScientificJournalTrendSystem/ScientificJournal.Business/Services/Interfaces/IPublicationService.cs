@@ -11,6 +11,5 @@ public interface IPublicationService
     Task<PaginatedResponse<PublicationDto>> SearchPublicationsAsync(PublicationSearchRequestDto request, int? userId = null);
     Task<PublicationDetailDto> GetPublicationDetailAsync(int id);
     Task<object> GetPublicationsStatisticsAsync();
-    Task<UploadResultDto> UploadPublicationAsync(UploadPublicationDto request);
 }
 

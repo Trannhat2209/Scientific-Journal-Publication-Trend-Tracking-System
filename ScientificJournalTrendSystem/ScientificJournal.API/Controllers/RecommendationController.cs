@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Services.Interfaces;
 
 namespace ScientificJournal.API.Controllers;
@@ -11,6 +12,7 @@ namespace ScientificJournal.API.Controllers;
 [ApiController]
 [Route("api/recommendations")]
 [Authorize]
+[VerifiedAcademicUser]
 public class RecommendationController : ControllerBase
 {
     private readonly IRecommendationService _recommendationService;

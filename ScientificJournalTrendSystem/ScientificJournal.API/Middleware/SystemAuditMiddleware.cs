@@ -33,8 +33,7 @@ public class SystemAuditMiddleware
                 var status = failure == null ? httpContext.Response.StatusCode : 500;
                 var userIdValue = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? httpContext.User.FindFirstValue("sub");
                 _ = int.TryParse(userIdValue, out var userId);
-                var category = httpContext.Request.Path.StartsWithSegments("/api/payments") ? "PayOS" :
-                    httpContext.Request.Path.StartsWithSegments("/api/auth") ? "Authentication" : "API";
+                var category = httpContext.Request.Path.StartsWithSegments("/api/auth") ? "Authentication" : "API";
                 context.SystemEventLogs.Add(new SystemEventLog
                 {
                     Category = category,

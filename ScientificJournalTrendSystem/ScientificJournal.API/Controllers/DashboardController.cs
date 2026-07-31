@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
+using ScientificJournal.API.Filters;
 using ScientificJournal.Common.DTOs.Request.Export;
 using ScientificJournal.Common.Enums;
-using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 
 namespace ScientificJournal.API.Controllers;
@@ -56,9 +56,6 @@ public class DashboardController : ControllerBase
             userId = dbUser.Id,
             fullName = dbUser.FullName,
             role = dbUser.Role.ToString(),
-            isPro = dbUser.IsPro,
-            plan = dbUser.IsPro ? "Pro" : "Free",
-            searchAccuracy = PlanPolicy.GetSearchAccuracy(dbUser.Role, dbUser.IsPro),
             bookmarksCount,
             followsCount,
             unreadAlerts,
@@ -103,6 +100,8 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("report-preview")]
+    [Authorize]
+    [VerifiedAcademicUser(UserRole.Lecturer, UserRole.Researcher)]
     public async Task<IActionResult> GetReportPreview(
         [FromServices] AppDbContext context,
         [FromQuery] string? keyword,

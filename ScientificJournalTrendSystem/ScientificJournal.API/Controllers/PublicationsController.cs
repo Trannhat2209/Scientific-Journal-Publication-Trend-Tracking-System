@@ -20,6 +20,7 @@ namespace ScientificJournal.API.Controllers;
 
 [ApiController]
 [Route("api/publications")]
+[Authorize]
 public class PublicationsController : ControllerBase
 {
     private const double SimilarityLimitPercent = 50.0;
@@ -43,6 +44,7 @@ public class PublicationsController : ControllerBase
     [HttpGet]
     [HttpGet("search")]
     [HttpGet("filter")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> Search([FromQuery] PublicationSearchRequestDto request)
     {
         int? userId = null;
@@ -57,6 +59,7 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpGet("statistics")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> GetStatistics()
     {
         var result = await _publicationService.GetPublicationsStatisticsAsync();
@@ -64,6 +67,7 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpGet("autocomplete")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> Autocomplete([FromQuery] string? q, [FromQuery] int limit = 8)
     {
         limit = Math.Clamp(limit, 1, 20);
@@ -103,6 +107,7 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpGet("{id:int}/network")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> GetCitationNetwork(int id, [FromQuery] double threshold = 0.3)
     {
         var result = await _relationshipNetworkService.GetRelationshipNetworkAsync(id, threshold);
@@ -110,6 +115,7 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpGet("export")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> ExportReferences(
         [FromQuery] string format = "bibtex",
         [FromQuery] string? q = null,
@@ -158,6 +164,7 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpPost("similarity-check")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> CheckSimilarity(
         [FromBody] PublicationSimilarityCheckRequestDto request,
         CancellationToken cancellationToken)
@@ -167,254 +174,11 @@ public class PublicationsController : ControllerBase
     }
 
     [HttpGet("{id:int}")]
+    [VerifiedAcademicUser]
     public async Task<IActionResult> GetDetail(int id)
     {
         var result = await _publicationService.GetPublicationDetailAsync(id);
         return Ok(result);
-    }
-
-    [HttpPost("upload")]
-    [Authorize]
-    public async Task<IActionResult> Upload([FromBody] UploadPublicationDto request)
-    {
-        var roleValue = User.FindFirstValue(ClaimTypes.Role);
-        if (string.Equals(roleValue, "Admin", StringComparison.OrdinalIgnoreCase))
-        {
-            return Forbid("Admin is not allowed to upload publications.");
-        }
-
-        var result = await _publicationService.UploadPublicationAsync(request);
-        if (!result.Success)
-        {
-            return BadRequest(result);
-        }
-        return CreatedAtAction(nameof(GetDetail), new { id = result.PublicationId }, result);
-    }
-
-    [HttpPost("submissions")]
-    public async Task<IActionResult> CreateSubmission([FromBody] CreatePublicationSubmissionDto request)
-    {
-        if (string.IsNullOrWhiteSpace(request.Title) ||
-            string.IsNullOrWhiteSpace(request.Abstract) ||
-            string.IsNullOrWhiteSpace(request.Authors) ||
-            string.IsNullOrWhiteSpace(request.Keywords))
-        {
-            return BadRequest(new { message = "Title, authors, keywords, and abstract are required." });
-        }
-
-        var submitterEmail = ResolveSubmitterEmail(request.SubmitterEmail);
-        if (string.IsNullOrWhiteSpace(submitterEmail))
-        {
-            return BadRequest(new { message = "Submitter email is required." });
-        }
-
-        var submitterUser = await _context.Users
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Email == submitterEmail && !u.IsDeleted);
-
-        var isOverLimit = request.OverLimit ?? request.SimilarityPercent > SimilarityLimitPercent;
-        if (isOverLimit || request.SimilarityPercent > SimilarityLimitPercent)
-        {
-            return BadRequest(new
-            {
-                message = "Submission blocked: similarity over 50% is not sent to Admin review."
-            });
-        }
-
-        var submission = new PublicationSubmission
-        {
-            SubmitterUserId = submitterUser?.Id,
-            SubmitterEmail = submitterEmail,
-            SubmitterName = string.IsNullOrWhiteSpace(request.SubmitterName)
-                ? submitterEmail
-                : request.SubmitterName.Trim(),
-            SubmitterRole = NormalizeRoleLabel(request.Role),
-            Title = request.Title.Trim(),
-            AuthorsText = request.Authors.Trim(),
-            KeywordsText = request.Keywords.Trim(),
-            Abstract = request.Abstract.Trim(),
-            FileName = string.IsNullOrWhiteSpace(request.FileName) ? null : request.FileName.Trim(),
-            FileContentType = string.IsNullOrWhiteSpace(request.FileContentType) ? null : request.FileContentType.Trim(),
-            FileContent = DecodeBase64File(request.FileContentBase64),
-            ExtractedText = string.IsNullOrWhiteSpace(request.FileText) ? null : request.FileText,
-            SimilarityPercent = Math.Round(request.SimilarityPercent, 2),
-            MatchedTitle = request.MatchedTitle,
-            MatchedSource = request.MatchedSource,
-            MatchedLink = request.MatchedLink,
-            CandidatesJson = JsonSerializer.Serialize(request.Candidates ?? new()),
-            Status = isOverLimit ? "cancelled" : "pending",
-            Decision = request.Decision ??
-                (isOverLimit
-                    ? "Auto cancelled: over 50% similarity rule."
-                    : "Waiting for admin approval."),
-            SubmittedAt = DateTime.UtcNow
-        };
-
-        _context.PublicationSubmissions.Add(submission);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetSubmissionForAdmin), new { id = submission.Id }, MapSubmission(submission));
-    }
-
-    [HttpGet("submissions/admin")]
-    [AuthorizeRoles("Admin")]
-    public async Task<IActionResult> GetSubmissionQueueForAdmin()
-    {
-        var submissions = await _context.PublicationSubmissions
-            .AsNoTracking()
-            .Where(s => !s.IsDeleted && s.SimilarityPercent <= SimilarityLimitPercent)
-            .OrderByDescending(s => s.SubmittedAt)
-            .ToListAsync();
-
-        return Ok(new { items = submissions.Select(MapSubmission) });
-    }
-
-    [HttpGet("submissions/{id:int}")]
-    [AuthorizeRoles("Admin")]
-    public async Task<IActionResult> GetSubmissionForAdmin(int id)
-    {
-        var submission = await _context.PublicationSubmissions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted);
-
-        return submission == null
-            ? NotFound(new { message = "Submission not found." })
-            : Ok(MapSubmission(submission));
-    }
-
-    [HttpPost("submissions/{id:int}/approve")]
-    [AuthorizeRoles("Admin")]
-    public async Task<IActionResult> ApproveSubmission(int id)
-    {
-        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-        var submission = await _context.PublicationSubmissions
-            .FirstOrDefaultAsync(s => s.Id == id);
-
-        if (submission == null)
-        {
-            return NotFound(new { message = "Submission not found." });
-        }
-
-        if (submission.SimilarityPercent > SimilarityLimitPercent)
-        {
-            return BadRequest(new { message = "Submissions over 50% similarity cannot be approved." });
-        }
-
-        if (string.Equals(submission.Status, "approved", StringComparison.OrdinalIgnoreCase) &&
-            submission.PublishedPublicationId.HasValue)
-        {
-            return Ok(new
-            {
-                submission = MapSubmission(submission),
-                publicationId = submission.PublishedPublicationId
-            });
-        }
-
-        if (!string.Equals(submission.Status, "pending", StringComparison.OrdinalIgnoreCase))
-        {
-            return Conflict(new { message = "This submission is already being reviewed or has a final decision. Reload the queue before continuing." });
-        }
-
-        submission.Status = "reviewing";
-        submission.ReviewedByUserId = ResolveCurrentUserId();
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            await transaction.RollbackAsync();
-            return Conflict(new { message = "This submission was claimed by another administrator. Reload the queue before continuing." });
-        }
-
-        Publication publication;
-        try
-        {
-            publication = await PublishSubmissionAsync(submission);
-            submission.Status = "approved";
-            submission.Decision = "Admin approved: within 50% similarity rule. Published on ScholarTrend.";
-            submission.ReviewedAt = DateTime.UtcNow;
-            submission.ReviewedByUserId = ResolveCurrentUserId();
-            submission.PublishedPublicationId = publication.Id;
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
-
-        return Ok(new
-        {
-            submission = MapSubmission(submission),
-            publicationId = publication.Id
-        });
-    }
-
-    [HttpPost("submissions/{id:int}/reject")]
-    [AuthorizeRoles("Admin")]
-    public async Task<IActionResult> RejectSubmission(int id, [FromBody] ReviewPublicationSubmissionDto request)
-    {
-        var submission = await _context.PublicationSubmissions.FirstOrDefaultAsync(s => s.Id == id);
-        if (submission == null)
-        {
-            return NotFound(new { message = "Submission not found." });
-        }
-
-        if (!string.Equals(submission.Status, "pending", StringComparison.OrdinalIgnoreCase))
-            return Conflict(new { message = "Only pending submissions can be rejected." });
-
-        var reason = request.Reason.Trim();
-        var evidence = request.Evidence.Trim();
-        if (string.IsNullOrWhiteSpace(reason) || string.IsNullOrWhiteSpace(evidence))
-        {
-            return BadRequest(new { message = "Reason and evidence are required." });
-        }
-
-        submission.Status = "rejected";
-        submission.RejectedReason = reason;
-        submission.RejectedEvidence = evidence;
-        submission.Decision = $"Admin rejected: {reason}";
-        submission.ReviewedAt = DateTime.UtcNow;
-        submission.ReviewedByUserId = ResolveCurrentUserId();
-
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return Conflict(new { message = "This submission was reviewed by another administrator. Reload the queue before continuing." });
-        }
-        return Ok(new { submission = MapSubmission(submission) });
-    }
-
-    [HttpDelete("submissions/{id:int}")]
-    [AuthorizeRoles("Admin")]
-    public async Task<IActionResult> DeleteSubmission(int id, [FromBody] ReviewPublicationSubmissionDto? request)
-    {
-        var submission = await _context.PublicationSubmissions.FirstOrDefaultAsync(s => s.Id == id);
-        if (submission == null)
-        {
-            return NotFound(new { message = "Submission not found." });
-        }
-
-        if (string.Equals(submission.Status, "reviewing", StringComparison.OrdinalIgnoreCase))
-            return Conflict(new { message = "This submission is currently being reviewed by another administrator." });
-
-        submission.IsDeleted = true;
-        submission.Status = "deleted";
-        submission.RejectedReason = string.IsNullOrWhiteSpace(request?.Reason) ? submission.RejectedReason : request.Reason.Trim();
-        submission.RejectedEvidence = string.IsNullOrWhiteSpace(request?.Evidence) ? submission.RejectedEvidence : request.Evidence.Trim();
-        submission.Decision = string.IsNullOrWhiteSpace(submission.RejectedReason)
-            ? "Admin deleted this submission."
-            : $"Admin deleted: {submission.RejectedReason}";
-        submission.ReviewedAt = DateTime.UtcNow;
-        submission.ReviewedByUserId = ResolveCurrentUserId();
-
-        await _context.SaveChangesAsync();
-        return Ok(new { message = "Submission deleted.", id });
     }
 
     [HttpPut("{id:int}")]
@@ -529,96 +293,6 @@ public class PublicationsController : ControllerBase
         return Ok(new { message = $"Restored publication to version {versionNumber}.", versionNumber = nextVersion });
     }
 
-    private async Task<Publication> PublishSubmissionAsync(PublicationSubmission submission)
-    {
-        if (submission.PublishedPublicationId.HasValue)
-        {
-            var existing = await _context.Publications
-                .IgnoreQueryFilters()
-                .FirstOrDefaultAsync(p => p.Id == submission.PublishedPublicationId.Value);
-            if (existing != null)
-            {
-                return existing;
-            }
-        }
-
-        var doi = $"10.9999/scholartrend.submission.{submission.Id}.{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
-        var publication = new Publication
-        {
-            Title = submission.Title,
-            Abstract = submission.Abstract,
-            Year = submission.SubmittedAt.Year,
-            DOI = doi,
-            JournalId = null,
-            CitationCount = 0,
-            SourceApi = "UserSubmission",
-            MongoMetadataId = null,
-            IsDeleted = false,
-            IsOriginal = false,
-            SyncedAt = DateTime.UtcNow
-        };
-
-        _context.Publications.Add(publication);
-        await _context.SaveChangesAsync();
-
-        _context.PublicationVersions.Add(new PublicationVersion
-        {
-            PublicationId = publication.Id,
-            VersionNumber = 1,
-            ChangeType = "published-from-submission",
-            ChangedByUserId = ResolveCurrentUserId(),
-            SnapshotJson = JsonSerializer.Serialize(new
-            {
-                publication.Title,
-                publication.Abstract,
-                publication.Year,
-                publication.DOI,
-                submission.AuthorsText,
-                submission.KeywordsText
-            })
-        });
-        await _context.SaveChangesAsync();
-
-        var authorOrder = 1;
-        foreach (var authorName in SplitCsv(submission.AuthorsText))
-        {
-            var author = await _context.Authors.FirstOrDefaultAsync(a => a.Name == authorName);
-            if (author == null)
-            {
-                author = new Author { Name = authorName };
-                _context.Authors.Add(author);
-                await _context.SaveChangesAsync();
-            }
-
-            _context.PublicationAuthors.Add(new PublicationAuthor
-            {
-                PublicationId = publication.Id,
-                AuthorId = author.Id,
-                AuthorOrder = authorOrder++
-            });
-        }
-
-        foreach (var keywordTerm in SplitCsv(submission.KeywordsText))
-        {
-            var normalized = keywordTerm.ToLowerInvariant().Trim();
-            var keyword = await _context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == normalized);
-            if (keyword == null)
-            {
-                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = normalized };
-                _context.Keywords.Add(keyword);
-                await _context.SaveChangesAsync();
-            }
-
-            _context.PublicationKeywords.Add(new PublicationKeyword
-            {
-                PublicationId = publication.Id,
-                KeywordId = keyword.Id
-            });
-        }
-
-        return publication;
-    }
-
     private static IEnumerable<string> SplitCsv(string value) =>
         value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(item => !string.IsNullOrWhiteSpace(item))
@@ -727,38 +401,6 @@ public class PublicationsController : ControllerBase
         }
     }
 
-    private static PublicationSubmissionDto MapSubmission(PublicationSubmission submission)
-    {
-        var candidates = string.IsNullOrWhiteSpace(submission.CandidatesJson)
-            ? new List<PublicationSubmissionCandidateDto>()
-            : JsonSerializer.Deserialize<List<PublicationSubmissionCandidateDto>>(submission.CandidatesJson) ?? new();
-
-        return new PublicationSubmissionDto
-        {
-            Id = submission.Id,
-            Title = submission.Title,
-            Authors = submission.AuthorsText,
-            Keywords = submission.KeywordsText,
-            Abstract = submission.Abstract,
-            Submitter = submission.SubmitterEmail,
-            SubmitterName = submission.SubmitterName,
-            Role = submission.SubmitterRole,
-            FileName = submission.FileName,
-            SimilarityPercent = submission.SimilarityPercent,
-            MatchedTitle = submission.MatchedTitle ?? "No indexed match found",
-            MatchedSource = submission.MatchedSource ?? "Google Scholar indexed record",
-            MatchedLink = submission.MatchedLink,
-            Status = submission.Status,
-            Decision = submission.Decision,
-            RejectedReason = submission.RejectedReason,
-            RejectedEvidence = submission.RejectedEvidence,
-            PublishedPublicationId = submission.PublishedPublicationId,
-            SubmittedAt = submission.SubmittedAt,
-            ReviewedAt = submission.ReviewedAt,
-            RowVersion = Convert.ToBase64String(submission.RowVersion),
-            Candidates = candidates
-        };
-    }
 }
 
 public class UpdatePublicationRequest

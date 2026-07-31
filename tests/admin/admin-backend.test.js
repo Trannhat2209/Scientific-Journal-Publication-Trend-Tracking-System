@@ -33,14 +33,18 @@ test("administrator can reset an existing SQL user's password", () => {
   assert.match(controller, /ADMIN-PASSWORD-RESET/);
 });
 
-test("administrator plan changes set the requested state instead of blindly toggling", () => {
+test("premium plans and payment endpoints are removed", () => {
   const controller = read(
     "ScientificJournalTrendSystem/ScientificJournal.API/Controllers/AdminController.cs",
   );
-  const app = read("src/App.jsx");
+  const program = read(
+    "ScientificJournalTrendSystem/ScientificJournal.API/Program.cs",
+  );
+  const packageJson = read("package.json");
 
-  assert.match(controller, /request\?\.IsPro \?\? !user\.IsPro/);
-  assert.match(app, /body: \{ isPro: Boolean\(patch\.isPro\) \}/);
+  assert.doesNotMatch(controller, /Http(Get|Post|Put)\("payments|toggle-pro/);
+  assert.doesNotMatch(program, /AddHostedService<PaymentReconciliationWorker>/);
+  assert.doesNotMatch(packageJson, /@payos\/node/);
 });
 
 test("notification pending and failed summary is not coerced into NaN", () => {
@@ -57,16 +61,46 @@ test("registration has no shared default password and account access stays consi
 
   assert.doesNotMatch(app, /useState\("Scholar2024"\)/);
   assert.doesNotMatch(app, /ACADEMIC_PROVIDER_TEST_PASSWORD/);
-  assert.match(admin, /newRole is UserRole\.Lecturer or UserRole\.Researcher/);
-  assert.match(admin, /user\.Role = UserRole\.Student/);
+  assert.match(admin, /request\.VerificationStatus == "verified"/);
+  assert.match(admin, /TryParseManagedRole\(user\.RequestedRole/);
 });
 
-test("publication review uses an optimistic concurrency token", () => {
-  const entity = read("ScientificJournalTrendSystem/ScientificJournal.DataAccess/Entities/PublicationSubmission.cs");
+test("academic features require a verified account and matching role", () => {
+  const publications = read(
+    "ScientificJournalTrendSystem/ScientificJournal.API/Controllers/PublicationsController.cs",
+  );
+  const reviews = read(
+    "ScientificJournalTrendSystem/ScientificJournal.API/Controllers/PublicationReviewsController.cs",
+  );
+  const app = read("src/App.jsx");
+
+  assert.match(publications, /\[VerifiedAcademicUser\]/);
+  assert.match(reviews, /\[VerifiedAcademicUser\]/);
+  assert.match(app, /Role access denied/);
+  assert.doesNotMatch(
+    app,
+    /!\(verificationStatus === "pending" && requestedRole\)/,
+  );
+});
+
+test("review moderation hides content without destroying its audit record", () => {
+  const reviews = read(
+    "ScientificJournalTrendSystem/ScientificJournal.API/Controllers/PublicationReviewsController.cs",
+  );
+  assert.match(reviews, /review\.IsHidden = true/);
+  assert.match(reviews, /admin\/\{id:int\}\/restore/);
+  assert.match(
+    reviews,
+    /Where\(item => item\.PublicationKey == key && !item\.IsHidden\)/,
+  );
+});
+
+test("publication submission endpoints and model are removed", () => {
+  const context = read("ScientificJournalTrendSystem/ScientificJournal.DataAccess/Context/AppDbContext.cs");
   const controller = read("ScientificJournalTrendSystem/ScientificJournal.API/Controllers/PublicationsController.cs");
-  assert.match(entity, /\[Timestamp\]/);
-  assert.match(controller, /DbUpdateConcurrencyException/);
-  assert.match(controller, /Status = "reviewing"/);
+  assert.doesNotMatch(context, /DbSet<PublicationSubmission>/);
+  assert.doesNotMatch(controller, /HttpPost\("upload"\)/);
+  assert.doesNotMatch(controller, /HttpPost\("submissions"\)/);
 });
 
 test("publication version history is persisted and exposed", () => {
@@ -94,5 +128,5 @@ test("system audit middleware records API and denied access events", () => {
   const middleware = read("ScientificJournalTrendSystem/ScientificJournal.API/Middleware/SystemAuditMiddleware.cs");
   assert.match(middleware, /ACCESS-DENIED/);
   assert.match(middleware, /SystemEventLogs\.Add/);
-  assert.match(middleware, /\/api\/payments/);
+  assert.doesNotMatch(middleware, /PayOS|\/api\/payments/);
 });

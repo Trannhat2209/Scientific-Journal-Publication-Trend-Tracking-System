@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.DataAccess.Context;
 
@@ -13,6 +14,7 @@ namespace ScientificJournal.API.Controllers;
 [ApiController]
 [Route("api/follows")]
 [Authorize]
+[VerifiedAcademicUser]
 public class FollowsController : ControllerBase
 {
     private readonly IFollowService _followService;

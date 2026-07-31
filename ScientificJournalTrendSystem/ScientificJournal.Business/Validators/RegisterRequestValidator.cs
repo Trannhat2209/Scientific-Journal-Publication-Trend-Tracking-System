@@ -1,5 +1,6 @@
 using FluentValidation;
 using ScientificJournal.Common.DTOs.Request.Auth;
+using ScientificJournal.Common.Enums;
 
 namespace ScientificJournal.Business.Validators;
 
@@ -18,5 +19,9 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequestDto>
         RuleFor(x => x.FullName)
             .NotEmpty().WithMessage("Full name is required.")
             .MaximumLength(100).WithMessage("Full name cannot exceed 100 characters.");
+
+        RuleFor(x => x.Role)
+            .Must(role => role is UserRole.Student or UserRole.Lecturer or UserRole.Researcher)
+            .WithMessage("Role must be Student, Lecturer, or Researcher.");
     }
 }

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Services.Interfaces;
 
 namespace ScientificJournal.API.Controllers;
@@ -10,6 +11,7 @@ namespace ScientificJournal.API.Controllers;
 [ApiController]
 [Route("api/bookmarks")]
 [Authorize]
+[VerifiedAcademicUser]
 public class BookmarksController : ControllerBase
 {
     private readonly IBookmarkService _bookmarkService;

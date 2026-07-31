@@ -13,7 +13,6 @@ using ScientificJournal.API.Services;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.Enums;
 using ScientificJournal.Common.Helpers;
-using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 using ScientificJournal.DataAccess.Entities;
 using ScientificJournal.DataAccess.External;
@@ -29,7 +28,6 @@ public class AdminController : ControllerBase
     private readonly ITrendingService _trendingService;
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
-    private readonly PayosMerchantClient _payosClient;
     private readonly IRecurringJobManager _recurringJobs;
     private readonly ExternalApiRateLimiter _rateLimiter;
     private readonly SemanticScholarClient _semanticScholarClient;
@@ -42,7 +40,6 @@ public class AdminController : ControllerBase
         ITrendingService trendingService,
         AppDbContext context,
         IConfiguration configuration,
-        PayosMerchantClient payosClient,
         IRecurringJobManager recurringJobs,
         ExternalApiRateLimiter rateLimiter,
         SemanticScholarClient semanticScholarClient,
@@ -54,7 +51,6 @@ public class AdminController : ControllerBase
         _trendingService = trendingService;
         _context = context;
         _configuration = configuration;
-        _payosClient = payosClient;
         _recurringJobs = recurringJobs;
         _rateLimiter = rateLimiter;
         _semanticScholarClient = semanticScholarClient;
@@ -68,7 +64,8 @@ public class AdminController : ControllerBase
     {
         var totalUsers = await _context.Users.CountAsync(u => !u.IsDeleted);
         var totalPublications = await _context.Publications.CountAsync(p => !p.IsDeleted);
-        var lastSync = await _context.SyncLogs
+        var visibleSyncLogs = GetVisibleSyncLogs();
+        var lastSync = await visibleSyncLogs
             .OrderByDescending(s => s.StartedAt)
             .Select(s => new
             {
@@ -104,7 +101,7 @@ public class AdminController : ControllerBase
             .ThenBy(x => x.month)
             .ToList();
 
-        var failedSyncsLast24Hours = await _context.SyncLogs.CountAsync(s =>
+        var failedSyncsLast24Hours = await visibleSyncLogs.CountAsync(s =>
             s.StartedAt >= DateTime.UtcNow.AddHours(-24) &&
             s.Status == SyncStatus.Failed &&
             !s.SourceApi.StartsWith("Admin Audit:") &&
@@ -112,19 +109,9 @@ public class AdminController : ControllerBase
                 later.SourceApi == s.SourceApi &&
                 later.Status == SyncStatus.Completed &&
                 later.StartedAt > s.StartedAt));
-        var pendingPublicationCount = await _context.PublicationSubmissions.CountAsync(s =>
-            !s.IsDeleted && s.Status == "pending");
-        var blockedPublicationCount = await _context.PublicationSubmissions.CountAsync(s =>
-            !s.IsDeleted && (s.Status == "cancelled" || s.Status == "rejected" || s.SimilarityPercent > 50));
-        var totalPaymentCount = await _context.PaymentTransactions.CountAsync();
-        var pendingPaymentCount = await _context.PaymentTransactions.CountAsync(p => p.Status == "PENDING");
         var totalNotificationCount = await _context.Notifications.CountAsync();
         var unreadNotificationCount = await _context.Notifications.CountAsync(n => !n.IsRead);
-        var payosConfigured =
-            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ClientId"]) &&
-            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ApiKey"]) &&
-            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ChecksumKey"]);
-        var recentActivity = await _context.SyncLogs
+        var recentActivity = await visibleSyncLogs
             .OrderByDescending(s => s.StartedAt)
             .Take(5)
             .Select(s => new
@@ -144,13 +131,8 @@ public class AdminController : ControllerBase
             lastSync,
             roleDistribution,
             userGrowth,
-            pendingPublicationCount,
-            blockedPublicationCount,
-            totalPaymentCount,
-            pendingPaymentCount,
             totalNotificationCount,
             unreadNotificationCount,
-            payosConfigured,
             failedSyncsLast24Hours,
             recentActivity,
             apiHealth = new[]
@@ -183,11 +165,21 @@ public class AdminController : ControllerBase
                 role = u.Role.ToString(),
                 status = u.IsActive ? "Active" : "Inactive",
                 isActive = u.IsActive,
-                isPro = u.IsPro,
-                plan = string.IsNullOrWhiteSpace(u.Plan) ? (u.IsPro ? "Pro" : "Free") : u.Plan,
-                searchAccuracy = PlanPolicy.GetSearchAccuracy(u.Role, u.IsPro),
                 createdAt = u.CreatedAt,
                 lastLoginAt = u.CreatedAt,
+                academicIdentity = new
+                {
+                    institution = u.Institution ?? string.Empty,
+                    department = u.Department ?? string.Empty,
+                    institutionalEmail = u.InstitutionalEmail ?? string.Empty,
+                    identifier = u.AcademicIdentifier ?? string.Empty,
+                    programOrField = u.ProgramOrField ?? string.Empty,
+                    evidenceUrl = u.EvidenceUrl ?? string.Empty
+                },
+                verificationStatus = u.VerificationStatus,
+                requestedRole = u.RequestedRole,
+                verificationSubmittedAt = u.VerificationSubmittedAt,
+                verificationReviewedAt = u.VerificationReviewedAt,
                 avatar = u.FullName.Length >= 2 ? u.FullName.Substring(0, 2).ToUpper() : "ST"
             })
             .ToListAsync();
@@ -227,8 +219,6 @@ public class AdminController : ControllerBase
             PasswordHash = PasswordHasher.HashPassword(password),
             Role = role,
             IsActive = request.IsActive ?? string.Equals(request.Status, "Active", StringComparison.OrdinalIgnoreCase),
-            IsPro = request.IsPro ?? string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase),
-            Plan = string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase) || request.IsPro == true ? "Pro" : "Free",
             IsDeleted = false,
             IsEmailVerified = true,
             CreatedAt = DateTime.UtcNow
@@ -283,8 +273,6 @@ public class AdminController : ControllerBase
                 IsActive = true,
                 IsDeleted = false,
                 IsEmailVerified = true,
-                IsPro = request.IsPro ?? string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase),
-                Plan = string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase) || request.IsPro == true ? "Pro" : "Free",
                 CreatedAt = DateTime.UtcNow
             };
             _context.Users.Add(user);
@@ -298,11 +286,6 @@ public class AdminController : ControllerBase
         user.IsActive = true;
         user.IsDeleted = false;
         user.IsEmailVerified = true;
-        if (request.IsPro == true || string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase))
-        {
-            user.IsPro = true;
-            user.Plan = "Pro";
-        }
 
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Refreshed external {request.Provider ?? "OAuth"} user {user.Email}.", "Success", "ADMIN-USER-SYNC");
@@ -336,10 +319,25 @@ public class AdminController : ControllerBase
 
         user.Email = email;
         user.FullName = fullName;
-        user.Role = role;
         user.IsActive = request.IsActive ?? string.Equals(request.Status, "Active", StringComparison.OrdinalIgnoreCase);
-        user.IsPro = request.IsPro ?? string.Equals(request.Plan, "Pro", StringComparison.OrdinalIgnoreCase);
-        user.Plan = user.IsPro ? "Pro" : "Free";
+        if (request.VerificationStatus is "pending" or "verified" or "rejected" or "not_submitted")
+        {
+            if (!string.Equals(user.VerificationStatus, request.VerificationStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                user.VerificationReviewedAt = DateTime.UtcNow;
+            }
+            user.VerificationStatus = request.VerificationStatus;
+            if (request.VerificationStatus == "verified")
+            {
+                var approvedRole = role;
+                if (TryParseManagedRole(user.RequestedRole, out var requestedRole))
+                {
+                    approvedRole = requestedRole;
+                }
+                user.Role = approvedRole;
+                user.RequestedRole = null;
+            }
+        }
         if (!string.IsNullOrWhiteSpace(request.Password))
         {
             user.PasswordHash = PasswordHasher.HashPassword(request.Password);
@@ -455,12 +453,20 @@ public class AdminController : ControllerBase
         }
 
         var oldRole = user.Role;
-        user.Role = newRole;
-        if (newRole is UserRole.Lecturer or UserRole.Researcher)
+        if (!string.Equals(user.VerificationStatus, "pending", StringComparison.OrdinalIgnoreCase) ||
+            !TryParseManagedRole(user.RequestedRole, out var requestedRole) ||
+            requestedRole != newRole)
         {
-            user.IsPro = true;
-            user.Plan = "Pro";
+            return Conflict(new
+            {
+                message = "A matching pending role-change request must be verified before the role can change."
+            });
         }
+
+        user.Role = newRole;
+        user.RequestedRole = null;
+        user.VerificationStatus = "verified";
+        user.VerificationReviewedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Changed role for {user.Email} from {oldRole} to {newRole}.", "Success", "ADMIN-ROLE-CHANGE");
 
@@ -493,125 +499,6 @@ public class AdminController : ControllerBase
         await _context.SaveChangesAsync();
         await LogAuditAsync("User Management", $"Granted Administrator role to {user.Email}; previous role {oldRole}.", "Warning", "ADMIN-ROLE-GRANT");
         return Ok(new { message = "Administrator access granted.", user = MapAdminUser(user) });
-    }
-
-    [HttpPut("users/{id:int}/toggle-pro")]
-    public async Task<IActionResult> TogglePro(int id, [FromBody] SetProStatusDto? request = null)
-    {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id && !u.IsDeleted);
-        if (user == null) return NotFound(new { message = "User not found." });
-
-        // Use the requested target state when supplied. A blind toggle is not
-        // idempotent: retries or duplicate clicks can silently put the account
-        // back on Free while the UI still displays Pro.
-        user.IsPro = request?.IsPro ?? !user.IsPro;
-        user.Plan = user.IsPro ? "Pro" : "Free";
-        if (!user.IsPro && user.Role is UserRole.Lecturer or UserRole.Researcher)
-        {
-            user.Role = UserRole.Student;
-        }
-        await _context.SaveChangesAsync();
-        await LogAuditAsync("User Management", $"Set Pro status for {user.Email} to {user.IsPro}.", "Success", "ADMIN-USER-PRO");
-
-        return Ok(new { message = $"User premium status updated. IsPro: {user.IsPro}", user = MapAdminUser(user), isPro = user.IsPro });
-    }
-
-    [HttpGet("payments")]
-    public async Task<IActionResult> GetPayments()
-    {
-        var payments = await _context.PaymentTransactions
-            .Include(payment => payment.User)
-            .OrderByDescending(payment => payment.CreatedAt)
-            .ToListAsync();
-
-        return Ok(new { items = payments.Select(MapAdminPayment) });
-    }
-
-    [HttpPost("payments/{orderCode:long}/verify")]
-    public async Task<IActionResult> VerifyPayment(long orderCode)
-    {
-        var payment = await _context.PaymentTransactions
-            .Include(item => item.User)
-            .FirstOrDefaultAsync(item => item.OrderCode == orderCode);
-
-        if (payment == null)
-        {
-            return NotFound(new { message = "Payment not found." });
-        }
-
-        PayosPaymentInformationData payosPayment;
-        try
-        {
-            payosPayment = await _payosClient.GetPaymentInformationAsync(orderCode);
-        }
-        catch (TimeoutException)
-        {
-            return StatusCode(StatusCodes.Status504GatewayTimeout, new { message = "PayOS is taking too long to verify this payment. Please try again in a moment." });
-        }
-        catch (InvalidOperationException exception) when (exception.Message.Contains("PayOS", StringComparison.OrdinalIgnoreCase))
-        {
-            return StatusCode(StatusCodes.Status502BadGateway, new { message = exception.Message });
-        }
-
-        payment.Status = payosPayment.Status.ToUpperInvariant();
-        payment.PayosReference = payosPayment.GetFirstTransactionReference() ?? payment.PayosReference;
-        payment.UpdatedAt = DateTime.UtcNow;
-
-        if (payment.Status == "PAID" && payosPayment.AmountPaid >= payment.Amount && payment.User != null)
-        {
-            var targetRole = GetPaymentTargetRoleEnum(payment);
-            payment.PaidAt ??= DateTime.UtcNow;
-            payment.User.IsPro = true;
-            payment.User.Plan = "Pro";
-            payment.User.Role = targetRole;
-            await LogAuditAsync("Payment Management", $"Verified PayOS payment {payment.OrderCode}; activated {targetRole} Pro for {payment.User.Email}.", "Success", "ADMIN-PAYOS-VERIFY");
-        }
-
-        await _context.SaveChangesAsync();
-        return Ok(new { payment = MapAdminPayment(payment) });
-    }
-
-    [HttpPost("payments/{orderCode:long}/cancel")]
-    public async Task<IActionResult> CancelPayment(long orderCode)
-    {
-        var payment = await _context.PaymentTransactions
-            .Include(item => item.User)
-            .FirstOrDefaultAsync(item => item.OrderCode == orderCode);
-
-        if (payment == null)
-        {
-            return NotFound(new { message = "Payment not found." });
-        }
-
-        if (string.Equals(payment.Status, "PAID", StringComparison.OrdinalIgnoreCase))
-        {
-            return Conflict(new { message = "Paid payments cannot be cancelled." });
-        }
-
-        if (!string.Equals(payment.Status, "EXPIRED", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(payment.Status, "FAILED", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(payment.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                await _payosClient.CancelPaymentLinkAsync(orderCode, "Cancelled by admin");
-            }
-            catch (TimeoutException)
-            {
-                return StatusCode(StatusCodes.Status504GatewayTimeout, new { message = "PayOS is taking too long to cancel this payment. Please try again in a moment." });
-            }
-            catch (InvalidOperationException exception) when (exception.Message.Contains("PayOS", StringComparison.OrdinalIgnoreCase))
-            {
-                return StatusCode(StatusCodes.Status502BadGateway, new { message = exception.Message });
-            }
-        }
-
-        payment.Status = "CANCELLED";
-        payment.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-        await LogAuditAsync("Payment Management", $"Cancelled PayOS payment {payment.OrderCode} for {payment.UserEmail}.", "Success", "ADMIN-PAYOS-CANCEL");
-
-        return Ok(new { payment = MapAdminPayment(payment) });
     }
 
     [HttpPost("notifications/broadcast")]
@@ -1174,16 +1061,6 @@ public class AdminController : ControllerBase
             authHelperValue = error.GetType().Name;
         }
 
-        var payosConfigured =
-            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ClientId"]) &&
-            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ApiKey"]) &&
-            !string.IsNullOrWhiteSpace(_configuration["Payments:PayOS:ChecksumKey"]);
-        var payos = await ProbeServiceAsync("PayOS", async () =>
-        {
-            var result = await _payosClient.ProbeAsync();
-            if (!result.Operational) throw new InvalidOperationException(result.Detail);
-            return result.Detail;
-        });
         var semanticScholar = await ProbeServiceAsync("Semantic Scholar", async () =>
             $"{(await _semanticScholarClient.SearchAsync("health check", 1)).Count} result(s)");
         var openAlex = await ProbeServiceAsync("OpenAlex", async () =>
@@ -1195,7 +1072,7 @@ public class AdminController : ControllerBase
         var publicationCount = databaseConnected
             ? await _context.Publications.CountAsync(p => !p.IsDeleted)
             : 0;
-        var healthy = databaseConnected && authHelperOperational && payos.Operational && semanticScholar.Operational && openAlex.Operational && serpApi.Operational;
+        var healthy = databaseConnected && authHelperOperational && semanticScholar.Operational && openAlex.Operational && serpApi.Operational;
 
         return Ok(new
         {
@@ -1205,7 +1082,7 @@ public class AdminController : ControllerBase
             {
                 new HealthServiceStatus("SQL Server", databaseConnected, databaseConnected ? "Connected" : "Unavailable"),
                 new HealthServiceStatus("Auth Service", authHelperOperational, authHelperValue),
-                payos, semanticScholar, openAlex, serpApi, researchGate,
+                semanticScholar, openAlex, serpApi, researchGate,
                 new HealthServiceStatus("Search Index", databaseConnected, publicationCount + " publications"),
                 new HealthServiceStatus("Sync Workers", latestSync?.Status != SyncStatus.Failed, latestSync?.StartedAt.ToString("u") ?? "No runs yet")
             }
@@ -1355,8 +1232,9 @@ public class AdminController : ControllerBase
     {
         var totalUsers = await _context.Users.CountAsync(u => !u.IsDeleted);
         var totalPublications = await _context.Publications.CountAsync(p => !p.IsDeleted);
-        var successSyncs = await _context.SyncLogs.CountAsync(l => l.Status == SyncStatus.Completed);
-        var failedSyncs = await _context.SyncLogs.CountAsync(l => l.Status == SyncStatus.Failed);
+        var visibleSyncLogs = GetVisibleSyncLogs();
+        var successSyncs = await visibleSyncLogs.CountAsync(l => l.Status == SyncStatus.Completed);
+        var failedSyncs = await visibleSyncLogs.CountAsync(l => l.Status == SyncStatus.Failed);
 
         var roleDistribution = await _context.Users
             .Where(u => !u.IsDeleted)
@@ -1369,7 +1247,7 @@ public class AdminController : ControllerBase
             })
             .ToListAsync();
 
-        var recentActivities = await _context.SyncLogs
+        var recentActivities = await visibleSyncLogs
             .OrderByDescending(l => l.StartedAt)
             .Take(5)
             .Select(l => new
@@ -1398,8 +1276,7 @@ public class AdminController : ControllerBase
     [HttpGet("sync-logs")]
     public async Task<IActionResult> GetSyncLogs([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
-        var query = _context.SyncLogs
-            .Where(log => !log.SourceApi.StartsWith("Admin Audit:"))
+        var query = GetVisibleSyncLogs()
             .Where(log =>
                 !(log.SourceApi == "OpenAlex" &&
                   log.Status == SyncStatus.Failed &&
@@ -1416,6 +1293,15 @@ public class AdminController : ControllerBase
 
         return Ok(new { items, totalCount = total, page, pageSize });
     }
+
+    private IQueryable<SyncLog> GetVisibleSyncLogs() => _context.SyncLogs
+        .Where(log => !log.SourceApi.StartsWith("Admin Audit:"))
+        .Where(log => !log.SourceApi.Contains("PayOS"))
+        .Where(log => log.Status != SyncStatus.Failed ||
+            !_context.SyncLogs.Any(later =>
+                later.SourceApi == log.SourceApi &&
+                later.Status == SyncStatus.Completed &&
+                later.StartedAt > log.StartedAt));
 
     private static string NormalizeEmail(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();
 
@@ -1455,8 +1341,8 @@ public class AdminController : ControllerBase
     private bool IsAuthorizedInternalRequest()
     {
         var configuredSecret =
-            _configuration["Payments:InternalSyncSecret"] ??
-            _configuration["PAYMENT_SYNC_SECRET"];
+            _configuration["InternalSync:Secret"] ??
+            _configuration["INTERNAL_SYNC_SECRET"];
         var providedSecret = Request.Headers["X-Internal-Secret"].FirstOrDefault();
         return !string.IsNullOrWhiteSpace(configuredSecret) &&
                string.Equals(configuredSecret, providedSecret, StringComparison.Ordinal);
@@ -1488,12 +1374,6 @@ public class AdminController : ControllerBase
             return NotificationType.NEW_PUBLICATION;
         }
 
-        if (string.Equals(type, "PLAN UPDATE", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(type, "PAYMENT NOTICE", StringComparison.OrdinalIgnoreCase))
-        {
-            return NotificationType.SYSTEM;
-        }
-
         return NotificationType.SYSTEM;
     }
 
@@ -1514,65 +1394,23 @@ public class AdminController : ControllerBase
         role = user.Role.ToString(),
         status = user.IsActive ? "Active" : "Inactive",
         isActive = user.IsActive,
-        isPro = user.IsPro,
-        plan = string.IsNullOrWhiteSpace(user.Plan) ? (user.IsPro ? "Pro" : "Free") : user.Plan,
-        searchAccuracy = PlanPolicy.GetSearchAccuracy(user.Role, user.IsPro),
         createdAt = user.CreatedAt,
         lastLoginAt = user.CreatedAt,
+        academicIdentity = new
+        {
+            institution = user.Institution ?? string.Empty,
+            department = user.Department ?? string.Empty,
+            institutionalEmail = user.InstitutionalEmail ?? string.Empty,
+            identifier = user.AcademicIdentifier ?? string.Empty,
+            programOrField = user.ProgramOrField ?? string.Empty,
+            evidenceUrl = user.EvidenceUrl ?? string.Empty
+        },
+        verificationStatus = user.VerificationStatus,
+        requestedRole = user.RequestedRole,
+        verificationSubmittedAt = user.VerificationSubmittedAt,
+        verificationReviewedAt = user.VerificationReviewedAt,
         avatar = user.FullName.Length >= 2 ? user.FullName.Substring(0, 2).ToUpper() : "ST"
     };
-
-    private object MapAdminPayment(PaymentTransaction payment) => new
-    {
-        orderCode = payment.OrderCode,
-        paymentLinkId = payment.PaymentLinkId,
-        checkoutUrl = payment.CheckoutUrl,
-        billingCycle = payment.BillingCycle,
-        plan = payment.Plan,
-        amount = payment.Amount,
-        currency = payment.Currency,
-        priceLabel = payment.Currency == "VND"
-            ? $"{payment.Amount:N0} VND"
-            : $"{payment.Amount} {payment.Currency}",
-        status = payment.Status,
-        email = payment.UserEmail,
-        userName = payment.User?.FullName ?? payment.UserEmail,
-        role = GetPaymentTargetRole(payment),
-        createdAt = payment.CreatedAt,
-        expiresAt = payment.ExpiresAt,
-        expiresInSeconds = payment.ExpiresAt.HasValue
-            ? Math.Max(0, (int)Math.Floor((payment.ExpiresAt.Value - DateTime.UtcNow).TotalSeconds))
-            : 0,
-        paidAt = payment.PaidAt,
-        updatedAt = payment.UpdatedAt,
-        payosReference = payment.PayosReference
-    };
-
-    private static string GetPaymentTargetRole(PaymentTransaction payment)
-        => GetPaymentTargetRoleEnum(payment).ToString();
-
-    private static UserRole GetPaymentTargetRoleEnum(PaymentTransaction payment)
-    {
-        var description = payment.Description ?? string.Empty;
-        var separatorIndex = description.LastIndexOf(':');
-        if (separatorIndex >= 0 && separatorIndex < description.Length - 1)
-        {
-            var targetRole = description[(separatorIndex + 1)..];
-            if (string.Equals(targetRole, "Lecturer", StringComparison.OrdinalIgnoreCase))
-            {
-                return UserRole.Lecturer;
-            }
-
-            if (string.Equals(targetRole, "Researcher", StringComparison.OrdinalIgnoreCase))
-            {
-                return UserRole.Researcher;
-            }
-        }
-
-        return payment.User?.Role is UserRole.Lecturer or UserRole.Researcher
-            ? payment.User.Role
-            : UserRole.Researcher;
-    }
 
     private object MapAdminNotification(Notification notification) => new
     {
@@ -1744,11 +1582,6 @@ public class ChangeRoleDto
     public string Role { get; set; } = string.Empty;
 }
 
-public class SetProStatusDto
-{
-    public bool IsPro { get; set; }
-}
-
 public class AdminUserUpsertDto
 {
     public string FullName { get; set; } = string.Empty;
@@ -1756,10 +1589,9 @@ public class AdminUserUpsertDto
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = "Student";
     public string Status { get; set; } = "Active";
-    public string Plan { get; set; } = "Free";
     public bool? IsActive { get; set; }
-    public bool? IsPro { get; set; }
     public string? Password { get; set; }
+    public string VerificationStatus { get; set; } = "not_submitted";
 }
 
 public class GrantAdminRoleDto
@@ -1780,8 +1612,6 @@ public class ExternalUserSyncDto
     public string Role { get; set; } = "Researcher";
     public string Provider { get; set; } = "Google";
     public string ExternalId { get; set; } = string.Empty;
-    public string Plan { get; set; } = "Free";
-    public bool? IsPro { get; set; }
 }
 
 public class AdminBroadcastNotificationDto

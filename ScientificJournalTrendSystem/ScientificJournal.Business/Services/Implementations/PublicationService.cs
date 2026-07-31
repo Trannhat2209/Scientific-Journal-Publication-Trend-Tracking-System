@@ -26,8 +26,6 @@ public class PublicationService : IPublicationService
     private static readonly TimeSpan ExternalSearchTimeout = TimeSpan.FromSeconds(10);
     private readonly AppDbContext _context;
     private readonly IRecommendationService _recommendationService;
-    private readonly ISimilarityService _similarityService;
-    private readonly IPlagiarismCheckService _plagiarismCheckService;
     private readonly IMongoMetadataRepository _mongoRepository;
     private readonly OpenAlexClient _openAlexClient;
     private readonly SerpApiScholarSearchClient _scholarSearchClient;
@@ -36,8 +34,6 @@ public class PublicationService : IPublicationService
     public PublicationService(
         AppDbContext context,
         IRecommendationService recommendationService,
-        ISimilarityService similarityService,
-        IPlagiarismCheckService plagiarismCheckService,
         IMongoMetadataRepository mongoRepository,
         OpenAlexClient openAlexClient,
         SerpApiScholarSearchClient scholarSearchClient,
@@ -45,8 +41,6 @@ public class PublicationService : IPublicationService
     {
         _context = context;
         _recommendationService = recommendationService;
-        _similarityService = similarityService;
-        _plagiarismCheckService = plagiarismCheckService;
         _mongoRepository = mongoRepository;
         _openAlexClient = openAlexClient;
         _scholarSearchClient = scholarSearchClient;
@@ -166,161 +160,6 @@ public class PublicationService : IPublicationService
         };
     }
 
-    public async Task<UploadResultDto> UploadPublicationAsync(UploadPublicationDto request)
-    {
-        // 1. Google Scholar AI external check
-        var plagiarismReport = await _plagiarismCheckService.CheckPlagiarismAsync(request.Title, request.Abstract);
-        if (!plagiarismReport.IsPassed)
-        {
-            return new UploadResultDto
-            {
-                Success = false,
-                Message = $"Plagiarism check failed: Paper duplicates external sources by {plagiarismReport.DuplicationPercentage}% (exceeds 50% limit). Matching Source: {plagiarismReport.MatchingSource}",
-                GoogleScholarDuplicationScore = plagiarismReport.DuplicationPercentage,
-                InternalDuplicationScore = 0.0
-            };
-        }
-
-        // 2. Internal duplication check
-        var existingPubs = await _context.Publications.Where(p => !p.IsDeleted).ToListAsync();
-        double highestInternalScore = 0.0;
-        string matchingInternalTitle = string.Empty;
-
-        foreach (var pub in existingPubs)
-        {
-            double titleSim = _similarityService.CalculateSimilarity(request.Title, pub.Title);
-            double abstractSim = _similarityService.CalculateSimilarity(request.Abstract, pub.Abstract ?? string.Empty);
-            double avgSim = (titleSim * 0.3) + (abstractSim * 0.7);
-
-            if (avgSim > highestInternalScore)
-            {
-                highestInternalScore = avgSim;
-                matchingInternalTitle = pub.Title;
-            }
-        }
-
-        double internalPercentage = Math.Round(highestInternalScore * 100, 2);
-        if (internalPercentage >= 51.0)
-        {
-            return new UploadResultDto
-            {
-                Success = false,
-                Message = $"Upload rejected: Paper has 51% or higher similarity ({internalPercentage}%) with an existing publication: '{matchingInternalTitle}'.",
-                GoogleScholarDuplicationScore = plagiarismReport.DuplicationPercentage,
-                InternalDuplicationScore = internalPercentage
-            };
-        }
-
-        // 3. Document in MongoDB (raw metadata)
-        var doi = string.IsNullOrWhiteSpace(request.DOI) ? $"10.1016/uploaded.{new Random().Next(100000, 999999)}" : request.DOI;
-        var rawMetadata = new PublicationRawMetadata
-        {
-            Doi = doi,
-            SourceApi = "UserUpload",
-            RawData = $"{{ \"title\": \"{request.Title.Replace("\"", "\\\"")}\", \"doi\": \"{doi}\", \"abstract\": \"{request.Abstract.Replace("\"", "\\\"")}\" }}",
-            SyncedAt = DateTime.UtcNow
-        };
-        var mongoId = await _mongoRepository.InsertAsync(rawMetadata);
-
-        // 4. Save to SQL Server database
-        var publication = new Publication
-        {
-            Title = request.Title,
-            Abstract = request.Abstract,
-            Year = request.Year,
-            DOI = doi,
-            JournalId = request.JournalId,
-            CitationCount = 0,
-            SourceApi = "UserUpload",
-            MongoMetadataId = mongoId,
-            IsDeleted = false,
-            IsOriginal = false,
-            SyncedAt = DateTime.UtcNow
-        };
-
-        _context.Publications.Add(publication);
-        await _context.SaveChangesAsync();
-
-        // 5. Link Authors
-        foreach (var authorName in request.Authors)
-        {
-            if (string.IsNullOrWhiteSpace(authorName)) continue;
-            var author = await _context.Authors.FirstOrDefaultAsync(a => a.Name == authorName);
-            if (author == null)
-            {
-                author = new Author { Name = authorName };
-                _context.Authors.Add(author);
-                await _context.SaveChangesAsync();
-            }
-
-            _context.PublicationAuthors.Add(new PublicationAuthor
-            {
-                PublicationId = publication.Id,
-                AuthorId = author.Id,
-                AuthorOrder = 1
-            });
-        }
-
-        // 6. Link Keywords
-        foreach (var keywordTerm in request.Keywords)
-        {
-            if (string.IsNullOrWhiteSpace(keywordTerm)) continue;
-            var norm = keywordTerm.ToLowerInvariant().Trim();
-            var keyword = await _context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
-            if (keyword == null)
-            {
-                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = norm };
-                _context.Keywords.Add(keyword);
-                await _context.SaveChangesAsync();
-            }
-
-            _context.PublicationKeywords.Add(new PublicationKeyword
-            {
-                PublicationId = publication.Id,
-                KeywordId = keyword.Id
-            });
-        }
-        await _context.SaveChangesAsync();
-
-        // 7. Dynamic Alert: if new paper matched user followed keywords
-        foreach (var keywordTerm in request.Keywords)
-        {
-            var norm = keywordTerm.ToLowerInvariant().Trim();
-            var keyword = await _context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
-            if (keyword != null)
-            {
-                var follows = await _context.Follows
-                    .Where(f => f.FollowType == FollowType.Keyword && f.FollowTargetId == keyword.Id)
-                    .ToListAsync();
-
-                foreach (var follow in follows)
-                {
-                    _context.Notifications.Add(new Notification
-                    {
-                        UserId = follow.UserId,
-                        PublicationId = publication.Id,
-                        Title = "New publication",
-                        Message = $"New publication uploaded matching your followed keyword '{follow.FollowTargetName}': {publication.Title}",
-                        Route = $"/student-publication?id={publication.Id}",
-                        NotificationType = NotificationType.NEW_PUBLICATION,
-                        IsRead = false,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-            }
-        }
-        await _context.SaveChangesAsync();
-
-        return new UploadResultDto
-        {
-            Success = true,
-            Message = "Paper uploaded successfully. Passed Google Scholar AI plagiarism check and internal Jaccard similarity validation.",
-            PublicationId = publication.Id,
-            GoogleScholarDuplicationScore = plagiarismReport.DuplicationPercentage,
-            InternalDuplicationScore = internalPercentage
-        };
-    }
-
     public async Task<PublicationDetailDto> GetPublicationDetailAsync(int id)
     {
         var publication = await _context.Publications
@@ -427,10 +266,13 @@ public class PublicationService : IPublicationService
         var keyword = string.IsNullOrWhiteSpace(request.Keyword)
             ? "artificial intelligence"
             : request.Keyword.Trim();
-        var maxResults = Math.Clamp(request.PageSize <= 0 ? 20 : request.PageSize, 5, 20);
+        // Pagination controls rendering, not which scholarly providers are
+        // queried. Build a broad shared cache for the entered keyword.
+        var maxResults = 80;
         var source = NormalizeSourceName(request.Source);
         var cachedCount = await CountCachedSearchMatchesAsync(request, source);
-        if (cachedCount >= Math.Min(maxResults, Math.Max(5, request.PageSize <= 0 ? 10 : request.PageSize)))
+        var cacheTarget = string.IsNullOrWhiteSpace(source) ? 40 : 20;
+        if (cachedCount >= cacheTarget)
         {
             return;
         }
@@ -460,12 +302,12 @@ public class PublicationService : IPublicationService
 
         if (string.IsNullOrWhiteSpace(source) || source == "Google Scholar")
         {
-            importTasks.Add(_scholarSearchClient.SearchAsync(keyword, Math.Min(maxResults, 10), timeout.Token));
+            importTasks.Add(_scholarSearchClient.SearchAsync(keyword, 20, timeout.Token));
         }
 
         if (string.IsNullOrWhiteSpace(source) || source == "ResearchGate")
         {
-            importTasks.Add(_scholarSearchClient.SearchResearchGateAsync(keyword, Math.Min(maxResults, 10), timeout.Token));
+            importTasks.Add(_scholarSearchClient.SearchResearchGateAsync(keyword, 20, timeout.Token));
         }
 
         if (string.IsNullOrWhiteSpace(source) || source == "Semantic Scholar")
@@ -487,7 +329,7 @@ public class PublicationService : IPublicationService
                 : item.DOI.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
             .OrderByDescending(item => item.CitationCount)
-            .Take(maxResults);
+            .Take(100);
         foreach (var publication in publications)
         {
             await UpsertExternalPublicationAsync(publication, persistRawMetadata: false);

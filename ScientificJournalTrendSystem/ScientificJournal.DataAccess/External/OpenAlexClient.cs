@@ -12,7 +12,7 @@ public class OpenAlexClient
     public OpenAlexClient(HttpClient httpClient, IConfiguration configuration, ExternalApiRateLimiter rateLimiter)
     {
         _httpClient = httpClient;
-        _httpClient.Timeout = TimeSpan.FromSeconds(8);
+        _httpClient.Timeout = TimeSpan.FromSeconds(25);
         _configuration = configuration;
         _rateLimiter = rateLimiter;
     }
@@ -39,13 +39,18 @@ public class OpenAlexClient
             queryParams.Add($"api_key={Uri.EscapeDataString(apiKey)}");
         }
 
-        var url = "https://api.openalex.org/works?" + string.Join("&", queryParams);
+        var response = await SendWithRetryAsync(queryParams, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+            !string.IsNullOrWhiteSpace(apiKey))
+        {
+            response.Dispose();
+            queryParams.RemoveAll(parameter =>
+                parameter.StartsWith("api_key=", StringComparison.OrdinalIgnoreCase));
+            response = await SendWithRetryAsync(queryParams, cancellationToken);
+        }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.UserAgent.ParseAdd("ScholarTrend/1.0 (mailto:research@scholartrend.local)");
-
-        await _rateLimiter.WaitAsync("OpenAlex", cancellationToken);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using (response)
+        {
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -60,6 +65,43 @@ public class OpenAlexClient
             .Select(MapWork)
             .Where(item => !string.IsNullOrWhiteSpace(item.Title))
             .ToList();
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        IEnumerable<string> queryParams,
+        CancellationToken cancellationToken)
+    {
+        var url = "https://api.openalex.org/works?" + string.Join("&", queryParams);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("ScholarTrend/1.0 (mailto:research@scholartrend.local)");
+        return await _httpClient.SendAsync(request, cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> SendWithRetryAsync(
+        List<string> queryParams,
+        CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 4;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            await _rateLimiter.WaitAsync("OpenAlex", cancellationToken);
+            var response = await SendAsync(queryParams, cancellationToken);
+            var statusCode = (int)response.StatusCode;
+            var transient = response.StatusCode == System.Net.HttpStatusCode.TooManyRequests ||
+                            response.StatusCode == System.Net.HttpStatusCode.RequestTimeout ||
+                            statusCode >= 500;
+            if (!transient || attempt == maxAttempts) return response;
+
+            var retryAfter = response.Headers.RetryAfter?.Delta;
+            if (!retryAfter.HasValue && response.Headers.RetryAfter?.Date is DateTimeOffset retryDate)
+                retryAfter = retryDate - DateTimeOffset.UtcNow;
+            var delay = retryAfter.GetValueOrDefault(TimeSpan.FromSeconds(Math.Pow(2, attempt)));
+            delay = TimeSpan.FromMilliseconds(Math.Clamp(delay.TotalMilliseconds, 250, 15000));
+            response.Dispose();
+            await Task.Delay(delay, cancellationToken);
+        }
+        throw new InvalidOperationException("OpenAlex retry loop ended unexpectedly.");
     }
 
     private static ExternalPublication MapWork(JsonElement work)

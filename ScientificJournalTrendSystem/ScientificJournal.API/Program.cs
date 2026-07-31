@@ -11,7 +11,6 @@ using ScientificJournal.API.Extensions;
 using ScientificJournal.API.Filters;
 using ScientificJournal.Business.Jobs;
 using ScientificJournal.Common.Configurations;
-using ScientificJournal.Common.Policies;
 using ScientificJournal.DataAccess.Context;
 using System.Text.Json.Serialization;
 using System.Text.Json;
@@ -92,8 +91,8 @@ builder.Services.AddApplicationServices(builder.Configuration);
 var hangfireEnabled = builder.Configuration.GetValue("Hangfire:Enabled", true);
 
 var app = builder.Build();
-PlanPolicy.LoadFromFile(Path.Combine(app.Environment.ContentRootPath, "App_Data", "plan-policy.json"));
 await EnsurePublicationSourceUrlColumnAsync(app);
+await EnsureAcademicIdentityColumnsAsync(app);
 
 app.UseMiddleware<ScientificJournal.API.Middleware.ExceptionHandlingMiddleware>();
 
@@ -247,4 +246,31 @@ static async Task EnsurePublicationSourceUrlColumnAsync(WebApplication app)
         app.Logger.LogWarning(exception, "Could not ensure publications.source_url column exists.");
     }
 }
+
+static async Task EnsureAcademicIdentityColumnsAsync(WebApplication app)
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await context.Database.ExecuteSqlRawAsync("""
+            IF COL_LENGTH('users', 'institution') IS NULL ALTER TABLE users ADD institution NVARCHAR(160) NULL;
+            IF COL_LENGTH('users', 'department') IS NULL ALTER TABLE users ADD department NVARCHAR(160) NULL;
+            IF COL_LENGTH('users', 'institutional_email') IS NULL ALTER TABLE users ADD institutional_email NVARCHAR(160) NULL;
+            IF COL_LENGTH('users', 'academic_identifier') IS NULL ALTER TABLE users ADD academic_identifier NVARCHAR(100) NULL;
+            IF COL_LENGTH('users', 'program_or_field') IS NULL ALTER TABLE users ADD program_or_field NVARCHAR(160) NULL;
+            IF COL_LENGTH('users', 'evidence_url') IS NULL ALTER TABLE users ADD evidence_url NVARCHAR(500) NULL;
+            IF COL_LENGTH('users', 'verification_status') IS NULL ALTER TABLE users ADD verification_status NVARCHAR(30) NOT NULL CONSTRAINT df_users_verification_status DEFAULT 'not_submitted';
+            IF COL_LENGTH('users', 'requested_role') IS NULL ALTER TABLE users ADD requested_role NVARCHAR(30) NULL;
+            IF COL_LENGTH('users', 'verification_submitted_at') IS NULL ALTER TABLE users ADD verification_submitted_at DATETIME2 NULL;
+            IF COL_LENGTH('users', 'verification_reviewed_at') IS NULL ALTER TABLE users ADD verification_reviewed_at DATETIME2 NULL;
+            """);
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogWarning(exception, "Could not ensure academic identity columns exist.");
+    }
+}
+
+public partial class Program { }
 

@@ -76,7 +76,6 @@
     "trendTracking": "Trend Tracking",
     "yearComparison": "Year Comparison",
     "syncManagement": "Sync Management",
-    "upgradeToPro": "Upgrade to Pro",
     "analysis": "Analysis",
     "lecturer": "Lecturer"
   },
@@ -437,8 +436,6 @@
     "systemSettings": "System Settings",
     "syncManagement": "Sync Management",
     "notificationManagement": "Notification Management",
-    "paymentManagement": "Payment Management",
-    "planManagement": "Plan Management",
     "publicationManagement": "Publication Management",
     "systemLogs": "System Logs",
     "lastSyncStatus": "Last Sync Status",

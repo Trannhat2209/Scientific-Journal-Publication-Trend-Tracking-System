@@ -23,8 +23,10 @@ public static class ServiceCollectionExtensions
     {
         // 1. SQL Database Context & Unit of Work
         services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlServer(configuration.GetConnectionString("DefaultConnection")
-                                 ?? configuration[AppSettings.SqlConnectionString]));
+            options.UseSqlServer(
+                configuration.GetConnectionString("DefaultConnection")
+                    ?? configuration[AppSettings.SqlConnectionString],
+                sql => sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         // 2. MongoDB Context & Repository
@@ -57,7 +59,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<SemanticScholarClient>();
         services.AddHttpClient<OpenAlexClient>();
         services.AddHttpClient<SerpApiScholarSearchClient>();
-        services.AddHttpClient<PayosMerchantClient>();
+        services.AddHttpClient<OrcidValidationClient>();
 
         // 4a. FluentValidation validators
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
@@ -70,7 +72,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INotificationHubService, ScientificJournal.API.Services.NotificationHubService>();
         services.AddScoped<NotificationJob>();
         services.AddHostedService<NotificationDispatchWorker>();
-        services.AddHostedService<PaymentReconciliationWorker>();
         services.AddHostedService<SystemLogRetentionWorker>();
 
 
