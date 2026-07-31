@@ -1,0 +1,222 @@
+table_name column_name data_type is_nullable is_pk
+---------- ----------- --------- ----------- -----
+__EFMigrationsHistory MigrationId nvarchar 0 PK
+__EFMigrationsHistory ProductVersion nvarchar 0 
+admin_states id int 0 PK
+admin_states state_key nvarchar 0 
+admin_states json_value nvarchar 0 
+admin_states updated_by_user_id int 1 
+admin_states updated_at datetime2 0 
+admin_support_tickets id int 0 PK
+admin_support_tickets ticket_number nvarchar 0 
+admin_support_tickets message nvarchar 0 
+admin_support_tickets status nvarchar 0 
+admin_support_tickets created_by_user_id int 1 
+admin_support_tickets created_at datetime2 0 
+admin_support_tickets updated_at datetime2 1 
+AggregatedCounter Key nvarchar 0 PK
+AggregatedCounter Value bigint 0 
+AggregatedCounter ExpireAt datetime 1 
+authors id int 0 PK
+authors name nvarchar 0 
+authors external_id nvarchar 1 
+authors affiliation nvarchar 1 
+bookmarks id int 0 PK
+bookmarks user_id int 0 
+bookmarks publication_id int 0 
+bookmarks created_at datetime2 0 
+Counter Key nvarchar 0 PK
+Counter Value int 0 
+Counter ExpireAt datetime 1 
+Counter Id bigint 0 PK
+follows id int 0 PK
+follows user_id int 0 
+follows follow_type nvarchar 0 
+follows follow_target_id int 0 
+follows follow_target_name nvarchar 1 
+follows created_at datetime2 0 
+Hash Key nvarchar 0 PK
+Hash Field nvarchar 0 PK
+Hash Value nvarchar 1 
+Hash ExpireAt datetime2 1 
+Job Id bigint 0 PK
+Job StateId bigint 1 
+Job StateName nvarchar 1 
+Job InvocationData nvarchar 0 
+Job Arguments nvarchar 0 
+Job CreatedAt datetime 0 
+Job ExpireAt datetime 1 
+JobParameter JobId bigint 0 PK
+JobParameter Name nvarchar 0 PK
+JobParameter Value nvarchar 1 
+JobQueue Id bigint 0 PK
+JobQueue JobId bigint 0 
+JobQueue Queue nvarchar 0 PK
+JobQueue FetchedAt datetime 1 
+journals id int 0 PK
+journals name nvarchar 0 
+journals publisher nvarchar 1 
+journals issn_online nvarchar 0 
+journals is_deleted bit 0 
+keywords id int 0 PK
+keywords term nvarchar 0 
+keywords normalized_term nvarchar 0 
+List Id bigint 0 PK
+List Key nvarchar 0 PK
+List Value nvarchar 1 
+List ExpireAt datetime 1 
+notifications id int 0 PK
+notifications user_id int 0 
+notifications publication_id int 1 
+notifications title nvarchar 0 
+notifications message nvarchar 0 
+notifications route nvarchar 1 
+notifications notification_type nvarchar 0 
+notifications is_read bit 0 
+notifications created_at datetime2 0 
+notifications acknowledged_at datetime2 1 
+notifications next_attempt_at datetime2 1 
+notifications attempt_count int 0 
+notifications scheduled_at datetime2 1 
+notifications delivered_at datetime2 1 
+notifications read_at datetime2 1 
+notifications failed_at datetime2 1 
+notifications delivery_status nvarchar 0 
+notifications failure_reason nvarchar 1 
+notifications batch_id uniqueidentifier 1 
+payment_transactions id int 0 PK
+payment_transactions order_code bigint 0 
+payment_transactions payment_link_id nvarchar 1 
+payment_transactions checkout_url nvarchar 1 
+payment_transactions user_id int 0 
+payment_transactions user_email nvarchar 0 
+payment_transactions billing_cycle nvarchar 0 
+payment_transactions plan nvarchar 0 
+payment_transactions amount int 0 
+payment_transactions currency nvarchar 0 
+payment_transactions description nvarchar 0 
+payment_transactions status nvarchar 0 
+payment_transactions payos_reference nvarchar 1 
+payment_transactions raw_webhook_json nvarchar 1 
+payment_transactions created_at datetime2 0 
+payment_transactions expires_at datetime2 1 
+payment_transactions paid_at datetime2 1 
+payment_transactions updated_at datetime2 1 
+publication_authors publication_id int 0 PK
+publication_authors author_id int 0 PK
+publication_authors author_order int 0 
+publication_keywords publication_id int 0 PK
+publication_keywords keyword_id int 0 PK
+publication_submissions id int 0 PK
+publication_submissions submitter_user_id int 1 
+publication_submissions submitter_email nvarchar 0 
+publication_submissions submitter_name nvarchar 0 
+publication_submissions submitter_role nvarchar 0 
+publication_submissions title nvarchar 0 
+publication_submissions authors_text nvarchar 0 
+publication_submissions keywords_text nvarchar 0 
+publication_submissions abstract nvarchar 0 
+publication_submissions file_name nvarchar 1 
+publication_submissions file_content_type nvarchar 1 
+publication_submissions file_content varbinary 1 
+publication_submissions extracted_text nvarchar 1 
+publication_submissions similarity_percent float 0 
+publication_submissions matched_title nvarchar 1 
+publication_submissions matched_source nvarchar 1 
+publication_submissions matched_link nvarchar 1 
+publication_submissions candidates_json nvarchar 1 
+publication_submissions status nvarchar 0 
+publication_submissions decision nvarchar 0 
+publication_submissions rejected_reason nvarchar 1 
+publication_submissions rejected_evidence nvarchar 1 
+publication_submissions is_deleted bit 0 
+publication_submissions published_publication_id int 1 
+publication_submissions submitted_at datetime2 0 
+publication_submissions reviewed_at datetime2 1 
+publication_submissions reviewed_by_user_id int 1 
+publication_submissions row_version timestamp 0 
+publication_versions id int 0 PK
+publication_versions publication_id int 0 
+publication_versions version_number int 0 
+publication_versions snapshot_json nvarchar 0 
+publication_versions change_type nvarchar 0 
+publication_versions changed_by_user_id int 1 
+publication_versions created_at datetime2 0 
+publications id int 0 PK
+publications title nvarchar 0 
+publications abstract nvarchar 1 
+publications publication_year int 0 
+publications doi nvarchar 0 
+publications journal_id int 1 
+publications citation_count int 0 
+publications source_api nvarchar 0 
+publications source_url nvarchar 1 
+publications mongo_metadata_id nvarchar 1 
+publications is_deleted bit 0 
+publications is_original bit 0 
+publications synced_at datetime2 0 
+Schema Version int 0 PK
+Server Id nvarchar 0 PK
+Server Data nvarchar 1 
+Server LastHeartbeat datetime 0 
+Set Key nvarchar 0 PK
+Set Score float 0 
+Set Value nvarchar 0 PK
+Set ExpireAt datetime 1 
+State Id bigint 0 PK
+State JobId bigint 0 PK
+State Name nvarchar 0 
+State Reason nvarchar 1 
+State CreatedAt datetime 0 
+State Data nvarchar 1 
+sync_logs id int 0 PK
+sync_logs triggered_by_user_id int 1 
+sync_logs source_api nvarchar 0 
+sync_logs status nvarchar 0 
+sync_logs records_synced int 1 
+sync_logs error_message nvarchar 1 
+sync_logs started_at datetime2 0 
+sync_logs finished_at datetime2 1 
+sysdiagrams name sysname 0 
+sysdiagrams principal_id int 0 
+sysdiagrams diagram_id int 0 PK
+sysdiagrams version int 1 
+sysdiagrams definition varbinary 1 
+system_event_logs id bigint 0 PK
+system_event_logs created_at datetime2 0 
+system_event_logs category nvarchar 0 
+system_event_logs level nvarchar 0 
+system_event_logs event_code nvarchar 0 
+system_event_logs message nvarchar 0 
+system_event_logs method nvarchar 1 
+system_event_logs path nvarchar 1 
+system_event_logs status_code int 1 
+system_event_logs user_id int 1 
+system_event_logs actor nvarchar 1 
+system_event_logs ip_address nvarchar 1 
+system_event_logs user_agent nvarchar 1 
+system_event_logs correlation_id nvarchar 1 
+system_event_logs metadata_json nvarchar 1 
+trending_metrics id int 0 PK
+trending_metrics keyword_id int 0 
+trending_metrics year int 0 
+trending_metrics publication_count int 0 
+trending_metrics trending_score decimal 1 
+trending_metrics calculated_at datetime2 0 
+users id int 0 PK
+users email nvarchar 0 
+users password_hash nvarchar 0 
+users full_name nvarchar 0 
+users role nvarchar 0 
+users is_active bit 0 
+users is_deleted bit 0 
+users is_email_verified bit 0 
+users is_pro bit 0 
+users plan nvarchar 0 
+users email_verification_token nvarchar 1 
+users email_verification_token_expires_at datetime2 1 
+users password_reset_token nvarchar 1 
+users password_reset_token_expires_at datetime2 1 
+users created_at datetime2 0 
+
+(218 rows affected)
