@@ -14301,10 +14301,10 @@ function ProfilePage({ role = "student" }) {
   });
 
   React.useEffect(() => {
+    if (!getStoredAuth().accessToken) return undefined;
+
     let cancelled = false;
-    const profileRequest = getStoredAuth().accessToken
-      ? apiFetch("/api/auth/profile", { auth: true })
-      : authServerFetch("/api/auth/profile");
+    const profileRequest = apiFetch("/api/auth/profile", { auth: true });
 
     profileRequest
       .then((backendProfile) => {
