@@ -33,6 +33,21 @@ test("administrator can reset an existing SQL user's password", () => {
   assert.match(controller, /ADMIN-PASSWORD-RESET/);
 });
 
+test("academic approval cannot bypass the matching pending role request", () => {
+  const controller = read(
+    "ScientificJournalTrendSystem/ScientificJournal.API/Controllers/AdminController.cs",
+  );
+
+  assert.match(
+    controller,
+    /request\.VerificationStatus == "verified"[\s\S]*previousVerificationStatus, "pending"/,
+  );
+  assert.match(controller, /user\.Role = requestedRole/);
+  assert.doesNotMatch(controller, /var approvedRole = role/);
+  assert.match(controller, /ADMIN-ACADEMIC-APPROVE/);
+  assert.match(controller, /ADMIN-ACADEMIC-REJECT/);
+});
+
 test("notification pending and failed summary is not coerced into NaN", () => {
   const app = read("src/App.jsx");
 
@@ -49,6 +64,23 @@ test("registration has no shared default password and account access stays consi
   assert.doesNotMatch(app, /ACADEMIC_PROVIDER_TEST_PASSWORD/);
   assert.match(admin, /request\.VerificationStatus == "verified"/);
   assert.match(admin, /TryParseManagedRole\(user\.RequestedRole/);
+});
+
+test("profile and review requests require a stored access token", () => {
+  const app = read("src/App.jsx");
+
+  assert.match(
+    app,
+    /if \(!getStoredAuth\(\)\.accessToken\) return undefined;[\s\S]*?apiFetch\("\/api\/auth\/profile", \{ auth: true \}\)/,
+  );
+  assert.match(
+    app,
+    /if \(!getStoredAuth\(\)\.accessToken\) \{\s*setStatus\("idle"\);\s*return;/,
+  );
+  assert.doesNotMatch(
+    app,
+    /authServerFetch\("\/api\/auth\/profile"\)/,
+  );
 });
 
 test("academic features require a verified account and matching role", () => {
