@@ -43,6 +43,17 @@ public sealed class ApiAuthorizationIntegrationTests : IClassFixture<ScholarTren
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/api/payments/payos/create")]
+    [InlineData("/api/publications/upload")]
+    [InlineData("/api/publications/submissions")]
+    public async Task Removed_endpoints_are_not_mapped(string path)
+    {
+        using var client = await _factory.CreateAuthenticatedClientAsync("verified");
+        var status = (await client.PostAsJsonAsync(path, new { })).StatusCode;
+        Assert.Contains(status, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
+    }
+
     [Fact]
     public async Task Verified_student_cannot_call_researcher_or_lecturer_report_api()
     {
