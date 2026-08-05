@@ -60,6 +60,8 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<OpenAlexClient>();
         services.AddHttpClient<SerpApiScholarSearchClient>();
         services.AddHttpClient<OrcidValidationClient>();
+        services.AddHttpClient<CrossrefClient>();
+        services.AddHttpClient<ConnectedPapersClient>();
 
         // 4a. FluentValidation validators
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();

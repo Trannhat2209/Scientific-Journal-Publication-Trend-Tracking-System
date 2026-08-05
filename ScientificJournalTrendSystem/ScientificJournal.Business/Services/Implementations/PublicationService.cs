@@ -30,6 +30,7 @@ public class PublicationService : IPublicationService
     private readonly OpenAlexClient _openAlexClient;
     private readonly SerpApiScholarSearchClient _scholarSearchClient;
     private readonly SemanticScholarClient _semanticScholarClient;
+    private readonly CrossrefClient _crossrefClient;
 
     public PublicationService(
         AppDbContext context,
@@ -37,7 +38,8 @@ public class PublicationService : IPublicationService
         IMongoMetadataRepository mongoRepository,
         OpenAlexClient openAlexClient,
         SerpApiScholarSearchClient scholarSearchClient,
-        SemanticScholarClient semanticScholarClient)
+        SemanticScholarClient semanticScholarClient,
+        CrossrefClient crossrefClient)
     {
         _context = context;
         _recommendationService = recommendationService;
@@ -45,6 +47,7 @@ public class PublicationService : IPublicationService
         _openAlexClient = openAlexClient;
         _scholarSearchClient = scholarSearchClient;
         _semanticScholarClient = semanticScholarClient;
+        _crossrefClient = crossrefClient;
     }
 
     public async Task<PaginatedResponse<PublicationDto>> SearchPublicationsAsync(PublicationSearchRequestDto request, int? userId = null)
@@ -313,6 +316,11 @@ public class PublicationService : IPublicationService
         if (string.IsNullOrWhiteSpace(source) || source == "Semantic Scholar")
         {
             importTasks.Add(_semanticScholarClient.SearchAsync(keyword, maxResults, timeout.Token));
+        }
+
+        if (string.IsNullOrWhiteSpace(source) || source == "Crossref")
+        {
+            importTasks.Add(_crossrefClient.SearchAsync(keyword, maxResults, timeout.Token));
         }
 
         if (importTasks.Count == 0)

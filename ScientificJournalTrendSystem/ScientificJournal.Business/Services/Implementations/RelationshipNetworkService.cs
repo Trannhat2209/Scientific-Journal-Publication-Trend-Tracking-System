@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using ScientificJournal.Business.Services.Interfaces;
 using ScientificJournal.Common.DTOs.Response.Publication;
 using ScientificJournal.DataAccess.Context;
+using ScientificJournal.DataAccess.External;
 
 namespace ScientificJournal.Business.Services.Implementations;
 
@@ -13,11 +14,13 @@ public class RelationshipNetworkService : IRelationshipNetworkService
 {
     private readonly AppDbContext _context;
     private readonly ISimilarityService _similarityService;
+    private readonly ConnectedPapersClient _connectedPapersClient;
 
-    public RelationshipNetworkService(AppDbContext context, ISimilarityService similarityService)
+    public RelationshipNetworkService(AppDbContext context, ISimilarityService similarityService, ConnectedPapersClient connectedPapersClient)
     {
         _context = context;
         _similarityService = similarityService;
+        _connectedPapersClient = connectedPapersClient;
     }
 
     public async Task<RelationshipNetworkDto> GetRelationshipNetworkAsync(int publicationId, double similarityThreshold = 0.3)
@@ -53,9 +56,6 @@ public class RelationshipNetworkService : IRelationshipNetworkService
             .Where(pk => pk.PublicationId == publicationId)
             .Select(pk => pk.KeywordId)
             .ToListAsync();
-
-        if (!targetKeywordIds.Any())
-            return network;
 
         var relatedPubIds = await _context.PublicationKeywords
             .Where(pk => pk.PublicationId != publicationId && targetKeywordIds.Contains(pk.KeywordId))
@@ -106,6 +106,36 @@ public class RelationshipNetworkService : IRelationshipNetworkService
                     RelationType = "Similarity"
                 });
             }
+        }
+
+        // Enrich the local similarity network with real Connected Papers graph
+        // nodes when API access is configured. Provider failures are optional and
+        // must not prevent the local graph from being returned.
+        if (_connectedPapersClient.IsConfigured)
+        {
+            try
+            {
+                var externalGraph = await _connectedPapersClient.GetGraphAsync(centralPub.DOI, centralPub.Title);
+                if (externalGraph != null)
+                {
+                    foreach (var node in externalGraph.Nodes.Take(50))
+                    {
+                        if (node.Id == externalGraph.StartId) continue;
+                        var id = $"cp:{node.Id}";
+                        if (network.Nodes.Any(existing => existing.Id == id)) continue;
+                        network.Nodes.Add(new NetworkNodeDto { Id = id, Label = node.Title, Type = "ConnectedPapers", Title = node.Title, Year = node.Year, CitationCount = node.CitationCount, Authors = node.Authors });
+                    }
+                    foreach (var edge in externalGraph.Edges.Take(150))
+                    {
+                        var source = edge.Source == externalGraph.StartId ? centralPub.Id.ToString() : $"cp:{edge.Source}";
+                        var target = edge.Target == externalGraph.StartId ? centralPub.Id.ToString() : $"cp:{edge.Target}";
+                        if (network.Nodes.Any(node => node.Id == source) && network.Nodes.Any(node => node.Id == target))
+                            network.Edges.Add(new NetworkEdgeDto { Source = source, Target = target, Weight = edge.Weight, RelationType = "ConnectedPapersSimilarity" });
+                    }
+                }
+            }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) { }
         }
 
         // 4. Discover secondary links between the added related publications

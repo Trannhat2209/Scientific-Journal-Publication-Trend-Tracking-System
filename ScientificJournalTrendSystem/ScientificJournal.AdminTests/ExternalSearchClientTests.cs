@@ -50,6 +50,43 @@ public sealed class ExternalSearchClientTests
         Assert.True(await client.IsValidAsync("0000-0002-1825-0097"));
     }
 
+    [Fact]
+    public async Task Crossref_client_maps_complete_publication_metadata()
+    {
+        const string json = """{"message":{"items":[{"DOI":"10.1000/test","title":["Crossref Paper"],"abstract":"<jats:p>Useful abstract</jats:p>","published":{"date-parts":[[2025]]},"container-title":["Test Journal"],"publisher":"Test Publisher","is-referenced-by-count":12,"author":[{"given":"Ada","family":"Lovelace"}],"subject":["Computing"]}]}}""";
+        using var http = new HttpClient(new JsonHandler(json));
+        var client = new CrossrefClient(http, new ConfigurationBuilder().Build(), new ExternalApiRateLimiter());
+
+        var results = await client.SearchAsync("computing", 5);
+
+        var paper = Assert.Single(results);
+        Assert.Equal("Crossref Paper", paper.Title);
+        Assert.Equal("10.1000/test", paper.DOI);
+        Assert.Equal("Useful abstract", paper.Abstract);
+        Assert.Equal("Ada Lovelace", Assert.Single(paper.Authors));
+        Assert.Equal("Crossref", paper.SourceApi);
+    }
+
+    [Fact]
+    public async Task Connected_papers_resolves_doi_and_maps_graph()
+    {
+        using var http = new HttpClient(new ConnectedPapersHandler());
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ConnectedPapers:ApiKey"] = "test-key",
+            ["ConnectedPapers:BaseUrl"] = "https://connected.test"
+        }).Build();
+        var client = new ConnectedPapersClient(http, configuration, new ExternalApiRateLimiter());
+
+        var graph = await client.GetGraphAsync("10.1000/test", "Test paper");
+
+        Assert.NotNull(graph);
+        Assert.Equal("S1", graph.StartId);
+        Assert.Equal(2, graph.Nodes.Count);
+        Assert.Single(graph.Edges);
+        Assert.Equal("A", graph.Edges[0].Source);
+    }
+
     private sealed class JsonHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
@@ -74,6 +111,20 @@ public sealed class ExternalSearchClientTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent("""{"results":[{"id":"https://openalex.org/W2","title":"Recovered OpenAlex Paper","publication_year":2026}]}""", Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    private sealed class ConnectedPapersHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var json = request.RequestUri!.Host == "api.semanticscholar.org"
+                ? """{"paperId":"S1"}"""
+                : """{"status":"FRESH_GRAPH","graph_json":{"start_id":"S1","nodes":{"A":{"id":"A","title":"Paper A","year":2024},"B":{"id":"B","title":"Paper B","year":2023}},"edges":[["A","B",0.8]]}}""";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
         }
     }
