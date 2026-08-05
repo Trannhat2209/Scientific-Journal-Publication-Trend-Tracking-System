@@ -231,7 +231,8 @@ public class PublicationService : IPublicationService
             CitationCount = publication.CitationCount,
             Authors = publication.PublicationAuthors.Select(pa => pa.Author?.Name ?? string.Empty).Where(name => !string.IsNullOrWhiteSpace(name)).ToList(),
             Keywords = publication.PublicationKeywords.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(term => !string.IsNullOrWhiteSpace(term)).ToList(),
-            KeywordIds = publication.PublicationKeywords.Select(pk => pk.KeywordId).ToList()
+            KeywordIds = publication.PublicationKeywords.Select(pk => pk.KeywordId).ToList(),
+            ResearchTopicIds = publication.PublicationKeywords.Where(pk => pk.Keyword != null && pk.Keyword.ResearchTopicId.HasValue).Select(pk => pk.Keyword!.ResearchTopicId!.Value).Distinct().ToList()
         };
     }
 
@@ -481,7 +482,8 @@ public class PublicationService : IPublicationService
             var keyword = await _context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
             if (keyword == null)
             {
-                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = norm };
+                var topic = await GetOrCreateResearchTopicAsync(keywordTerm, norm);
+                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = norm, ResearchTopicId = topic.Id };
                 _context.Keywords.Add(keyword);
                 await _context.SaveChangesAsync();
             }
@@ -494,6 +496,16 @@ public class PublicationService : IPublicationService
         }
 
         await _context.SaveChangesAsync();
+    }
+
+    private async Task<ResearchTopic> GetOrCreateResearchTopicAsync(string name, string normalizedName)
+    {
+        var topic = await _context.ResearchTopics.FirstOrDefaultAsync(t => t.NormalizedName == normalizedName);
+        if (topic != null) return topic;
+        topic = new ResearchTopic { Name = name.Trim(), NormalizedName = normalizedName };
+        _context.ResearchTopics.Add(topic);
+        await _context.SaveChangesAsync();
+        return topic;
     }
 
     private async Task<Journal?> GetOrCreateExternalJournalAsync(ExternalPublication external)

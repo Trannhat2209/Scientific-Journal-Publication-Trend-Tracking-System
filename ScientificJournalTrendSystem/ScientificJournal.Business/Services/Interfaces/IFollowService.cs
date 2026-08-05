@@ -11,6 +11,8 @@ public interface IFollowService
     Task UnfollowKeywordAsync(int userId, int keywordId);
     Task FollowJournalAsync(int userId, int journalId);
     Task UnfollowJournalAsync(int userId, int journalId);
+    Task FollowTopicAsync(int userId, int topicId);
+    Task UnfollowTopicAsync(int userId, int topicId);
     Task<IEnumerable<Follow>> GetUserFollowsAsync(int userId);
 }
 

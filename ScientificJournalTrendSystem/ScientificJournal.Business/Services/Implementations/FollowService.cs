@@ -88,5 +88,22 @@ public class FollowService : IFollowService
             await _context.SaveChangesAsync();
         }
     }
+
+    public async Task FollowTopicAsync(int userId, int topicId)
+    {
+        var topic = await _context.ResearchTopics.AsNoTracking().FirstOrDefaultAsync(t => t.Id == topicId && t.IsActive);
+        if (topic == null) throw new KeyNotFoundException("Research topic was not found.");
+        if (await _context.Follows.AnyAsync(f => f.UserId == userId && f.FollowType == FollowType.Topic && f.FollowTargetId == topicId)) return;
+        _context.Follows.Add(new Follow { UserId = userId, FollowType = FollowType.Topic, FollowTargetId = topicId, FollowTargetName = topic.Name, CreatedAt = DateTime.UtcNow });
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task UnfollowTopicAsync(int userId, int topicId)
+    {
+        var follow = await _context.Follows.FirstOrDefaultAsync(f => f.UserId == userId && f.FollowType == FollowType.Topic && f.FollowTargetId == topicId);
+        if (follow == null) return;
+        _context.Follows.Remove(follow);
+        await _context.SaveChangesAsync();
+    }
 }
 

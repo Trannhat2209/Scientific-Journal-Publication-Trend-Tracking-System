@@ -87,7 +87,17 @@ public class RecommendationService : IRecommendationService
             .Select(f => f.FollowTargetId)
             .ToListAsync();
 
-        var allInterestKeywordIds = bookmarkedKeywordIds.Union(followedTargetIds).Distinct().ToList();
+        var followedTopicIds = await _context.Follows
+            .Where(f => f.UserId == userId && f.FollowType == FollowType.Topic)
+            .Select(f => f.FollowTargetId)
+            .ToListAsync();
+
+        var topicKeywordIds = await _context.Keywords
+            .Where(k => k.ResearchTopicId.HasValue && followedTopicIds.Contains(k.ResearchTopicId.Value))
+            .Select(k => k.Id)
+            .ToListAsync();
+
+        var allInterestKeywordIds = bookmarkedKeywordIds.Union(followedTargetIds).Union(topicKeywordIds).Distinct().ToList();
 
         if (!allInterestKeywordIds.Any())
         {
@@ -136,7 +146,8 @@ public class RecommendationService : IRecommendationService
             SourceUrl = p.SourceUrl,
             CitationCount = p.CitationCount,
             Authors = p.PublicationAuthors?.Select(pa => pa.Author?.Name ?? string.Empty).Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
-            Keywords = p.PublicationKeywords?.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(k => !string.IsNullOrEmpty(k)).ToList() ?? new List<string>()
+            Keywords = p.PublicationKeywords?.Select(pk => pk.Keyword?.Term ?? string.Empty).Where(k => !string.IsNullOrEmpty(k)).ToList() ?? new List<string>(),
+            ResearchTopicIds = p.PublicationKeywords?.Where(pk => pk.Keyword?.ResearchTopicId != null).Select(pk => pk.Keyword!.ResearchTopicId!.Value).Distinct().ToList() ?? new List<int>()
         };
     }
 }

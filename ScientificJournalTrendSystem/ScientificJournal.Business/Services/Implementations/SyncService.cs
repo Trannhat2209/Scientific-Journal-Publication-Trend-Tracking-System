@@ -264,7 +264,8 @@ public class SyncService : ISyncService
             var keyword = await _context.Keywords.FirstOrDefaultAsync(k => k.NormalizedTerm == norm);
             if (keyword == null)
             {
-                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = norm };
+                var topic = await GetOrCreateResearchTopicAsync(keywordTerm, norm);
+                keyword = new Keyword { Term = keywordTerm, NormalizedTerm = norm, ResearchTopicId = topic.Id };
                 _context.Keywords.Add(keyword);
                 await _context.SaveChangesAsync();
             }
@@ -278,6 +279,16 @@ public class SyncService : ISyncService
 
         await _context.SaveChangesAsync();
         return publication;
+    }
+
+    private async Task<ResearchTopic> GetOrCreateResearchTopicAsync(string name, string normalizedName)
+    {
+        var topic = await _context.ResearchTopics.FirstOrDefaultAsync(t => t.NormalizedName == normalizedName);
+        if (topic != null) return topic;
+        topic = new ResearchTopic { Name = name.Trim(), NormalizedName = normalizedName };
+        _context.ResearchTopics.Add(topic);
+        await _context.SaveChangesAsync();
+        return topic;
     }
 
     private async Task<Journal?> GetOrCreateExternalJournalAsync(ExternalPublication external)
@@ -365,9 +376,11 @@ public class SyncService : ISyncService
 
             var keywordTerms = keywords.Select(k => k.Term).ToList();
             var keywordIds = keywords.Select(k => k.Id).ToList();
+            var topicIds = keywords.Where(k => k.ResearchTopicId.HasValue).Select(k => k.ResearchTopicId!.Value).Distinct().ToList();
 
             var matchingFollows = await _context.Follows
                 .Where(f => (f.FollowType == FollowType.Keyword && (keywordIds.Contains(f.FollowTargetId) || (f.FollowTargetName != null && keywordTerms.Contains(f.FollowTargetName)))) ||
+                            (f.FollowType == FollowType.Topic && topicIds.Contains(f.FollowTargetId)) ||
                             (f.FollowType == FollowType.Journal && pub.JournalId.HasValue && f.FollowTargetId == pub.JournalId.Value))
                 .ToListAsync();
 
@@ -376,9 +389,12 @@ public class SyncService : ISyncService
             {
                 if (notifiedUsers.Contains(follow.UserId)) continue;
 
-                var message = follow.FollowType == FollowType.Keyword
-                    ? $"New publication synced matching your followed keyword '{follow.FollowTargetName}': {pub.Title}"
-                    : $"New publication synced in your followed journal '{follow.FollowTargetName}': {pub.Title}";
+                var message = follow.FollowType switch
+                {
+                    FollowType.Keyword => $"New publication synced matching your followed keyword '{follow.FollowTargetName}': {pub.Title}",
+                    FollowType.Topic => $"New publication synced in your followed research topic '{follow.FollowTargetName}': {pub.Title}",
+                    _ => $"New publication synced in your followed journal '{follow.FollowTargetName}': {pub.Title}"
+                };
 
                 await _notificationService.CreateNotificationAsync(follow.UserId, message, pub.Id);
                 notifiedUsers.Add(follow.UserId);

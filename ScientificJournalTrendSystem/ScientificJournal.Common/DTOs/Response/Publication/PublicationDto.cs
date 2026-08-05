@@ -16,5 +16,6 @@ public class PublicationDto
     public List<string> Authors { get; set; } = new();
     public List<string> Keywords { get; set; } = new();
     public List<int> KeywordIds { get; set; } = new();
+    public List<int> ResearchTopicIds { get; set; } = new();
     public int CitationCount { get; set; }
 }

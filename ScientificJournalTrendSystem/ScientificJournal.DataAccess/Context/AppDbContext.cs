@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<AdminState> AdminStates => Set<AdminState>();
     public DbSet<AdminSupportTicket> AdminSupportTickets => Set<AdminSupportTicket>();
     public DbSet<SystemEventLog> SystemEventLogs => Set<SystemEventLog>();
+    public DbSet<ResearchTopic> ResearchTopics => Set<ResearchTopic>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

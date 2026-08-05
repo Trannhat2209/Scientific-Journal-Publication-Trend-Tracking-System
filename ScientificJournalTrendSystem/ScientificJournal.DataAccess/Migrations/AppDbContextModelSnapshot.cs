@@ -254,6 +254,10 @@ namespace ScientificJournal.DataAccess.Migrations
                         .HasColumnType("nvarchar(450)")
                         .HasColumnName("normalized_term");
 
+                    b.Property<int?>("ResearchTopicId")
+                        .HasColumnType("int")
+                        .HasColumnName("research_topic_id");
+
                     b.Property<string>("Term")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)")
@@ -264,7 +268,23 @@ namespace ScientificJournal.DataAccess.Migrations
                     b.HasIndex("NormalizedTerm")
                         .IsUnique();
 
+                    b.HasIndex("ResearchTopicId");
+
                     b.ToTable("keywords", (string)null);
+                });
+
+            modelBuilder.Entity("ScientificJournal.DataAccess.Entities.ResearchTopic", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int").HasColumnName("id");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime2").HasColumnName("created_at");
+                    b.Property<string>("Description").HasMaxLength(1000).HasColumnType("nvarchar(1000)").HasColumnName("description");
+                    b.Property<bool>("IsActive").HasColumnType("bit").HasColumnName("is_active");
+                    b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("nvarchar(200)").HasColumnName("name");
+                    b.Property<string>("NormalizedName").IsRequired().HasMaxLength(200).HasColumnType("nvarchar(200)").HasColumnName("normalized_name");
+                    b.HasKey("Id");
+                    b.HasIndex("NormalizedName").IsUnique();
+                    b.ToTable("research_topics", (string)null);
                 });
 
             modelBuilder.Entity("ScientificJournal.DataAccess.Entities.Notification", b =>
@@ -1236,9 +1256,20 @@ namespace ScientificJournal.DataAccess.Migrations
 
             modelBuilder.Entity("ScientificJournal.DataAccess.Entities.Keyword", b =>
                 {
+                    b.HasOne("ScientificJournal.DataAccess.Entities.ResearchTopic", "ResearchTopic")
+                        .WithMany("Keywords")
+                        .HasForeignKey("ResearchTopicId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ResearchTopic");
                     b.Navigation("PublicationKeywords");
 
                     b.Navigation("TrendingMetrics");
+                });
+
+            modelBuilder.Entity("ScientificJournal.DataAccess.Entities.ResearchTopic", b =>
+                {
+                    b.Navigation("Keywords");
                 });
 
             modelBuilder.Entity("ScientificJournal.DataAccess.Entities.Publication", b =>

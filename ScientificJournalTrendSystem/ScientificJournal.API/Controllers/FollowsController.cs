@@ -60,6 +60,17 @@ public class FollowsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("topics")]
+    public async Task<IActionResult> GetAvailableTopics([FromServices] AppDbContext context)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        var followedIds = await context.Follows.Where(f => f.UserId == userId && f.FollowType == ScientificJournal.Common.Enums.FollowType.Topic).Select(f => f.FollowTargetId).ToListAsync();
+        var topics = await context.ResearchTopics.AsNoTracking().Where(t => t.IsActive && !followedIds.Contains(t.Id))
+            .OrderByDescending(t => t.Keywords.SelectMany(k => k.PublicationKeywords).Count()).ThenBy(t => t.Name).Take(20)
+            .Select(t => new { t.Id, t.Name, t.Description }).ToListAsync();
+        return Ok(new { items = topics });
+    }
+
     [HttpPost("keyword/{keywordId:int}")]
     public async Task<IActionResult> FollowKeyword(int keywordId)
     {
@@ -110,6 +121,28 @@ public class FollowsController : ControllerBase
 
         await _followService.UnfollowJournalAsync(userId, journalId);
         return Ok(new { message = "Journal unfollowed successfully." });
+    }
+
+    [HttpPost("topic/{topicId:int}")]
+    public async Task<IActionResult> FollowTopic(int topicId)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        await _followService.FollowTopicAsync(userId, topicId);
+        return Ok(new { message = "Research topic followed successfully." });
+    }
+
+    [HttpDelete("topic/{topicId:int}")]
+    public async Task<IActionResult> UnfollowTopic(int topicId)
+    {
+        if (!TryGetUserId(out var userId)) return Unauthorized();
+        await _followService.UnfollowTopicAsync(userId, topicId);
+        return Ok(new { message = "Research topic unfollowed successfully." });
+    }
+
+    private bool TryGetUserId(out int userId)
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        return int.TryParse(value, out userId);
     }
 }
 

@@ -1006,6 +1006,9 @@ const mapPublicationDetailForUi = (payload) => {
     keywordIds: Array.isArray(publication.keywordIds)
       ? publication.keywordIds
       : [],
+    researchTopicIds: Array.isArray(publication.researchTopicIds)
+      ? publication.researchTopicIds
+      : [],
     relatedPublications,
   };
 };
@@ -15928,16 +15931,16 @@ function ProfilePage({ role = "student" }) {
   );
 }
 
-function ImpactAnalyticsCard({ keywordId, topicName }) {
-  const [trackedKeywordId, setTrackedKeywordId] = React.useState(null);
+function ImpactAnalyticsCard({ topicId, topicName }) {
+  const [trackedTopicId, setTrackedTopicId] = React.useState(null);
   const [trackStatus, setTrackStatus] = React.useState("idle");
   const [trackMessage, setTrackMessage] = React.useState("");
-  const canTrack = isBackendNumericId(keywordId);
-  const isTracked = Number(trackedKeywordId) === Number(keywordId);
+  const canTrack = isBackendNumericId(topicId);
+  const isTracked = Number(trackedTopicId) === Number(topicId);
 
   React.useEffect(() => {
     let cancelled = false;
-    setTrackedKeywordId(null);
+    setTrackedTopicId(null);
     setTrackMessage("");
     if (!canTrack) return () => {};
 
@@ -15946,10 +15949,10 @@ function ImpactAnalyticsCard({ keywordId, topicName }) {
         if (cancelled || !Array.isArray(follows)) return;
         const matchingFollow = follows.find(
           (follow) =>
-            String(follow.followType || "").toLowerCase() === "keyword" &&
-            Number(follow.followTargetId) === Number(keywordId),
+            String(follow.followType || "").toLowerCase() === "topic" &&
+            Number(follow.followTargetId) === Number(topicId),
         );
-        setTrackedKeywordId(matchingFollow?.followTargetId || null);
+        setTrackedTopicId(matchingFollow?.followTargetId || null);
       })
       .catch((error) => {
         if (!cancelled) setTrackMessage(error.message);
@@ -15958,18 +15961,18 @@ function ImpactAnalyticsCard({ keywordId, topicName }) {
     return () => {
       cancelled = true;
     };
-  }, [canTrack, keywordId]);
+  }, [canTrack, topicId]);
 
   const toggleTopicTracking = async () => {
     if (!canTrack || trackStatus === "saving") return;
     setTrackStatus("saving");
     setTrackMessage("");
     try {
-      await apiFetch(`/api/follows/keyword/${keywordId}`, {
+      await apiFetch(`/api/follows/topic/${topicId}`, {
         method: isTracked ? "DELETE" : "POST",
         auth: true,
       });
-      setTrackedKeywordId(isTracked ? null : Number(keywordId));
+      setTrackedTopicId(isTracked ? null : Number(topicId));
       setTrackMessage(
         isTracked
           ? `${topicName || "Topic"} is no longer tracked.`
@@ -16504,7 +16507,7 @@ function StudentPublicationDetailPage({ role = "student" }) {
 
         <section className="detail-side-column">
           <ImpactAnalyticsCard
-            keywordId={publicationDetail.keywordIds[0]}
+            topicId={publicationDetail.researchTopicIds[0]}
             topicName={publicationDetail.keywords[0]}
           />
           <ExtractedTopicsCard />
