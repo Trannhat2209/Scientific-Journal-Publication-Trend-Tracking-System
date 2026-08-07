@@ -1045,7 +1045,10 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> GetHealth()
     {
         var databaseConnected = await _context.Database.CanConnectAsync();
-        var latestSync = await _context.SyncLogs.OrderByDescending(s => s.StartedAt).FirstOrDefaultAsync();
+        var latestSync = await _context.SyncLogs
+            .Where(s => !s.SourceApi.StartsWith("Admin Audit:"))
+            .OrderByDescending(s => s.StartedAt)
+            .FirstOrDefaultAsync();
         var authHelperUrl = _configuration["Services:AuthHelperHealthUrl"] ?? "http://localhost:5173/api/health";
         var authHelperOperational = false;
         string authHelperValue;
@@ -1136,7 +1139,7 @@ public class AdminController : ControllerBase
         var failures = new List<string>();
         var recordsSynced = 0;
 
-        if (!sources.Semantic && !sources.OpenAlex && !sources.GoogleScholar && !sources.ResearchGate)
+        if (!sources.Semantic && !sources.OpenAlex && !sources.GoogleScholar && !sources.ResearchGate && !sources.Crossref)
         {
             return BadRequest(new { message = "Enable at least one sync source before running manual sync." });
         }
@@ -1204,6 +1207,21 @@ public class AdminController : ControllerBase
             {
                 failures.Add($"ResearchGate: {exception.Message}");
                 results.Add(new { source = "ResearchGate", status = "Failed", recordsSynced = 0, error = exception.Message });
+            }
+        }
+
+        if (sources.Crossref)
+        {
+            try
+            {
+                var count = await _syncService.SyncFromCrossrefAsync(query, maxResults);
+                recordsSynced += count;
+                results.Add(new { source = "Crossref", status = "Completed", recordsSynced = count });
+            }
+            catch (Exception exception)
+            {
+                failures.Add($"Crossref: {exception.Message}");
+                results.Add(new { source = "Crossref", status = "Failed", recordsSynced = 0, error = exception.Message });
             }
         }
 
@@ -1292,6 +1310,22 @@ public class AdminController : ControllerBase
             .ToListAsync();
 
         return Ok(new { items, totalCount = total, page, pageSize });
+    }
+
+    [HttpGet("api-data-sources")]
+    public async Task<IActionResult> GetApiDataSources()
+    {
+        var sources = await _context.ApiDataSources.AsNoTracking()
+            .OrderBy(source => source.Name)
+            .Select(source => new
+            {
+                source.Id, source.Name, source.ProviderType, source.BaseUrl,
+                source.IsEnabled, source.RequiresApiKey,
+                source.LastSuccessfulSyncAt, source.LastFailedSyncAt, source.LastError,
+                syncCount = source.SyncLogs.Count,
+                recordsSynced = source.SyncLogs.Sum(log => log.RecordsSynced ?? 0)
+            }).ToListAsync();
+        return Ok(sources);
     }
 
     private IQueryable<SyncLog> GetVisibleSyncLogs() => _context.SyncLogs
@@ -1698,4 +1732,5 @@ public class AdminManualSyncSourcesDto
     public bool OpenAlex { get; set; } = true;
     public bool GoogleScholar { get; set; } = false;
     public bool ResearchGate { get; set; } = false;
+    public bool Crossref { get; set; } = true;
 }

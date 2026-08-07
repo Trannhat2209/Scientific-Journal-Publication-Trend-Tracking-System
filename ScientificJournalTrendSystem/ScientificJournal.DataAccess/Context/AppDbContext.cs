@@ -27,6 +27,8 @@ public class AppDbContext : DbContext
     public DbSet<AdminSupportTicket> AdminSupportTickets => Set<AdminSupportTicket>();
     public DbSet<SystemEventLog> SystemEventLogs => Set<SystemEventLog>();
     public DbSet<ResearchTopic> ResearchTopics => Set<ResearchTopic>();
+    public DbSet<ApiDataSource> ApiDataSources => Set<ApiDataSource>();
+    public DbSet<DashboardReport> DashboardReports => Set<DashboardReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
